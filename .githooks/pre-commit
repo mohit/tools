@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Basic secret detection and hygiene checks for a public repo.
+
+fail() {
+  echo "pre-commit: $1" >&2
+  exit 1
+}
+
+staged_files=$(git diff --cached --name-only)
+
+if [[ -z "$staged_files" ]]; then
+  exit 0
+fi
+
+# Block obvious private files from being committed.
+blocked_patterns=(
+  "\.env$"
+  "\.env\."
+  "\.pem$"
+  "\.p12$"
+  "\.pfx$"
+  "id_rsa$"
+  "id_dsa$"
+  "id_ed25519$"
+  "\.key$"
+  "\.kdbx$"
+)
+
+for file in $staged_files; do
+  for pat in "${blocked_patterns[@]}"; do
+    if [[ "$file" =~ $pat ]]; then
+      fail "blocked file staged: $file (pattern: $pat)"
+    fi
+  done
+done
+
+# Scan staged content for common secret patterns.
+secret_regex='(AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|AIzaSy[0-9A-Za-z\-_]{35}|xox[baprs]-[0-9A-Za-z-]{10,48}|-----BEGIN( [A-Z]+)+ PRIVATE KEY-----|github_pat_[0-9A-Za-z_]{20,}|ghp_[0-9A-Za-z]{36}|sk_live_[0-9a-zA-Z]{24,}|sk_test_[0-9a-zA-Z]{24,})'
+
+if git diff --cached -U0 | grep -E -n "$secret_regex" >/dev/null 2>&1; then
+  echo "pre-commit: potential secret detected in staged changes" >&2
+  echo "pre-commit: inspect with: git diff --cached" >&2
+  exit 1
+fi
+
+exit 0

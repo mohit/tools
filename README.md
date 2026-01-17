@@ -1,0 +1,17 @@
+# Tools for Mohit
+
+A public collection of small productivity and quality-of-life tools. Each tool lives in its own folder with a focused README and any tool-specific docs.
+
+## Tools
+
+- `firefox-2fa-autofill/` — Firefox extension that auto-fills 2FA codes from Google Voice SMS. See `firefox-2fa-autofill/README.md`.
+
+## Repository Layout
+
+- Each tool is a top-level folder.
+- Shared repo docs live at the root (`AGENTS.md`, `CONTRIBUTING.md`, `LICENSE`).
+- Tool-specific docs live inside each tool folder.
+
+## License
+
+MIT. See `LICENSE`.
