@@ -1,94 +1,122 @@
-# Google Voice 2FA Autofill - Browser Extension
+# Google Voice 2FA Autofill
 
-Automatically extracts 2FA/verification codes from Google Voice SMS messages and fills them into websites.
+A browser extension that monitors Google Voice for SMS verification codes and helps autofill them on websites.
 
-Works on both **Firefox** and **Chrome**.
+Works on **Firefox** and **Chrome/Chromium** browsers.
+
+## Features
+
+- **Monitors Google Voice** for incoming SMS messages containing 2FA codes
+- **Smart code detection** - requires verification keywords to avoid false positives
+- **Suggestion popup** on websites - shows available codes near 2FA input fields
+- **Source identification** - extracts sender name from message or contact
+- **Multiple code history** - keeps recent codes (last 15 minutes) for reference
+- **Click to fill** - non-intrusive, user-controlled autofill
+
+## How It Works
+
+1. Keep Google Voice open in a browser tab
+2. When you receive a verification SMS, the extension detects and extracts the code
+3. Navigate to a website requiring 2FA
+4. A popup appears near the code input field showing available codes
+5. Click a code to fill it in
 
 ## Installation
 
 ### Firefox
 
-**Temporary (Development):**
-1. Open Firefox and navigate to `about:debugging`
-2. Click "This Firefox" in the left sidebar
-3. Click "Load Temporary Add-on..."
+1. Open Firefox and go to `about:debugging`
+2. Click **"This Firefox"** in the sidebar
+3. Click **"Load Temporary Add-on..."**
 4. Select `manifest.json` from this folder
 
-**Permanent:**
-```bash
-cd firefox-2fa-autofill
-zip -r ../gv-2fa-autofill.xpi *
-```
-Then in Firefox: `about:addons` → gear icon → "Install Add-on From File..."
+### Chrome / Chromium / Edge
 
-### Chrome
-
-**Setup:**
-```bash
-# Use the Chrome manifest (Manifest V3)
-cp manifest_chrome.json manifest.json
-```
-
-**Load Extension:**
-1. Open Chrome and go to `chrome://extensions`
-2. Enable "Developer mode" (toggle in top right)
-3. Click "Load unpacked"
-4. Select this extension folder
-
-**Note:** To switch back to Firefox, restore the original manifest:
-```bash
-git checkout manifest.json
-# Or manually copy content from manifest.json backup
-```
+1. First, use the Chrome manifest:
+   ```bash
+   cp manifest_chrome.json manifest.json
+   ```
+2. Open Chrome and go to `chrome://extensions`
+3. Enable **"Developer mode"** (toggle in top right)
+4. Click **"Load unpacked"**
+5. Select this extension folder
 
 ## Usage
 
-1. **Keep Google Voice open**: Have Google Voice (voice.google.com) open in a tab
-2. **Navigate to a login page**: Go to any website that requires 2FA
-3. **Receive your code**: When a 2FA code arrives via SMS to your Google Voice number
-4. **Auto-fill**: The extension automatically detects the code and fills it into the appropriate field
+1. **Open Google Voice** - Navigate to [voice.google.com](https://voice.google.com) and ensure you're logged in
+2. **Keep the tab open** - The extension monitors this tab for new messages
+3. **Request a 2FA code** - On any website that sends SMS verification
+4. **Look for the popup** - When you reach the code entry page, a suggestion box appears
+5. **Click to fill** - Select the code you want to use
 
-## Features
+### Extension Popup
 
-- **Automatic code detection**: Monitors Google Voice for incoming SMS with verification codes
-- **Smart field detection**: Identifies 2FA input fields on websites using multiple heuristics
-- **Split input support**: Works with both single field and split digit input fields
-- **Visual feedback**: Briefly highlights detected 2FA fields
-- **Popup status**: Click the extension icon to see the current code and copy it manually
-
-## How It Works
-
-1. **Google Voice Monitor**: A content script runs on voice.google.com watching for new messages
-2. **Code Extraction**: Uses pattern matching to identify 2FA codes (4-8 digits with verification keywords)
-3. **Background Coordination**: The background script stores codes and coordinates between tabs
-4. **Field Detection**: Content scripts on other sites detect OTP/2FA input fields
-5. **Auto-fill**: When both a code and field are detected, the code is automatically filled
+Click the extension icon in your toolbar to:
+- See the most recent code (large, easy to copy)
+- View older codes from the last 15 minutes
+- Copy codes manually
 
 ## Supported Code Formats
 
-- Standard 4-8 digit codes
-- Google format: `G-123456`
-- Codes with keywords: "Your verification code is 123456"
-- Split input fields (one digit per box)
+The extension detects codes in messages containing keywords like:
+- "verification code", "security code", "OTP"
+- "your code is", "enter code", "use code"
+- Google-style `G-123456` format
+
+## File Structure
+
+```
+├── manifest.json           # Active manifest (Firefox V2 by default)
+├── manifest_firefox.json   # Firefox Manifest V2
+├── manifest_chrome.json    # Chrome Manifest V3
+├── background.js           # Coordinates between tabs, stores codes
+├── content-google-voice.js # Monitors Google Voice for SMS codes
+├── content-2fa-detector.js # Detects 2FA fields, shows suggestion popup
+├── popup.html/js           # Extension popup UI
+├── icon.svg                # Extension icon
+└── test-2fa.html           # Test page for development
+```
+
+## Development
+
+### Testing
+
+1. Load the extension (see Installation)
+2. Open `test-2fa.html` in your browser
+3. Open Google Voice in another tab
+4. Send a test SMS to your Google Voice number:
+   > Your verification code is 123456
+5. The code should appear in the test page's suggestion popup
+
+### Debugging
+
+Open the browser's Developer Tools console to see logs prefixed with `[2FA Autofill]`:
+- On Google Voice tab: shows detected codes
+- On other sites: shows detected 2FA fields
+
+### Switching Between Browsers
+
+```bash
+# For Firefox (default)
+cp manifest_firefox.json manifest.json
+
+# For Chrome/Chromium
+cp manifest_chrome.json manifest.json
+```
 
 ## Privacy
 
-- All processing happens locally in your browser
-- No data is sent to external servers
-- Codes are stored temporarily (5 minutes max) and cleared after use
+- **No external servers** - All processing happens locally in your browser
+- **No data collection** - Codes are stored temporarily in browser memory only
+- **Auto-expiry** - Codes are automatically cleared after 15 minutes
+- **Minimal permissions** - Only requests access to Google Voice and active tab
 
-## Troubleshooting
+## Limitations
 
-**Code not detected:**
-- Make sure Google Voice is open and logged in
-- Check that the message contains standard verification keywords
-- Try refreshing the Google Voice tab
+- Requires Google Voice tab to be open (doesn't work with notifications alone)
+- Some websites with non-standard input fields may not be detected
+- Code detection requires standard 2FA message formats
 
-**Field not detected:**
-- Some sites use non-standard input fields
-- You can manually copy the code from the extension popup
-- Click the extension icon to see and copy the current code
+## License
 
-**Code not filling:**
-- Some sites block programmatic input
-- Try clicking in the field first, then check the popup for the code
+MIT License - see [LICENSE](LICENSE)

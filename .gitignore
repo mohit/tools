@@ -12,3 +12,7 @@ Thumbs.db
 node_modules/
 dist/
 build/
+*.xpi
+*.crx
+*.zip
+web-ext-artifacts/
