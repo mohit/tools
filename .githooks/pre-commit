@@ -14,6 +14,11 @@ if [[ -z "$staged_files" ]]; then
   exit 0
 fi
 
+# If gitleaks is installed, run a staged scan for stronger coverage.
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --redact --no-banner
+fi
+
 # Block obvious private files from being committed.
 blocked_patterns=(
   "\.env$"

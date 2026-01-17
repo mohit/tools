@@ -1,0 +1,5 @@
+[allowlist]
+description = "Repo-wide allowlist"
+paths = [
+  "firefox-2fa-autofill/test-2fa.html"
+]

@@ -8,6 +8,8 @@ Thanks for contributing! This repo is a collection of small tools, so contributi
 - Keep changes localized to that tool unless you are updating shared docs.
 - Enable local safety hooks:
   - `git config core.hooksPath .githooks`
+- Optional: install gitleaks for stronger local scanning:
+  - `brew install gitleaks`
 
 ## Adding a New Tool
 
@@ -19,6 +21,7 @@ Thanks for contributing! This repo is a collection of small tools, so contributi
 
 - Follow the style of the existing code in the tool folder.
 - Prefer small, reviewable commits with clear intent.
+- If `gitleaks` is installed, commits will run a staged scan via the pre-commit hook.
 
 ## Pull Requests
 
