@@ -6,6 +6,8 @@ Thanks for contributing! This repo is a collection of small tools, so contributi
 
 - Pick a tool folder and read its `README.md`.
 - Keep changes localized to that tool unless you are updating shared docs.
+- Enable local safety hooks:
+  - `git config core.hooksPath .githooks`
 
 ## Adding a New Tool
 
