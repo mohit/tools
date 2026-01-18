@@ -6,6 +6,7 @@ import os
 import sys
 from pathlib import Path
 
+import duckdb
 import requests
 
 STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
@@ -76,6 +77,21 @@ def write_json(path: Path, payload: object) -> None:
         json.dump(payload, handle, indent=2, sort_keys=True)
 
 
+def write_ndjson(path: Path, payloads: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for payload in payloads:
+            handle.write(json.dumps(payload, sort_keys=True))
+            handle.write("\n")
+
+
+def append_ndjson(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True))
+        handle.write("\n")
+
+
 def fetch_athlete(token: str, out_dir: Path) -> int:
     athlete = request_json("/athlete", token)
     write_json(out_dir / "athlete.json", athlete)
@@ -111,12 +127,14 @@ def fetch_activities(
         activities.extend(filtered)
         page += 1
     write_json(out_dir / "activities.json", activities)
+    write_ndjson(out_dir / "activities.ndjson", activities)
     return activities
 
 
 def fetch_activity_details(token: str, out_dir: Path, activity_id: int) -> None:
     activity = request_json(f"/activities/{activity_id}", token)
     write_json(out_dir / "activities" / f"{activity_id}.json", activity)
+    append_ndjson(out_dir / "activity_details.ndjson", activity)
 
 
 def fetch_activity_streams(token: str, out_dir: Path, activity_id: int) -> None:
@@ -130,6 +148,50 @@ def fetch_activity_streams(token: str, out_dir: Path, activity_id: int) -> None:
         },
     )
     write_json(out_dir / "streams" / f"{activity_id}.json", streams)
+    append_ndjson(out_dir / "activity_streams.ndjson", streams)
+
+
+def export_parquet(out_dir: Path) -> None:
+    con = duckdb.connect()
+    con.execute(
+        "CREATE OR REPLACE TABLE activities AS SELECT * FROM read_json_auto(?)",
+        [str(out_dir / "activities.ndjson")],
+    )
+    con.execute(
+        "CREATE OR REPLACE TABLE athlete AS SELECT * FROM read_json_auto(?)",
+        [str(out_dir / "athlete.json")],
+    )
+    con.execute(
+        "CREATE OR REPLACE TABLE stats AS SELECT * FROM read_json_auto(?)",
+        [str(out_dir / "stats.json")],
+    )
+    if (out_dir / "activity_details.ndjson").exists():
+        con.execute(
+            "CREATE OR REPLACE TABLE activity_details AS SELECT * FROM read_json_auto(?)",
+            [str(out_dir / "activity_details.ndjson")],
+        )
+    if (out_dir / "activity_streams.ndjson").exists():
+        con.execute(
+            "CREATE OR REPLACE TABLE activity_streams AS SELECT * FROM read_json_auto(?)",
+            [str(out_dir / "activity_streams.ndjson")],
+        )
+
+    con.execute(
+        "COPY activities TO ? (FORMAT 'parquet')",
+        [str(out_dir / "activities.parquet")],
+    )
+    con.execute("COPY athlete TO ? (FORMAT 'parquet')", [str(out_dir / "athlete.parquet")])
+    con.execute("COPY stats TO ? (FORMAT 'parquet')", [str(out_dir / "stats.parquet")])
+    if (out_dir / "activity_details.ndjson").exists():
+        con.execute(
+            "COPY activity_details TO ? (FORMAT 'parquet')",
+            [str(out_dir / "activity_details.parquet")],
+        )
+    if (out_dir / "activity_streams.ndjson").exists():
+        con.execute(
+            "COPY activity_streams TO ? (FORMAT 'parquet')",
+            [str(out_dir / "activity_streams.parquet")],
+        )
 
 
 def parse_types(raw_types: str | None) -> set[str]:
@@ -147,6 +209,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--include-streams", action="store_true")
     parser.add_argument("--per-page", type=int, default=200)
     parser.add_argument("--max-pages", type=int, default=50)
+    parser.add_argument(
+        "--skip-parquet",
+        action="store_true",
+        help="Skip DuckDB parquet export for JSON outputs.",
+    )
     return parser.parse_args()
 
 
@@ -160,6 +227,10 @@ def main() -> None:
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    for ndjson_file in ("activity_details.ndjson", "activity_streams.ndjson"):
+        ndjson_path = out_dir / ndjson_file
+        if ndjson_path.exists():
+            ndjson_path.unlink()
 
     athlete_id = fetch_athlete(access_token, out_dir)
     fetch_stats(access_token, athlete_id, out_dir)
@@ -180,6 +251,9 @@ def main() -> None:
         fetch_activity_details(access_token, out_dir, activity_id)
         if args.include_streams:
             fetch_activity_streams(access_token, out_dir, activity_id)
+
+    if not args.skip_parquet:
+        export_parquet(out_dir)
 
     print(f"Exported {len(activities)} activities to {out_dir}")
 

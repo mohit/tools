@@ -7,6 +7,7 @@ Pull your Strava data locally via the Strava API with a focus on cycling and wal
 - Fetch per-activity detail and optional time-series streams (distance, elevation, cadence, etc.).
 - Save athlete profile info and lifetime stats.
 - Output JSON for easy reuse in other tools.
+- Export Parquet files via DuckDB for analytics workflows.
 
 ## Setup
 1. Create a Strava API application: <https://www.strava.com/settings/api>.
@@ -45,17 +46,37 @@ python strava_pull.py \
 - `--include-streams`: Also fetch activity streams for detailed analysis.
 - `--per-page`: Number of activities per page (default: 200, max allowed by Strava).
 - `--max-pages`: Safety cap on pagination pages.
+- `--skip-parquet`: Skip DuckDB Parquet export (default exports Parquet files).
 
 ### Output structure
 ```
 strava-export/
   athlete.json
+  athlete.parquet
   stats.json
+  stats.parquet
   activities.json
+  activities.ndjson
+  activities.parquet
+  activity_details.ndjson
+  activity_details.parquet
   activities/
     <activity_id>.json
   streams/
     <activity_id>.json
+  activity_streams.ndjson
+  activity_streams.parquet
+
+## DuckDB Example Query
+
+Once the export completes, you can query the Parquet files using DuckDB:
+
+```sql
+SELECT name, COUNT(*) AS total_activities
+FROM read_parquet('strava-export/activities.parquet')
+GROUP BY name
+ORDER BY total_activities DESC;
+```
 ```
 
 ## Notes
