@@ -90,10 +90,16 @@ class HealthDataParser:
                 if record_date_str:
                     try:
                         record_date = datetime.fromisoformat(record_date_str.replace('Z', '+00:00'))
-                        if start_date and record_date < datetime.fromisoformat(start_date):
-                            continue
-                        if end_date and record_date > datetime.fromisoformat(end_date + 'T23:59:59'):
-                            continue
+                        # Convert the filter dates to offset-aware by adding UTC timezone
+                        from datetime import timezone
+                        if start_date:
+                            start_dt = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
+                            if record_date < start_dt:
+                                continue
+                        if end_date:
+                            end_dt = datetime.fromisoformat(end_date + 'T23:59:59').replace(tzinfo=timezone.utc)
+                            if record_date > end_dt:
+                                continue
                     except ValueError:
                         continue
 
