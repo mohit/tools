@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE HealthData>
+<HealthData locale="en_US">
+  <ExportDate value="2024-01-15 12:00:00 -0800"/>
+  <Me HKCharacteristicTypeIdentifierDateOfBirth="1990-01-01"
+      HKCharacteristicTypeIdentifierBiologicalSex="HKBiologicalSexMale"
+      HKCharacteristicTypeIdentifierBloodType="HKBloodTypeNotSet"
+      HKCharacteristicTypeIdentifierFitzpatrickSkinType="HKFitzpatrickSkinTypeNotSet"/>
+
+  <!-- Step count records -->
+  <Record type="HKQuantityTypeIdentifierStepCount"
+          sourceName="iPhone"
+          sourceVersion="17.2"
+          unit="count"
+          creationDate="2024-01-10 08:00:00 -0800"
+          startDate="2024-01-10 08:00:00 -0800"
+          endDate="2024-01-10 08:15:00 -0800"
+          value="234"/>
+
+  <Record type="HKQuantityTypeIdentifierStepCount"
+          sourceName="iPhone"
+          sourceVersion="17.2"
+          unit="count"
+          creationDate="2024-01-10 09:00:00 -0800"
+          startDate="2024-01-10 09:00:00 -0800"
+          endDate="2024-01-10 09:15:00 -0800"
+          value="567"/>
+
+  <Record type="HKQuantityTypeIdentifierStepCount"
+          sourceName="Apple Watch"
+          sourceVersion="10.2"
+          unit="count"
+          creationDate="2024-01-11 10:00:00 -0800"
+          startDate="2024-01-11 10:00:00 -0800"
+          endDate="2024-01-11 10:30:00 -0800"
+          value="1234"/>
+
+  <!-- Heart rate records -->
+  <Record type="HKQuantityTypeIdentifierHeartRate"
+          sourceName="Apple Watch"
+          sourceVersion="10.2"
+          unit="count/min"
+          creationDate="2024-01-10 08:00:00 -0800"
+          startDate="2024-01-10 08:00:00 -0800"
+          endDate="2024-01-10 08:00:00 -0800"
+          value="72">
+    <MetadataEntry key="HKMetadataKeyHeartRateMotionContext" value="0"/>
+  </Record>
+
+  <Record type="HKQuantityTypeIdentifierHeartRate"
+          sourceName="Apple Watch"
+          sourceVersion="10.2"
+          unit="count/min"
+          creationDate="2024-01-10 12:00:00 -0800"
+          startDate="2024-01-10 12:00:00 -0800"
+          endDate="2024-01-10 12:00:00 -0800"
+          value="85">
+    <MetadataEntry key="HKMetadataKeyHeartRateMotionContext" value="1"/>
+  </Record>
+
+  <!-- Distance walking/running -->
+  <Record type="HKQuantityTypeIdentifierDistanceWalkingRunning"
+          sourceName="iPhone"
+          sourceVersion="17.2"
+          unit="km"
+          creationDate="2024-01-10 08:00:00 -0800"
+          startDate="2024-01-10 08:00:00 -0800"
+          endDate="2024-01-10 08:30:00 -0800"
+          value="2.5"/>
+
+  <!-- Active energy -->
+  <Record type="HKQuantityTypeIdentifierActiveEnergyBurned"
+          sourceName="Apple Watch"
+          sourceVersion="10.2"
+          unit="kcal"
+          creationDate="2024-01-10 08:00:00 -0800"
+          startDate="2024-01-10 08:00:00 -0800"
+          endDate="2024-01-10 09:00:00 -0800"
+          value="125"/>
+
+  <!-- Workouts -->
+  <Workout workoutActivityType="HKWorkoutActivityTypeRunning"
+           duration="30.5"
+           durationUnit="min"
+           totalDistance="5.2"
+           totalDistanceUnit="km"
+           totalEnergyBurned="350"
+           totalEnergyBurnedUnit="kcal"
+           sourceName="Apple Watch"
+           sourceVersion="10.2"
+           creationDate="2024-01-10 07:00:00 -0800"
+           startDate="2024-01-10 07:00:00 -0800"
+           endDate="2024-01-10 07:30:30 -0800">
+    <MetadataEntry key="HKMetadataKeyIndoorWorkout" value="0"/>
+    <MetadataEntry key="HKAverageMETs" value="10.5"/>
+    <WorkoutStatistics type="HKQuantityTypeIdentifierHeartRate"
+                       average="155"
+                       minimum="120"
+                       maximum="175"
+                       sum="4743"
+                       unit="count/min"/>
+    <WorkoutStatistics type="HKQuantityTypeIdentifierActiveEnergyBurned"
+                       average="11.48"
+                       minimum="0"
+                       maximum="15.2"
+                       sum="350"
+                       unit="kcal"/>
+  </Workout>
+
+  <Workout workoutActivityType="HKWorkoutActivityTypeWalking"
+           duration="20"
+           durationUnit="min"
+           totalDistance="1.5"
+           totalDistanceUnit="km"
+           totalEnergyBurned="80"
+           totalEnergyBurnedUnit="kcal"
+           sourceName="iPhone"
+           sourceVersion="17.2"
+           creationDate="2024-01-11 12:00:00 -0800"
+           startDate="2024-01-11 12:00:00 -0800"
+           endDate="2024-01-11 12:20:00 -0800">
+    <MetadataEntry key="HKMetadataKeyIndoorWorkout" value="0"/>
+  </Workout>
+
+  <Workout workoutActivityType="HKWorkoutActivityTypeCycling"
+           duration="45"
+           durationUnit="min"
+           totalDistance="15.3"
+           totalDistanceUnit="km"
+           totalEnergyBurned="420"
+           totalEnergyBurnedUnit="kcal"
+           sourceName="Apple Watch"
+           sourceVersion="10.2"
+           creationDate="2024-01-12 16:00:00 -0800"
+           startDate="2024-01-12 16:00:00 -0800"
+           endDate="2024-01-12 16:45:00 -0800">
+    <MetadataEntry key="HKMetadataKeyIndoorWorkout" value="0"/>
+    <WorkoutStatistics type="HKQuantityTypeIdentifierHeartRate"
+                       average="140"
+                       minimum="105"
+                       maximum="165"
+                       sum="6300"
+                       unit="count/min"/>
+  </Workout>
+
+  <!-- Sleep analysis -->
+  <Record type="HKCategoryTypeIdentifierSleepAnalysis"
+          sourceName="iPhone"
+          sourceVersion="17.2"
+          unit="count"
+          creationDate="2024-01-10 08:00:00 -0800"
+          startDate="2024-01-09 23:00:00 -0800"
+          endDate="2024-01-10 07:00:00 -0800"
+          value="HKCategoryValueSleepAnalysisAsleep"/>
+
+  <!-- Activity Summary -->
+  <ActivitySummary dateComponents="2024-01-10"
+                   activeEnergyBurned="550"
+                   activeEnergyBurnedGoal="600"
+                   activeEnergyBurnedUnit="kcal"
+                   appleExerciseTime="45"
+                   appleExerciseTimeGoal="30"
+                   appleStandHours="10"
+                   appleStandHoursGoal="12"/>
+
+  <ActivitySummary dateComponents="2024-01-11"
+                   activeEnergyBurned="620"
+                   activeEnergyBurnedGoal="600"
+                   activeEnergyBurnedUnit="kcal"
+                   appleExerciseTime="55"
+                   appleExerciseTimeGoal="30"
+                   appleStandHours="12"
+                   appleStandHoursGoal="12"/>
+</HealthData>

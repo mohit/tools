@@ -5,6 +5,7 @@ A public collection of small productivity and quality-of-life tools. Each tool l
 ## Tools
 
 - `firefox-2fa-autofill/` — Firefox extension that auto-fills 2FA codes from Google Voice SMS. See `firefox-2fa-autofill/README.md`.
+- `apple-health-export/` — Python tool to export and analyze Apple Health and Fitness data on macOS. See `apple-health-export/README.md`.
 
 ## Repository Layout
 
