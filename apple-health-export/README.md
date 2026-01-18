@@ -13,8 +13,64 @@ A Python-based tool for exporting and analyzing Apple Health and Fitness data on
 ## Requirements
 
 - macOS with Health.app
-- Python 3.6 or later
+- Python 3.8 or later
 - Full disk access permissions for Terminal/your Python environment (if needed)
+
+## Installation
+
+### Option 1: Quick Setup with uv (Recommended)
+
+If you have [uv](https://github.com/astral-sh/uv) installed:
+
+```bash
+./install.sh
+```
+
+This will install the package in development mode with all dependencies.
+
+### Option 2: Manual Setup
+
+```bash
+# Install development dependencies (optional, for testing)
+pip3 install pytest pytest-cov
+
+# The scripts use only Python standard library, so they work without installation
+python3 health_export.py --help
+python3 health_parser.py --help
+```
+
+### Option 3: Using Make
+
+```bash
+# Install with make
+make install
+
+# Run tests
+make test
+
+# Run tests with coverage
+make test-cov
+```
+
+## Testing
+
+The tool includes comprehensive tests. To run them:
+
+```bash
+# Using unittest (built-in, no dependencies)
+python3 -m unittest discover -s tests -p "test_*.py" -v
+
+# Using pytest (if installed)
+pytest -v
+
+# With coverage
+pytest --cov
+
+# Using make
+make test
+```
+
+All 48 tests should pass on macOS and Linux (though export triggering only works on macOS).
 
 ## Quick Start
 
