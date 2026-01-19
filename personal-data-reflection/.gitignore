@@ -1,0 +1,38 @@
+# Data files
+data/
+*.duckdb
+*.duckdb.wal
+
+# Reports (generated files in reports/ directory at root)
+/reports/
+!/README.md
+!/QUICKSTART.md
+!/requirements.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test data
+test_data/
+sample_exports/
