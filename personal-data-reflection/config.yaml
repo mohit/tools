@@ -1,0 +1,57 @@
+# Personal Data Reflection Tool Configuration
+
+# Database settings
+database: ./data/reflection.duckdb
+
+# Metrics to track and analyze
+metrics:
+  - steps
+  - distance_km
+  - active_energy_kcal
+  - exercise_minutes
+  - sleep_hours
+  - resting_heart_rate
+  - hrv_sdnn
+
+# Metric pairs to analyze for correlations
+correlations:
+  - [sleep_hours, resting_heart_rate]
+  - [sleep_hours, steps]
+  - [sleep_hours, active_energy_kcal]
+  - [steps, active_energy_kcal]
+  - [exercise_minutes, sleep_hours]
+  - [hrv_sdnn, sleep_hours]
+  - [steps, resting_heart_rate]
+
+# Thresholds for insights and pattern detection
+thresholds:
+  # Good day criteria
+  good_day:
+    min_steps: 8000
+    min_sleep: 7.0
+    min_exercise: 20.0
+
+  # Bad day criteria (any of these triggers)
+  bad_day:
+    max_steps: 5000
+    max_sleep: 6.0
+    max_exercise: 10.0
+
+  # Goals
+  daily_step_goal: 10000
+  daily_sleep_goal: 8.0
+  daily_exercise_goal: 30.0
+
+  # Health metrics
+  healthy_resting_hr_max: 60
+  good_hrv_min: 50
+
+# Dashboard settings
+dashboard:
+  port: 5000
+  debug: false
+
+# Report settings
+reports:
+  default_format: markdown  # 'markdown' or 'text'
+  output_directory: ./reports/
