@@ -2,7 +2,7 @@
 
 import duckdb
 from typing import List, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 from .correlations import CorrelationAnalyzer
 from .patterns import PatternDetector
 
@@ -36,7 +36,7 @@ class InsightGenerator:
         else:
             from datetime import date
             next_month = date(year, month + 1, 1)
-            end_date = str(next_month - datetime.timedelta(days=1))
+            end_date = str(next_month - timedelta(days=1))
 
         insights = {
             'highlights': [],
