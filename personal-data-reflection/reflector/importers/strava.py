@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict
 import duckdb
 
@@ -185,7 +185,7 @@ class StravaImporter:
                 )
                 end_time = start_time.replace(
                     microsecond=0
-                ) + datetime.timedelta(seconds=activity['elapsed_time'])
+                ) + timedelta(seconds=activity['elapsed_time'])
 
                 distance_km = activity.get('distance', 0) / 1000
                 moving_time_min = activity.get('moving_time', 0) / 60

@@ -140,18 +140,18 @@ class CorrelationAnalyzer:
         """Save correlation result to database."""
         try:
             self.con.execute("""
-                INSERT INTO correlations (
-                    metric_a, metric_b, correlation_coefficient, p_value,
-                    sample_size, period_start, period_end, description
+                INSERT OR REPLACE INTO correlations (
+                    metric_a, metric_b, period_start, period_end,
+                    correlation_coefficient, p_value, sample_size, description
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, [
                 correlation['metric_a'],
                 correlation['metric_b'],
+                correlation['period_start'],
+                correlation['period_end'],
                 correlation['correlation'],
                 correlation['p_value'],
                 correlation['sample_size'],
-                correlation['period_start'],
-                correlation['period_end'],
                 correlation['description']
             ])
         except Exception as e:

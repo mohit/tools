@@ -114,23 +114,22 @@ class ReflectionDB:
         # Correlations table - computed correlations between metrics
         self.con.execute("""
             CREATE TABLE IF NOT EXISTS correlations (
-                id INTEGER PRIMARY KEY,
                 metric_a VARCHAR,
                 metric_b VARCHAR,
+                period_start DATE,
+                period_end DATE,
                 correlation_coefficient DOUBLE,
                 p_value DOUBLE,
                 sample_size INTEGER,
-                period_start DATE,
-                period_end DATE,
                 description VARCHAR,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (metric_a, metric_b, period_start, period_end)
             )
         """)
 
         # Insights table - generated insights and patterns
         self.con.execute("""
             CREATE TABLE IF NOT EXISTS insights (
-                id INTEGER PRIMARY KEY,
                 category VARCHAR,  -- 'highlight', 'lowlight', 'pattern', 'recommendation'
                 title VARCHAR,
                 description VARCHAR,
