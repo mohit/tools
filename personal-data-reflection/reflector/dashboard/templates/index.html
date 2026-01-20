@@ -297,6 +297,9 @@
 
             try {
                 const response = await fetch(`/api/insights/${year}/${month}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const insights = await response.json();
                 renderInsights(insights);
             } catch (error) {
@@ -346,6 +349,9 @@
 
             try {
                 const response = await fetch(`/api/patterns/${startDate}/${endDate}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const patterns = await response.json();
                 renderPatterns(patterns);
             } catch (error) {
@@ -425,6 +431,9 @@
 
             try {
                 const response = await fetch(`/api/correlations/${startDate}/${endDate}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const correlations = await response.json();
                 renderCorrelations(correlations);
             } catch (error) {
