@@ -48,19 +48,9 @@ def get_input(prompt, default=None):
         return clean_path(res if res else default)
     return clean_path(input(f"{prompt}: ").strip())
 
-def run_cmd(cmd, cwd=None, env=None, requirements=None):
-    # Prepend 'uv run --no-project' to the command
-    # --no-project prevents uv from trying to build the local directory as a package
-    uv_cmd = ["uv", "run", "--no-project"]
-    
-    if requirements:
-        if isinstance(requirements, list):
-            for req in requirements:
-                uv_cmd.extend(["--with-requirements", str(req)])
-        else:
-            uv_cmd.extend(["--with-requirements", str(requirements)])
-            
-    uv_cmd.extend(cmd)
+def run_cmd(cmd, cwd=None, env=None):
+    # Standard uv run within project context
+    uv_cmd = ["uv", "run"] + cmd
     
     print(f"Running: {' '.join(uv_cmd)}")
     result = subprocess.run(uv_cmd, cwd=cwd, env=env)
@@ -143,10 +133,9 @@ def main():
         gen_module.generate_sample_data(str(demo_db))
         
         print("\nStarting Dashboard with Sample Data...")
-        reflection_reqs = reflection_dir / "requirements.txt"
         try:
             run_cmd(["python3", "reflect.py", "--database", str(demo_db), "serve", "--port", "5001", "--debug"], 
-                    cwd=reflection_dir, requirements=reflection_reqs)
+                    cwd=reflection_dir)
         except KeyboardInterrupt:
             print("\nShutting down.")
         return
@@ -155,10 +144,9 @@ def main():
     if args.serve and db_path_val:
         db_path = Path(db_path_val).absolute()
         print(f"Launching dashboard with database: {db_path}")
-        reflection_reqs = reflection_dir / "requirements.txt"
         try:
             run_cmd(["python3", "reflect.py", "--database", str(db_path), "serve", "--port", "5001", "--debug"], 
-                    cwd=reflection_dir, requirements=reflection_reqs)
+                    cwd=reflection_dir)
         except KeyboardInterrupt:
             print("\nShutting down.")
         return
@@ -262,11 +250,6 @@ def main():
     # 4. Processing
     print_header("Processing Data...")
     
-    # Requirements paths
-    health_reqs = health_dir / "pyproject.toml"
-    reflection_reqs = reflection_dir / "requirements.txt"
-    strava_reqs = strava_dir / "requirements.txt"
-
     # Check for existing data
     has_health = False
     import duckdb
@@ -301,7 +284,7 @@ def main():
             run_cmd(["python3", "health_parser.py", str(xml_path), "export-records", "--output", str(health_out)], cwd=health_dir)
             # Import into reflection
             run_cmd(["python3", "reflect.py", "--database", str(db_path), "import-health", str(health_out)], 
-                    cwd=reflection_dir, requirements=reflection_reqs)
+                    cwd=reflection_dir)
         else:
             print("Could not locate export.xml after extraction.")
     elif has_health:
@@ -317,20 +300,20 @@ def main():
         print("\n--- Pulling Strava Data ---")
         st_export_dir = strava_dir / "strava-export"
         run_cmd(["python3", "strava_pull.py", "--out-dir", str(st_export_dir)], 
-                cwd=strava_dir, env=st_env, requirements=strava_reqs)
+                cwd=strava_dir, env=st_env)
         run_cmd(["python3", "reflect.py", "--database", str(db_path), "import-strava", str(st_export_dir)], 
-                cwd=reflection_dir, requirements=reflection_reqs)
+                cwd=reflection_dir)
 
     # 5. Launch
     print_header("Setup Complete!")
     print("Running initial analysis...")
     run_cmd(["python3", "reflect.py", "--database", str(db_path), "analyze"], 
-            cwd=reflection_dir, requirements=reflection_reqs)
+            cwd=reflection_dir)
     
     print("\nStarting the Reflection UI now on port 5001...")
     try:
         run_cmd(["python3", "reflect.py", "--database", str(db_path), "serve", "--port", "5001", "--debug"], 
-                cwd=reflection_dir, requirements=reflection_reqs)
+                cwd=reflection_dir)
     except KeyboardInterrupt:
         print("\nShutting down. Your data is saved in DuckDB.")
 

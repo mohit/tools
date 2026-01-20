@@ -1,0 +1,16 @@
+[project]
+name = "personal-data-reflection"
+version = "0.1.0"
+description = "Comprehensive health and fitness data reflection tool"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "duckdb>=1.1.0",
+    "flask>=3.0.0",
+    "pyyaml>=6.0.0",
+    "requests>=2.31.0",
+]
+
+[project.scripts]
+reflect = "reflect:main"
+setup = "setup_interactive:main"
