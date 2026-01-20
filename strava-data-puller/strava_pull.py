@@ -113,18 +113,18 @@ def append_ndjson(path: Path, payload: dict) -> None:
         handle.write("\n")
 
 
-def load_existing_activities(out_dir: Path) -> tuple[set[int], int | None]:
-    """Load existing activity IDs and find the most recent activity timestamp.
+def load_existing_activities(out_dir: Path) -> tuple[list[dict], int | None]:
+    """Load existing activities and find the most recent activity timestamp.
     
     Returns:
-        Tuple of (set of activity IDs, most recent start_date as Unix timestamp or None)
+        Tuple of (list of activity dicts, most recent start_date as Unix timestamp or None)
     """
     ndjson_path = out_dir / "activities.ndjson"
-    existing_ids: set[int] = set()
+    existing_activities: list[dict] = []
     latest_timestamp: int | None = None
     
     if not ndjson_path.exists():
-        return existing_ids, latest_timestamp
+        return existing_activities, latest_timestamp
     
     with ndjson_path.open("r", encoding="utf-8") as f:
         for line in f:
@@ -133,9 +133,7 @@ def load_existing_activities(out_dir: Path) -> tuple[set[int], int | None]:
                 continue
             try:
                 activity = json.loads(line)
-                activity_id = activity.get("id")
-                if activity_id:
-                    existing_ids.add(activity_id)
+                existing_activities.append(activity)
                 
                 # Parse start_date to find the latest
                 start_date_str = activity.get("start_date")
@@ -148,7 +146,7 @@ def load_existing_activities(out_dir: Path) -> tuple[set[int], int | None]:
             except (json.JSONDecodeError, ValueError):
                 continue
     
-    return existing_ids, latest_timestamp
+    return existing_activities, latest_timestamp
 
 
 def fetch_athlete(token: str, out_dir: Path) -> int:
@@ -185,8 +183,7 @@ def fetch_activities(
         filtered = [activity for activity in batch if activity.get("type") in types]
         activities.extend(filtered)
         page += 1
-    write_json(out_dir / "activities.json", activities)
-    write_ndjson(out_dir / "activities.ndjson", activities)
+    # Note: We do NOT write to files here anymore, that happens in main() after merging
     return activities
 
 
@@ -293,20 +290,22 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     
     # Load existing activities for incremental sync
-    existing_ids: set[int] = set()
+    existing_activities: list[dict] = []
     auto_after: int | None = None
     
     if not args.force:
-        existing_ids, auto_after = load_existing_activities(out_dir)
-        if existing_ids:
-            print(f"Found {len(existing_ids)} existing activities. Fetching only new ones.")
+        existing_activities, auto_after = load_existing_activities(out_dir)
+        if existing_activities:
+            print(f"Found {len(existing_activities)} existing activities.")
             print("Use --force to re-fetch all activities.")
     
-    # Use auto_after if no explicit --after was provided
+    # Use auto_after with 7-day buffer if no explicit --after was provided
     after_param = args.after
     if after_param is None and auto_after is not None and not args.force:
-        after_param = auto_after
-        print(f"Auto-setting --after to latest activity date.")
+        # Buffer 7 days (7 * 24 * 60 * 60 seconds)
+        buffer_seconds = 7 * 24 * 60 * 60
+        after_param = auto_after - buffer_seconds
+        print(f"Auto-setting --after to {after_param} (latest - 7 days) to catch late uploads/edits.")
     
     # Only clear detail files if forcing full refresh
     if args.force:
@@ -319,7 +318,7 @@ def main() -> None:
     fetch_stats(access_token, athlete_id, out_dir)
 
     activity_types = parse_types(args.types)
-    activities = fetch_activities(
+    fetched_activities = fetch_activities(
         access_token,
         out_dir,
         activity_types,
@@ -329,15 +328,36 @@ def main() -> None:
         args.max_pages,
     )
     
-    # Filter to only new activities
-    new_activities = [a for a in activities if a["id"] not in existing_ids]
-    skipped_count = len(activities) - len(new_activities)
+    # Merge strategy:
+    # 1. Create a dict of all activities by ID (existing + fetched)
+    #    Since we process existing first, then fetched, updates from fetched will overwrite existing
+    activity_map = {a["id"]: a for a in existing_activities}
     
-    if skipped_count > 0:
-        print(f"Skipping {skipped_count} already-fetched activities.")
+    # 2. Update/Add new fetched activities
+    new_activity_ids = set()
+    for activity in fetched_activities:
+        # Only consider it "new" if we didn't have it before
+        if activity["id"] not in activity_map:
+            new_activity_ids.add(activity["id"])
+        activity_map[activity["id"]] = activity
+        
+    # 3. Convert back to list and sort by start_date
+    final_activities = list(activity_map.values())
+    final_activities.sort(key=lambda x: x.get("start_date", ""), reverse=True)
+    
+    # 4. Write merged list to files
+    write_json(out_dir / "activities.json", final_activities)
+    write_ndjson(out_dir / "activities.ndjson", final_activities)
 
-    for activity in new_activities:
-        activity_id = activity["id"]
+    fetched_count = len(fetched_activities)
+    new_count = len(new_activity_ids)
+    
+    print(f"Fetched {fetched_count} records (overlapping). Found {new_count} truly new activities.")
+
+    # Only fetch details for the TRULY new activities
+    for activity_id in new_activity_ids:
+        # Note: We can't easily get the 'activity' dict here without iterating map, 
+        # but fetch_activity_details needs ID anyway.
         fetch_activity_details(access_token, out_dir, activity_id)
         if args.include_streams:
             fetch_activity_streams(access_token, out_dir, activity_id)
@@ -345,7 +365,7 @@ def main() -> None:
     if not args.skip_parquet:
         export_parquet(out_dir)
 
-    print(f"Exported {len(new_activities)} new activities to {out_dir} ({skipped_count} skipped)")
+    print(f"Sync complete. Total library size: {len(final_activities)} activities.")
 
 
 if __name__ == "__main__":
