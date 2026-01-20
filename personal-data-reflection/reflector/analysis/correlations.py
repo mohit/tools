@@ -1,6 +1,7 @@
 """Correlation analysis between metrics."""
 
 import duckdb
+import math
 from typing import List, Dict, Tuple
 from datetime import datetime, timedelta
 
@@ -80,6 +81,9 @@ class CorrelationAnalyzer:
                 return None
 
             corr, sample_size, avg_a, avg_b, std_a, std_b = result
+
+            if corr is None or math.isnan(corr):
+                return None
 
             # Calculate approximate p-value (simplified - would need scipy for exact)
             # Using rough approximation: correlation is significant if |r| > 2/sqrt(n)
@@ -191,7 +195,7 @@ class CorrelationAnalyzer:
                   AND b.{metric_b} IS NOT NULL
             """, [start_date, end_date]).fetchone()
 
-            if not result or result[0] is None:
+            if not result or result[0] is None or math.isnan(result[0]):
                 return None
 
             corr, sample_size = result

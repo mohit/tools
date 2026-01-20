@@ -1,6 +1,7 @@
 """Pattern detection in personal health data."""
 
 import duckdb
+import math
 from typing import List, Dict
 from datetime import datetime, timedelta
 
@@ -11,6 +12,14 @@ class PatternDetector:
     def __init__(self, db_connection: duckdb.DuckDBPyConnection):
         """Initialize pattern detector with database connection."""
         self.con = db_connection
+
+    def get_default_criteria(self) -> Dict:
+        """Get the default criteria for a 'good day'."""
+        return {
+            'min_steps': 8000,
+            'min_sleep': 7.0,
+            'min_exercise': 20.0
+        }
 
     def find_good_days(
         self,
@@ -28,11 +37,7 @@ class PatternDetector:
         Returns list of good days with their metrics.
         """
         if criteria is None:
-            criteria = {
-                'min_steps': 8000,
-                'min_sleep': 7.0,
-                'min_exercise': 20.0
-            }
+            criteria = self.get_default_criteria()
 
         result = self.con.execute("""
             SELECT
@@ -356,10 +361,11 @@ class PatternDetector:
                 hm.{metric} as value,
                 s.mean_value,
                 s.std_value,
-                ABS(hm.{metric} - s.mean_value) / s.std_value as z_score
+                ABS(hm.{metric} - s.mean_value) / NULLIF(s.std_value, 0) as z_score
             FROM health_metrics hm, stats s
             WHERE hm.date BETWEEN ? AND ?
               AND hm.{metric} IS NOT NULL
+              AND s.std_value IS NOT NULL AND s.std_value > 0
               AND ABS(hm.{metric} - s.mean_value) / s.std_value > ?
             ORDER BY z_score DESC
         """, [start_date, end_date, start_date, end_date, std_threshold]).fetchall()
@@ -367,10 +373,10 @@ class PatternDetector:
         return [
             {
                 'date': row[0],
-                'value': round(row[1], 2),
-                'mean': round(row[2], 2),
-                'std': round(row[3], 2),
-                'z_score': round(row[4], 2),
+                'value': round(row[1], 2) if row[1] is not None else None,
+                'mean': round(row[2], 2) if row[2] is not None else None,
+                'std': round(row[3], 2) if row[3] is not None else None,
+                'z_score': round(row[4], 2) if row[4] is not None and not math.isnan(row[4]) else None,
                 'metric': metric,
                 'type': 'high' if row[1] > row[2] else 'low'
             }

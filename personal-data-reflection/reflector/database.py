@@ -248,6 +248,67 @@ class ReflectionDB:
             "total_calories": round(workout_result[3], 0) if workout_result[3] else 0,
         }
 
+    def get_aggregated_stats(self, start_date: str, end_date: str) -> dict:
+        """Get aggregated statistics for a specific date range."""
+        result = self.con.execute("""
+            WITH period_data AS (
+                SELECT
+                    date,
+                    steps,
+                    distance_km,
+                    active_energy_kcal,
+                    exercise_minutes,
+                    sleep_hours,
+                    resting_heart_rate,
+                    hrv_sdnn
+                FROM health_metrics
+                WHERE date BETWEEN ? AND ?
+            )
+            SELECT
+                COUNT(*) as days_tracked,
+                AVG(steps) as avg_steps,
+                SUM(steps) as total_steps,
+                AVG(distance_km) as avg_distance,
+                SUM(distance_km) as total_distance,
+                AVG(active_energy_kcal) as avg_active_energy,
+                SUM(active_energy_kcal) as total_active_energy,
+                AVG(exercise_minutes) as avg_exercise_minutes,
+                SUM(exercise_minutes) as total_exercise_minutes,
+                AVG(sleep_hours) as avg_sleep_hours,
+                AVG(resting_heart_rate) as avg_resting_hr,
+                AVG(hrv_sdnn) as avg_hrv
+            FROM period_data
+        """, [start_date, end_date]).fetchone()
+
+        workout_result = self.con.execute("""
+            SELECT
+                COUNT(*) as workout_count,
+                SUM(duration_minutes) as total_workout_duration,
+                SUM(distance_km) as total_workout_distance,
+                SUM(calories) as total_calories
+            FROM workouts
+            WHERE DATE(start_time) BETWEEN ? AND ?
+        """, [start_date, end_date]).fetchone()
+
+        return {
+            "days_tracked": result[0],
+            "avg_steps": round(result[1], 0) if result[1] else 0,
+            "total_steps": result[2] or 0,
+            "avg_distance_km": round(result[3], 2) if result[3] else 0,
+            "total_distance_km": round(result[4], 2) if result[4] else 0,
+            "avg_active_energy": round(result[5], 0) if result[5] else 0,
+            "total_active_energy": round(result[6], 0) if result[6] else 0,
+            "avg_exercise_minutes": round(result[7], 1) if result[7] else 0,
+            "total_exercise_minutes": round(result[8], 1) if result[8] else 0,
+            "avg_sleep_hours": round(result[9], 1) if result[9] else 0,
+            "avg_resting_hr": round(result[10], 1) if result[10] else 0,
+            "avg_hrv": round(result[11], 1) if result[11] else 0,
+            "workout_count": workout_result[0] or 0,
+            "total_workout_duration": round(workout_result[1], 1) if workout_result[1] else 0,
+            "total_workout_distance": round(workout_result[2], 2) if workout_result[2] else 0,
+            "total_calories": round(workout_result[3], 0) if workout_result[3] else 0,
+        }
+
     def rebuild_daily_summary(self):
         """Rebuild the daily_summary table from health_metrics and workouts."""
         self.con.execute("""

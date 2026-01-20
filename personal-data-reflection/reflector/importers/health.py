@@ -111,7 +111,25 @@ class HealthImporter:
 
             # Parse ISO datetime
             record_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00')).date()
-            value = float(row.get('value', 0))
+            
+            # Handle value based on metric type
+            value = 0.0
+            if metric_name == 'sleep':
+                # Sleep value is a string category (e.g. Asleep, InBed)
+                sleep_value = row.get('value', '')
+                # Only count actual sleep, ignore "InBed" which overlaps
+                if sleep_value in [
+                    'HKCategoryValueSleepAnalysisAsleep',
+                    'HKCategoryValueSleepAnalysisAsleepCore',
+                    'HKCategoryValueSleepAnalysisAsleepDeep',
+                    'HKCategoryValueSleepAnalysisAsleepREM'
+                ]:
+                    value = self._calculate_sleep_hours(row)
+                else:
+                    value = 0.0
+            else:
+                # Other metrics are numbers
+                value = float(row.get('value', 0))
 
             # Convert units
             if metric_name == 'distance':
@@ -137,10 +155,9 @@ class HealthImporter:
                 daily_metrics[record_date][metric_name] = \
                     daily_metrics[record_date].get(metric_name, 0) + value
             elif metric_name == 'sleep':
-                # Sum sleep durations (convert to hours if needed)
-                sleep_hours = self._calculate_sleep_hours(row)
+                # Sum sleep durations
                 daily_metrics[record_date]['sleep_hours'] = \
-                    daily_metrics[record_date].get('sleep_hours', 0) + sleep_hours
+                    daily_metrics[record_date].get('sleep_hours', 0) + value
             else:
                 # For heart rate, HRV, body mass - use latest value
                 daily_metrics[record_date][metric_name] = value
@@ -162,7 +179,24 @@ class HealthImporter:
                 return
 
             record_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00')).date()
-            value = float(record.get('value', 0))
+            
+            # Handle value based on metric type
+            value = 0.0
+            if metric_name == 'sleep':
+                # Sleep value is a string category (e.g. Asleep, InBed)
+                sleep_value = record.get('value', '')
+                # Only count actual sleep, ignore "InBed" which overlaps
+                if sleep_value in [
+                    'HKCategoryValueSleepAnalysisAsleep',
+                    'HKCategoryValueSleepAnalysisAsleepCore',
+                    'HKCategoryValueSleepAnalysisAsleepDeep',
+                    'HKCategoryValueSleepAnalysisAsleepREM'
+                ]:
+                    value = self._calculate_sleep_hours(record) # Re-use same helper since dict keys match
+                else:
+                    value = 0.0
+            else:
+                value = float(record.get('value', 0))
 
             # Initialize daily metrics dict if needed
             if record_date not in daily_metrics:
@@ -173,6 +207,9 @@ class HealthImporter:
                              'resting_energy', 'exercise_minutes']:
                 daily_metrics[record_date][metric_name] = \
                     daily_metrics[record_date].get(metric_name, 0) + value
+            elif metric_name == 'sleep':
+                daily_metrics[record_date]['sleep_hours'] = \
+                    daily_metrics[record_date].get('sleep_hours', 0) + value
             else:
                 daily_metrics[record_date][metric_name] = value
 

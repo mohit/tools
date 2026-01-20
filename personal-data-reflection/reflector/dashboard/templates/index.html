@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -29,7 +30,7 @@
             padding: 30px;
             border-radius: 12px;
             margin-bottom: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
         }
 
         h1 {
@@ -79,7 +80,7 @@
             background: white;
             padding: 25px;
             border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
         }
 
         .stat-label {
@@ -114,7 +115,7 @@
             padding: 30px;
             border-radius: 12px;
             margin-bottom: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
         }
 
         .section h2 {
@@ -186,6 +187,22 @@
             margin-bottom: 20px;
         }
 
+        .nav-btn {
+            padding: 8px 16px;
+            border: 1px solid #d2d2d7;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            color: #1d1d1f;
+            transition: all 0.2s;
+        }
+
+        .nav-btn:hover {
+            background: #f5f5f7;
+            border-color: #86868b;
+        }
+
         .month-selector select {
             padding: 8px 15px;
             border: 1px solid #d2d2d7;
@@ -193,8 +210,171 @@
             font-size: 1em;
             background: white;
         }
+
+        /* Calendar Styles */
+        .calendar-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .period-selector {
+            display: flex;
+            gap: 5px;
+            background: #f5f5f7;
+            padding: 4px;
+            border-radius: 8px;
+        }
+
+        .period-selector button {
+            padding: 6px 12px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            color: #424245;
+        }
+
+        .period-selector button.active {
+            background: white;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            color: #1d1d1f;
+            font-weight: 500;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 8px;
+            margin-bottom: 30px;
+        }
+
+        .calendar-day-header {
+            text-align: center;
+            font-weight: 600;
+            color: #86868b;
+            padding: 10px 0;
+            font-size: 0.9em;
+        }
+
+        .calendar-cell {
+            background: white;
+            border-radius: 8px;
+            min-height: 100px;
+            padding: 10px;
+            position: relative;
+            transition: transform 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .calendar-cell:hover {
+            transform: scale(1.02);
+            z-index: 10;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .calendar-cell.empty {
+            background: transparent;
+            box-shadow: none;
+            pointer-events: none;
+        }
+
+        .cell-date {
+            font-size: 0.9em;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #1d1d1f;
+        }
+
+        .cell-metric {
+            font-size: 0.8em;
+            color: #424245;
+            margin-bottom: 2px;
+        }
+
+        .workout-dot {
+            height: 6px;
+            width: 6px;
+            background-color: #ff3b30;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 4px;
+        }
+
+        /* Intensity Colors based on steps */
+        .intensity-0 {
+            border-color: #f5f5f7;
+        }
+
+        .intensity-1 {
+            background-color: #e3f2fd;
+            border-color: #bbdefb;
+        }
+
+        /* < 5k */
+        .intensity-2 {
+            background-color: #c8e6c9;
+            border-color: #a5d6a7;
+        }
+
+        /* 5k-10k */
+        .intensity-3 {
+            background-color: #81c784;
+            border-color: #66bb6a;
+        }
+
+        /* 10k-15k */
+        .intensity-4 {
+            background-color: #4caf50;
+            border-color: #43a047;
+            color: white !important;
+        }
+
+        /* > 15k */
+        .intensity-4 .cell-date,
+        .intensity-4 .cell-metric {
+            color: white;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .summary-card {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
+
+        .summary-label {
+            font-size: 0.8em;
+            text-transform: uppercase;
+            color: #86868b;
+            margin-bottom: 4px;
+        }
+
+        .summary-value {
+            font-size: 1.4em;
+            font-weight: 600;
+        }
+
+        .summary-comparison {
+            font-size: 0.8em;
+            margin-top: 4px;
+        }
     </style>
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -202,6 +382,7 @@
             <p class="subtitle">Your monthly health and fitness insights</p>
             <div class="nav">
                 <button class="active" onclick="showView('overview')">Overview</button>
+                <button onclick="showView('calendar')">Calendar</button>
                 <button onclick="showView('insights')">Insights</button>
                 <button onclick="showView('patterns')">Patterns</button>
                 <button onclick="showView('correlations')">Correlations</button>
@@ -216,6 +397,10 @@
     <script>
         let currentView = 'overview';
         let currentData = null;
+        let calendarState = {
+            date: new Date(),
+            summaryPeriod: 'month' // week, month, quarter, year
+        };
 
         async function loadOverview() {
             try {
@@ -253,12 +438,12 @@
 
             const html = `
                 <div class="stats-grid">
-                    ${renderStatCard('Total Steps', current.total_steps.toLocaleString(), calcChange(current.total_steps, previous.total_steps))}
-                    ${renderStatCard('Avg Steps/Day', Math.round(current.avg_steps).toLocaleString(), calcChange(current.avg_steps, previous.avg_steps))}
-                    ${renderStatCard('Workouts', current.workout_count, calcChange(current.workout_count, previous.workout_count))}
-                    ${renderStatCard('Avg Sleep', current.avg_sleep_hours.toFixed(1) + ' hrs', calcChange(current.avg_sleep_hours, previous.avg_sleep_hours))}
-                    ${renderStatCard('Total Distance', current.total_distance_km.toFixed(1) + ' km', calcChange(current.total_distance_km, previous.total_distance_km))}
-                    ${renderStatCard('Active Energy', Math.round(current.total_active_energy).toLocaleString() + ' kcal', calcChange(current.total_active_energy, previous.total_active_energy))}
+                    ${renderStatCard('Total Steps', current.total_steps.toLocaleString(), calcChange(current.total_steps, previous.total_steps), 'steps')}
+                    ${renderStatCard('Avg Steps/Day', Math.round(current.avg_steps).toLocaleString(), calcChange(current.avg_steps, previous.avg_steps), 'avg_steps')}
+                    ${renderStatCard('Workouts', current.workout_count, calcChange(current.workout_count, previous.workout_count), 'workouts')}
+                    ${renderStatCard('Avg Sleep', current.avg_sleep_hours > 0 ? current.avg_sleep_hours.toFixed(1) + ' hrs' : '<span style="color:#999;font-size:0.6em">No Data</span>', calcChange(current.avg_sleep_hours, previous.avg_sleep_hours), 'sleep')}
+                    ${renderStatCard('Total Distance', current.total_distance_km.toFixed(1) + ' km', calcChange(current.total_distance_km, previous.total_distance_km), 'distance')}
+                    ${renderStatCard('Active Energy', Math.round(current.total_active_energy).toLocaleString() + ' kcal', calcChange(current.total_active_energy, previous.total_active_energy), 'energy')}
                 </div>
 
                 <div class="section">
@@ -273,21 +458,43 @@
             document.getElementById('content').innerHTML = html;
         }
 
-        function renderStatCard(label, value, change) {
+        function renderStatCard(label, value, change, type) {
             let changeHtml = '';
             if (change !== null) {
                 const changeClass = change >= 0 ? 'positive' : 'negative';
                 const changeSymbol = change >= 0 ? '▲' : '▼';
-                changeHtml = `<div class="stat-change ${changeClass}">${changeSymbol} ${Math.abs(change)}% from last month</div>`;
+                changeHtml = `<div class="stat-change ${changeClass}">${changeSymbol} ${Math.abs(change)}% <span style="color:#86868b; font-weight:normal;">vs last month</span></div>`;
             }
+
+            // Icons
+            const icons = {
+                steps: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0071e3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v-2.38C4 11.5 5.9 9.8 8.1 9.8s4.1 1.7 4.1 3.82c0 2.22 1.8 3.82 4.1 3.82s4.1-1.6 4.1-3.82V8"/></svg>',
+                avg_steps: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0071e3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+                workouts: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff3b30" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>',
+                sleep: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5856d6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
+                distance: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#34c759" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>',
+                energy: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff9500" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>'
+            };
 
             return `
                 <div class="stat-card">
-                    <div class="stat-label">${label}</div>
+                    <div style="display:flex; justify-content:space-between; align-items:start;">
+                        <div class="stat-label">${label}</div>
+                        <div style="opacity:0.8">${icons[type] || ''}</div>
+                    </div>
                     <div class="stat-value">${value}</div>
                     ${changeHtml}
                 </div>
             `;
+        }
+
+        // Helper date formatter
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            const options = { month: 'short', day: 'numeric' };
+            // Append timezone offset to ensure correct local date
+            const date = new Date(dateStr + 'T12:00:00');
+            return date.toLocaleDateString('en-US', options);
         }
 
         async function loadInsights() {
@@ -358,8 +565,21 @@
         function renderPatterns(patterns) {
             const html = `
                 <div class="section">
-                    <h2>Good Days</h2>
-                    <p>You had <strong>${patterns.good_days.length}</strong> days meeting all health goals this month.</p>
+                    <h2 style="margin-bottom:10px">Good Days Analysis</h2>
+                    <div style="display:flex; gap:20px; align-items:center; margin-bottom:20px; background:#f9f9f9; padding:15px; border-radius:8px;">
+                        <div style="flex:1">
+                            <div style="font-weight:600; margin-bottom:5px;">Daily Goals</div>
+                            <div style="display:flex; gap:15px; font-size:0.9em; color:#555;">
+                                <div title="Steps Goal"><span style="color:#0071e3">👟</span> ${patterns.goals.min_steps.toLocaleString()}+ steps</div>
+                                <div title="Exercise Goal"><span style="color:#ff3b30">🔥</span> ${patterns.goals.min_exercise}m+ exercise</div>
+                                <div title="Sleep Goal" style="opacity:${patterns.goals.min_sleep > 0 ? 1 : 0.5}"><span style="color:#5856d6">🛌</span> ${patterns.goals.min_sleep}h+ sleep</div>
+                            </div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="font-size:2em; font-weight:700; line-height:1;">${patterns.good_days.length}</div>
+                            <div style="font-size:0.8em; color:#888;">GOOD DAYS</div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="section">
@@ -375,7 +595,7 @@
                 ${patterns.step_streaks.length > 0 ? `
                 <div class="section">
                     <h2>Step Streaks</h2>
-                    <p>Longest streak: <strong>${patterns.step_streaks[0].length_days}</strong> days (${patterns.step_streaks[0].start_date} to ${patterns.step_streaks[0].end_date})</p>
+                    <p>Longest streak: <strong>${patterns.step_streaks[0].length_days}</strong> days <span style="color:#888;font-size:0.9em">(${formatDate(patterns.step_streaks[0].start_date)} - ${formatDate(patterns.step_streaks[0].end_date)})</span></p>
                 </div>
                 ` : ''}
             `;
@@ -434,6 +654,166 @@
             }
         }
 
+        // Calendar Functions
+        async function loadCalendar() {
+            const dateStr = calendarState.date.toISOString().split('T')[0];
+
+            // 1. Load Summary Data
+            try {
+                const summaryRes = await fetch(`/api/summary?period=${calendarState.summaryPeriod}&date=${dateStr}`);
+                const summaryData = await summaryRes.json();
+
+                // 2. Load Calendar Grid Data (always load full month of current view)
+                // Calculate start/end for the grid view
+                const year = calendarState.date.getFullYear();
+                const month = calendarState.date.getMonth();
+                const startOfMonth = new Date(year, month, 1);
+                const endOfMonth = new Date(year, month + 1, 0);
+
+                const gridRes = await fetch(`/api/daily/${startOfMonth.toISOString().split('T')[0]}/${endOfMonth.toISOString().split('T')[0]}`);
+                const gridData = await gridRes.json();
+
+                renderCalendarView(summaryData, gridData);
+            } catch (error) {
+                document.getElementById('content').innerHTML = `
+                    <div class="error">Error loading calendar: ${error.message}</div>
+                `;
+            }
+        }
+
+        function updateCalendarPeriod(period) {
+            calendarState.summaryPeriod = period;
+            loadCalendar();
+        }
+
+        function changeCalendarDate(months) {
+            calendarState.date.setMonth(calendarState.date.getMonth() + months);
+            loadCalendar();
+        }
+
+        function renderCalendarView(summary, grid) {
+            const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+            const viewDate = calendarState.date;
+
+            // --- Summary Section ---
+            const cur = summary.current.stats;
+            const prev = summary.previous.stats;
+            const calcDiff = (c, p) => p ? Math.round(((c - p) / p) * 100) : null;
+
+            const renderDiff = (diff) => {
+                if (diff === null) return '<span style="color:#999">-</span>';
+                const color = diff >= 0 ? '#28a745' : '#dc3545';
+                const arrow = diff >= 0 ? '▲' : '▼';
+                return `<span style="color:${color}">${arrow} ${Math.abs(diff)}%</span> vs prev`;
+            };
+
+            const summaryHtml = `
+                <div class="section" style="padding: 20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                        <h2 style="margin:0; font-size:1.4em;">Performance Summary</h2>
+                        <div class="period-selector">
+                            ${['week', 'month', 'quarter', 'year'].map(p =>
+                `<button class="${calendarState.summaryPeriod === p ? 'active' : ''}" onclick="updateCalendarPeriod('${p}')">${p.charAt(0).toUpperCase() + p.slice(1)}</button>`
+            ).join('')}
+                        </div>
+                    </div>
+                    <div style="font-size:0.9em; color:#666; margin-bottom:15px;">
+                        Comparing ${summary.current.start_date} - ${summary.current.end_date} vs previous
+                    </div>
+                    <div class="summary-grid">
+                        <div class="summary-card">
+                            <div class="summary-label">Steps</div>
+                            <div class="summary-value">${Math.round(cur.avg_steps).toLocaleString()}</div>
+                            <div class="summary-comparison">${renderDiff(calcDiff(cur.avg_steps, prev.avg_steps))}</div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-label">Distance</div>
+                            <div class="summary-value">${cur.total_distance_km.toFixed(1)} km</div>
+                            <div class="summary-comparison">${renderDiff(calcDiff(cur.total_distance_km, prev.total_distance_km))}</div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-label">Active Energy</div>
+                            <div class="summary-value">${Math.round(cur.total_active_energy).toLocaleString()} kcal</div>
+                            <div class="summary-comparison">${renderDiff(calcDiff(cur.total_active_energy, prev.total_active_energy))}</div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-label">Workouts</div>
+                            <div class="summary-value">${cur.workout_count}</div>
+                            <div class="summary-comparison">${renderDiff(calcDiff(cur.workout_count, prev.workout_count))}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // --- Calendar Grid Section ---
+            const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
+            const firstDayDow = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay(); // 0 is Sunday
+
+            let gridHtml = `
+                <div class="calendar-controls">
+                    <button onclick="changeCalendarDate(-1)" class="nav-btn">← Prev</button>
+                    <h3 style="margin:0;">${months[viewDate.getMonth()]} ${viewDate.getFullYear()}</h3>
+                    <button onclick="changeCalendarDate(1)" class="nav-btn">Next →</button>
+                </div>
+                <div class="calendar-grid">
+                    <div class="calendar-day-header">Sun</div>
+                    <div class="calendar-day-header">Mon</div>
+                    <div class="calendar-day-header">Tue</div>
+                    <div class="calendar-day-header">Wed</div>
+                    <div class="calendar-day-header">Thu</div>
+                    <div class="calendar-day-header">Fri</div>
+                    <div class="calendar-day-header">Sat</div>
+            `;
+
+            // Empty cells for days before start of month
+            for (let i = 0; i < firstDayDow; i++) {
+                gridHtml += '<div class="calendar-cell empty"></div>';
+            }
+
+            // Day cells
+            // Map grid data by date for easy lookup
+            const dayDataMap = {};
+            grid.metrics.forEach(m => dayDataMap[m.date] = m);
+            // Map workouts by date
+            const workoutMap = {};
+            grid.workouts.forEach(w => {
+                const d = w.start_time.split('T')[0];
+                if (!workoutMap[d]) workoutMap[d] = [];
+                workoutMap[d].push(w);
+            });
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateObj = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
+                // Adjust for timezone offset to get correct YYYY-MM-DD
+                const dateStr = new Date(dateObj.getTime() - (dateObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+                const metric = dayDataMap[dateStr];
+                const workouts = workoutMap[dateStr] || [];
+
+                let steps = metric ? metric.steps : 0;
+                let intensityClass = 'intensity-0';
+                if (steps > 15000) intensityClass = 'intensity-4';
+                else if (steps > 10000) intensityClass = 'intensity-3';
+                else if (steps > 5000) intensityClass = 'intensity-2';
+                else if (steps > 0) intensityClass = 'intensity-1';
+
+                gridHtml += `
+                    <div class="calendar-cell ${intensityClass}" title="${dateStr}">
+                        <div class="cell-date">${day}</div>
+                        ${metric ? `
+                            <div class="cell-metric">${metric.steps.toLocaleString()}</div>
+                            <div class="cell-metric" style="font-size:0.7em">${metric.sleep_hours.toFixed(1)}h sleep</div>
+                        ` : '<div class="cell-metric">-</div>'}
+                        ${workouts.length > 0 ? `<div style="margin-top:4px;">${workouts.map(w => `<span class="workout-dot" title="${w.type}: ${w.duration_minutes}m"></span>`).join('')}</div>` : ''}
+                    </div>
+                `;
+            }
+
+            gridHtml += '</div>';
+
+            document.getElementById('content').innerHTML = summaryHtml + gridHtml;
+        }
+
         function renderCorrelations(correlations) {
             if (!correlations || correlations.length === 0) {
                 document.getElementById('content').innerHTML = `
@@ -479,7 +859,7 @@
             // Load appropriate view
             document.getElementById('content').innerHTML = '<div class="loading">Loading...</div>';
 
-            switch(view) {
+            switch (view) {
                 case 'overview':
                     loadOverview();
                     break;
@@ -492,6 +872,9 @@
                 case 'correlations':
                     loadCorrelations();
                     break;
+                case 'calendar':
+                    loadCalendar();
+                    break;
             }
         }
 
@@ -499,4 +882,5 @@
         loadOverview();
     </script>
 </body>
+
 </html>
