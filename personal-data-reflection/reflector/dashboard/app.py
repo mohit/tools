@@ -277,6 +277,27 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
 
         return jsonify(clean_nan(insights))
 
+    @app.route('/api/goals', methods=['GET'])
+    def get_goals():
+        """Get user goals."""
+        db = get_db()
+        goals = db.get_goals()
+        db.close()
+        return jsonify(goals)
+
+    @app.route('/api/goals', methods=['PUT'])
+    def update_goal():
+        """Update a goal."""
+        data = request.json
+        if not data or 'metric' not in data or 'target' not in data:
+            return jsonify({'error': 'Missing metric or target'}), 400
+            
+        db = get_db()
+        db.update_goal(data['metric'], float(data['target']), data.get('period', 'daily'))
+        goals = db.get_goals()
+        db.close()
+        return jsonify(goals)
+
     return app
 
 
