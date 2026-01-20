@@ -107,9 +107,21 @@ class InsightGenerator:
         """, [start_date, end_date]).fetchone()
 
         if result and result[2] > 0:
+            # Get date of max steps
+            max_date_res = self.con.execute("""
+                SELECT date FROM health_metrics 
+                WHERE date BETWEEN ? AND ? AND steps = ?
+                LIMIT 1
+            """, [start_date, end_date, result[0]]).fetchone()
+            
+            date_str = ""
+            if max_date_res:
+                d = max_date_res[0]
+                date_str = f" on {d.strftime('%b %d')}"
+
             highlights.append({
                 'title': f"{result[2]} Days with 10K+ Steps",
-                'description': f"You hit 10,000+ steps on {result[2]} days this month. Your highest was {result[0]:,.0f} steps!",
+                'description': f"You hit 10,000+ steps on {result[2]} days this month. Your highest was {result[0]:,.0f} steps{date_str}!",
                 'confidence': 1.0,
                 'metrics': ['steps'],
                 'data': {

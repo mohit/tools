@@ -16,3 +16,26 @@ build/
 *.crx
 *.zip
 web-ext-artifacts/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.uv/
+env/
+venv/
+
+# Tool: Personal Data Reflection
+personal-data-reflection/data/
+personal-data-reflection/reports/
+!personal-data-reflection/reports/.gitkeep
+*.duckdb
+*.duckdb.wal
+
+# Tool: Strava Data Puller
+strava-data-puller/strava-export/
+strava-data-puller/data/
+
+# Tool: Apple Health Export
+apple-health-export/export.zip
+apple-health-export/apple_health_export/

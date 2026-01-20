@@ -4,6 +4,7 @@ from flask import Flask, render_template, jsonify, request
 from pathlib import Path
 from datetime import datetime, timedelta
 import json
+import math
 
 from reflector.database import ReflectionDB
 from reflector.analysis import CorrelationAnalyzer, PatternDetector, InsightGenerator
@@ -13,6 +14,16 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
     """Create and configure Flask app."""
     app = Flask(__name__)
     app.config['DB_PATH'] = db_path
+
+    def clean_nan(data):
+        """Recursively replace NaN with None for JSON serialization."""
+        if isinstance(data, dict):
+            return {k: clean_nan(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [clean_nan(v) for v in data]
+        elif isinstance(data, float) and math.isnan(data):
+            return None
+        return data
 
     def get_db():
         """Get database connection."""
@@ -45,7 +56,7 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
 
         db.close()
 
-        return jsonify({
+        return jsonify(clean_nan({
             'has_data': True,
             'date_range': {
                 'start': str(min_date),
@@ -61,7 +72,7 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
                 'month': prev_month.month,
                 'stats': prev_month_stats
             }
-        })
+        }))
 
     @app.route('/api/monthly/<int:year>/<int:month>')
     def api_monthly(year, month):
@@ -75,12 +86,12 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
 
         db.close()
 
-        return jsonify({
+        return jsonify(clean_nan({
             'year': year,
             'month': month,
             'stats': stats,
             'insights': insights
-        })
+        }))
 
     @app.route('/api/daily/<start_date>/<end_date>')
     def api_daily(start_date, end_date):
@@ -127,10 +138,10 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
             for row in workouts
         ]
 
-        return jsonify({
+        return jsonify(clean_nan({
             'metrics': metrics_data,
             'workouts': workouts_data
-        })
+        }))
 
     @app.route('/api/correlations/<start_date>/<end_date>')
     def api_correlations(start_date, end_date):
@@ -140,7 +151,7 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
         correlations = analyzer.compute_correlations(start_date, end_date)
         db.close()
 
-        return jsonify(correlations)
+        return jsonify(clean_nan(correlations))
 
     @app.route('/api/patterns/<start_date>/<end_date>')
     def api_patterns(start_date, end_date):
@@ -149,6 +160,7 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
         detector = PatternDetector(db.con)
 
         patterns = {
+            'goals': detector.get_default_criteria(),
             'good_days': detector.find_good_days(start_date, end_date),
             'bad_days': detector.find_bad_days(start_date, end_date),
             'day_of_week': detector.analyze_day_of_week_patterns(start_date, end_date),
@@ -170,7 +182,90 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
         for anomaly in patterns['sleep_anomalies']:
             anomaly['date'] = str(anomaly['date'])
 
-        return jsonify(patterns)
+        return jsonify(clean_nan(patterns))
+
+    @app.route('/api/summary')
+    def api_summary():
+        """Get aggregated summary for a specific period."""
+        period = request.args.get('period', 'month')
+        ref_date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        
+        try:
+            ref_date = datetime.strptime(ref_date_str, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'error': 'Invalid date format'}), 400
+
+        # Calculate date ranges
+        if period == 'week':
+            # Start of week (Monday)
+            start_date = ref_date - timedelta(days=ref_date.weekday())
+            end_date = start_date + timedelta(days=6)
+            # Previous week
+            prev_start = start_date - timedelta(days=7)
+            prev_end = end_date - timedelta(days=7)
+            
+        elif period == 'month':
+            # Start of month
+            start_date = ref_date.replace(day=1)
+            # End of month
+            if start_date.month == 12:
+                end_date = start_date.replace(year=start_date.year + 1, month=1, day=1) - timedelta(days=1)
+            else:
+                end_date = start_date.replace(month=start_date.month + 1, day=1) - timedelta(days=1)
+            
+            # Previous month
+            prev_end = start_date - timedelta(days=1)
+            prev_start = prev_end.replace(day=1)
+
+        elif period == 'quarter':
+            # Start of quarter (Jan, Apr, Jul, Oct)
+            quarter = (ref_date.month - 1) // 3 + 1
+            start_month = (quarter - 1) * 3 + 1
+            start_date = ref_date.replace(month=start_month, day=1)
+            
+            # End of quarter
+            if start_month + 3 > 12:
+                end_date = ref_date.replace(year=ref_date.year + 1, month=1, day=1) - timedelta(days=1)
+            else:
+                end_date = ref_date.replace(month=start_month + 3, day=1) - timedelta(days=1)
+                
+            # Previous quarter
+            prev_end = start_date - timedelta(days=1)
+            # Calculate start of previous quarter
+            prev_quarter_end_month = prev_end.month
+            prev_quarter_start_month = prev_quarter_end_month - ((prev_quarter_end_month - 1) % 3)
+            prev_start = prev_end.replace(month=prev_quarter_start_month, day=1)
+
+        elif period == 'year':
+            start_date = ref_date.replace(month=1, day=1)
+            end_date = ref_date.replace(month=12, day=31)
+            
+            prev_start = start_date.replace(year=start_date.year - 1)
+            prev_end = end_date.replace(year=end_date.year - 1)
+        
+        else:
+            return jsonify({'error': 'Invalid period'}), 400
+
+        # Fetch data
+        db = get_db()
+        current_stats = db.get_aggregated_stats(str(start_date.date()), str(end_date.date()))
+        previous_stats = db.get_aggregated_stats(str(prev_start.date()), str(prev_end.date()))
+        db.close()
+
+        return jsonify(clean_nan({
+            'period': period,
+            'ref_date': ref_date_str,
+            'current': {
+                'start_date': str(start_date.date()),
+                'end_date': str(end_date.date()),
+                'stats': current_stats
+            },
+            'previous': {
+                'start_date': str(prev_start.date()),
+                'end_date': str(prev_end.date()),
+                'stats': previous_stats
+            }
+        }))
 
     @app.route('/api/insights/<int:year>/<int:month>')
     def api_insights(year, month):
@@ -180,7 +275,7 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
         insights = insight_gen.generate_monthly_insights(year, month)
         db.close()
 
-        return jsonify(insights)
+        return jsonify(clean_nan(insights))
 
     return app
 

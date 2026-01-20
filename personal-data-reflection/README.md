@@ -40,28 +40,66 @@ This tool consolidates data from Apple Health and Strava into a unified DuckDB d
 
 ## Installation
 
+This project uses `uv` for dependency management.
+
 ```bash
+# Install uv if you haven't already
+pip install uv
+
+# Clone and enter the repository
+git clone https://github.com/mohitgupta/personal-data-reflection.git
 cd personal-data-reflection
-pip install -r requirements.txt
 ```
 
-## Setup
+## Quick Start (Demo Mode)
 
-1. **Import your data** (first time setup):
+Want to see what it looks like without importing your own data? Run the demo:
+
 ```bash
-# Import Apple Health data
-python reflect.py import-health /path/to/apple-health-export/
-
-# Import Strava data
-python reflect.py import-strava /path/to/strava-export/
+uv run setup_interactive.py --demo
 ```
 
-2. **Start the dashboard**:
+This will generate sample health and workout data and launch the dashboard immediately.
+
+## Setup with Real Data
+
+The easiest way to get started is using the interactive setup script, which guides you through importing Apple Health and Strava data.
+
+1.  **Run the interactive setup**:
+    ```bash
+    uv run setup_interactive.py
+    ```
+
+2.  **Follow the prompts**:
+    -   **Apple Health**: You'll need an export from your iPhone. (Health App -> Profile -> Export All Health Data).
+    -   **Strava**: You'll need your Client ID and Secret from [Strava API Settings](https://www.strava.com/settings/api).
+
+3.  **View Dashboard**:
+    The script will automatically launch the dashboard at `http://localhost:5001`.
+
+## Manual Data Import
+
+If you prefer more control, you can use the CLI tools individually.
+
+### Apple Health
 ```bash
-python reflect.py serve
+# Import from export zip or extracted folder
+uv run reflect.py import-health /path/to/apple_health_export.zip
 ```
 
-3. Open http://localhost:5000 in your browser
+### Strava
+```bash
+# Pull data first (see strava-data-puller docs)
+# Then import:
+uv run reflect.py import-strava /path/to/strava-export/
+```
+
+## Dashboard
+Launch the dashboard at any time:
+
+```bash
+uv run setup_interactive.py --serve
+```
 
 ## Usage
 

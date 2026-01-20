@@ -3,11 +3,19 @@ data/
 *.duckdb
 *.duckdb.wal
 
+# Local exports
+strava-export/
+apple-health-export/
+# In case they are located elsewhere or named differently
+*export*
+
+# Secrets
+.env
+.setup_config.json
+
 # Reports (generated files in reports/ directory at root)
 /reports/
-!/README.md
-!/QUICKSTART.md
-!/requirements.txt
+!/reports/.gitkeep
 
 # Python
 __pycache__/
@@ -18,7 +26,8 @@ __pycache__/
 env/
 venv/
 ENV/
-.venv
+.venv/
+.uv/
 
 # IDEs
 .vscode/
@@ -29,6 +38,8 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+.spotlight-V100
+.Trashes
 
 # Logs
 *.log
