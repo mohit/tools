@@ -1,0 +1,242 @@
+.metrics-squircles {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    /* 2x2 grid for sidebar layout */
+    gap: var(--space-sm);
+    margin: 0;
+    justify-content: center;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+    .metrics-squircles {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.metric-squircle {
+    aspect-ratio: 1;
+    border: 3px solid var(--color-border);
+    border-radius: 18px;
+    padding: var(--space-sm);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    transition: all 0.2s ease-out;
+    cursor: pointer;
+    position: relative;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.metric-squircle:hover {
+    transform: translateY(-4px);
+    border-color: var(--color-ink-subdued);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+    /* More dramatic shadow */
+}
+
+/* Color accents for different metric types */
+.metric-squircle[data-metric="steps"] {
+    border-color: var(--color-movement);
+    border-width: 3px;
+    /* Bold colored borders */
+    background: rgba(59, 130, 246, 0.03);
+    /* Subtle tint */
+}
+
+.metric-squircle[data-metric="exercise"] {
+    border-color: var(--color-heart);
+    border-width: 3px;
+    background: rgba(239, 68, 68, 0.03);
+}
+
+.metric-squircle[data-metric="sleep"] {
+    border-color: var(--color-sleep);
+    border-width: 3px;
+    background: rgba(139, 92, 246, 0.03);
+}
+
+.metric-squircle[data-metric="hrv"] {
+    border-color: var(--color-recovery);
+    border-width: 3px;
+    background: rgba(16, 185, 129, 0.03);
+}
+
+.metric-value {
+    font-family: var(--font-mono);
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--color-ink);
+    line-height: 1;
+    margin-bottom: var(--space-xs);
+}
+
+.metric-label {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--color-ink-subdued);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.metric-change {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-top: var(--space-xs);
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.metric-change.positive {
+    color: var(--color-recovery);
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.metric-change.negative {
+    color: var(--color-heart);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.metric-change.neutral {
+    color: var(--color-ink-subdued);
+    background: rgba(0, 0, 0, 0.05);
+}
+
+/* Dashboard hero section */
+.dashboard-hero {
+    margin-bottom: var(--space-xs) !important;
+    padding-bottom: 0;
+}
+
+.dashboard-hero h1 {
+    font-size: 2.5rem;
+    font-weight: 800;
+    margin-bottom: 2px;
+    color: var(--color-brand);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+}
+
+.dashboard-hero p {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--color-ink-subdued);
+}
+
+/* Insights section */
+.insights-compact {
+    display: flex;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+    margin: var(--space-md) 0;
+}
+
+.insight-badge {
+    font-family: var(--font-body);
+    font-size: 0.875rem;
+    padding: var(--space-sm) var(--space-md);
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+    background: var(--color-paper);
+    color: var(--color-ink);
+    transition: all 0.2s ease-out;
+    cursor: default;
+}
+
+.insight-badge.highlight {
+    border-color: var(--color-recovery);
+    background: rgba(16, 185, 129, 0.05);
+    color: var(--color-recovery);
+}
+
+.insight-badge.lowlight {
+    border-color: var(--color-accent-blood);
+    background: rgba(185, 28, 28, 0.05);
+    color: var(--color-accent-blood);
+}
+
+.insight-badge:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+}
+
+.pattern-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.pattern-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-md);
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+}
+
+.pattern-list li strong {
+    color: var(--text-primary);
+}
+
+/* Pattern date display with relative time */
+.pattern-date {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 100px;
+}
+
+.pattern-date .relative {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.pattern-date .day-context {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.pattern-details {
+    flex: 1;
+    text-align: right;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.calendar-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.calendar-row {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--text-secondary);
+}
+
+.calendar-date {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.calendar-metric {
+    display: flex;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}

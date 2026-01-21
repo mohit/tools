@@ -91,23 +91,13 @@ class CorrelationAnalyzer:
             is_significant = abs(corr) > significance_threshold
             p_value = 0.05 if is_significant else 0.5  # Rough approximation
 
-            # Generate description
+            # Generate user-friendly, actionable description
             strength = self._describe_correlation_strength(corr)
-            direction = "positive" if corr > 0 else "negative"
-
-            description = f"{strength.capitalize()} {direction} correlation between {metric_a.replace('_', ' ')} and {metric_b.replace('_', ' ')}"
-
-            if abs(corr) > 0.3:
-                # Add practical interpretation
-                if metric_a == 'sleep_hours' and metric_b == 'resting_heart_rate':
-                    if corr < 0:
-                        description += f". More sleep is associated with lower resting heart rate (avg: {avg_b:.1f} bpm)."
-                elif metric_a == 'sleep_hours' and metric_b == 'steps':
-                    if corr > 0:
-                        description += f". Days with more sleep tend to have more steps (avg: {avg_b:.0f} steps)."
-                elif metric_a == 'steps' and metric_b == 'active_energy_kcal':
-                    if corr > 0:
-                        description += f". More steps correlate with higher active energy (avg: {avg_b:.0f} kcal)."
+            
+            # Use plain language instead of "positive/negative correlation"
+            description = self._generate_plain_language_description(
+                metric_a, metric_b, corr, avg_a, avg_b, strength
+            )
 
             return {
                 "metric_a": metric_a,
@@ -160,6 +150,61 @@ class CorrelationAnalyzer:
             ])
         except Exception as e:
             print(f"Error saving correlation: {e}")
+
+    def _generate_plain_language_description(
+        self,
+        metric_a: str,
+        metric_b: str,
+        corr: float,
+        avg_a: float,
+        avg_b: float,
+        strength: str
+    ) -> str:
+        """Generate a user-friendly description of the correlation.
+        
+        Instead of 'positive correlation', explain what it means in practice.
+        E.g., 'More sleep → More steps' or 'Better HRV → Lower resting HR'
+        """
+        # Metric display names
+        names = {
+            'sleep_hours': 'sleep',
+            'steps': 'steps',
+            'active_energy_kcal': 'calories burned',
+            'resting_heart_rate': 'resting heart rate',
+            'hrv_sdnn': 'HRV',
+            'exercise_minutes': 'exercise',
+            'distance_km': 'distance',
+            'walking_hr': 'walking heart rate'
+        }
+        
+        name_a = names.get(metric_a, metric_a.replace('_', ' '))
+        name_b = names.get(metric_b, metric_b.replace('_', ' '))
+        
+        # Direction indicators
+        if corr > 0:
+            arrow = "→ More"
+            relationship = "more"
+        else:
+            arrow = "→ Less"
+            relationship = "less"
+        
+        # Build the plain language pattern
+        description = f"More {name_a} {arrow} {name_b}"
+        
+        # Add specific context for common pairs
+        context_map = {
+            ('sleep_hours', 'steps'): f" (avg {avg_b:.0f} steps on well-rested days)",
+            ('steps', 'active_energy_kcal'): f" (avg {avg_b:.0f} cal burned)",
+            ('sleep_hours', 'resting_heart_rate'): f" (avg {avg_b:.0f} bpm)",
+            ('exercise_minutes', 'sleep_hours'): f" (avg {avg_b:.1f}h sleep after active days)",
+            ('hrv_sdnn', 'sleep_hours'): f" (better recovery → better rest)",
+        }
+        
+        key = (metric_a, metric_b)
+        if key in context_map:
+            description += context_map[key]
+        
+        return description
 
     def get_lagged_correlation(
         self,
