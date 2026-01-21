@@ -7,9 +7,12 @@
     <title>Personal Health Reflection</title>
 
     <!-- Design System -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/variables.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+    <!-- Design System -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-tokens.css') }}?v=2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v=2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/correlation-cards.css') }}?v=2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard-enhanced.css') }}?v=2">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
@@ -44,8 +47,8 @@
     </div>
 
     <!-- Application Logic -->
-    <script src="{{ url_for('static', filename='js/components.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/components.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=2"></script>
 </body>
 
 </html>

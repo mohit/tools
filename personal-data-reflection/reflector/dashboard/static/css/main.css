@@ -6,7 +6,7 @@
 }
 
 body {
-    font-family: var(--font-sans);
+    font-family: var(--font-body);
     background-color: var(--bg-app);
     color: var(--text-primary);
     line-height: 1.5;
@@ -19,7 +19,9 @@ h3,
 h4,
 h5,
 h6 {
-    font-weight: 600;
+    font-family: var(--font-headline);
+    font-weight: 700;
+    letter-spacing: -0.01em;
 }
 
 /* Layout Structure */
@@ -37,25 +39,27 @@ h6 {
     align-items: center;
     margin-bottom: var(--space-xl);
     padding-bottom: var(--space-md);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    border-bottom: 1px solid var(--color-border);
 }
 
 .header-brand {
-    font-size: 24px;
-    font-weight: 600;
-    color: var(--text-primary);
+    font-family: var(--font-headline);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--color-brand);
     display: flex;
     align-items: center;
     gap: var(--space-sm);
+    letter-spacing: -0.02em;
 }
 
 .header-nav {
     display: flex;
     gap: var(--space-xs);
-    background: var(--bg-surface);
-    padding: 4px;
-    border-radius: 8px;
-    box-shadow: var(--shadow-sm);
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
 }
 
 .nav-item {

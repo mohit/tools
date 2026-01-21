@@ -246,10 +246,23 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
         else:
             return jsonify({'error': 'Invalid period'}), 400
 
+        # Handle "Period-to-Date" comparison if the period includes today
+        today = datetime.now().date()
+        current_query_end = end_date.date()
+        prev_query_end = prev_end.date()
+
+        if start_date.date() <= today <= end_date.date():
+            # Current period is active. We should compare "to-date"
+            days_elapsed = (today - start_date.date()).days
+            
+            current_query_end = today
+            # Clamp previous end to same duration
+            prev_query_end = prev_start.date() + timedelta(days=days_elapsed)
+
         # Fetch data
         db = get_db()
-        current_stats = db.get_aggregated_stats(str(start_date.date()), str(end_date.date()))
-        previous_stats = db.get_aggregated_stats(str(prev_start.date()), str(prev_end.date()))
+        current_stats = db.get_aggregated_stats(str(start_date.date()), str(current_query_end))
+        previous_stats = db.get_aggregated_stats(str(prev_start.date()), str(prev_query_end))
         db.close()
 
         return jsonify(clean_nan({

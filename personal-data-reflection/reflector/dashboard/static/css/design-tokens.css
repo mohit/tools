@@ -1,0 +1,78 @@
+@import url('https://api.fontshare.com/v2/css?f[]=boska@300,400,500,700,900&f[]=cabinet-grotesk@300,400,500,700,800&f[]=azeret-mono@300,400,500,600&display=swap');
+
+:root {
+    /* Color Palette: "Paper & Ink" - Enhanced Contrast */
+    --color-paper: #FDF6E3;
+    /* Solarized Light Background (pale cream, not brown) */
+    --color-ink: #0A0A0B;
+    /* Deep Black Text (higher contrast) */
+    --color-ink-subdued: #3D3935;
+    /* Dark Taupe Secondary Text (darker) */
+    --color-ink-faint: #68615C;
+    /* Medium Grey Meta/Captions (darker) */
+
+    --color-brand: #CC3300;
+    /* Rust Accent */
+    --color-accent-blood: #B91C1C;
+    /* Alert/Error Red */
+
+    --color-border: #EEE8D5;
+    /* Solarized Light border (pale tan) */
+    --color-border-heavy: #111111;
+    /* Structural Divider */
+    --color-surface-hover: rgba(185, 28, 28, 0.04);
+    /* Subtle interactive state */
+
+    /* Data Visualization Palette - Vibrant & Scannable */
+    --color-movement: #3B82F6;
+    /* Blue - Steps, Distance, Movement */
+    --color-heart: #EF4444;
+    /* Red - Heart Rate, Intensity */
+    --color-sleep: #8B5CF6;
+    /* Purple - Sleep, Recovery */
+    --color-recovery: #10B981;
+    /* Green - HRV, Wellness */
+    --color-energy: #F59E0B;
+    /* Amber - Calories, Energy */
+    --color-mindfulness: #6366F1;
+    /* Indigo - Mental Health, Mindfulness */
+    --color-strength: #EC4899;
+    /* Pink - Strength Training */
+    --color-endurance: #14B8A6;
+    /* Teal - Endurance Activities */
+
+    /* Status Colors */
+    --status-success: #10B981;
+    --status-warning: #F59E0B;
+    --status-danger: #EF4444;
+    --status-neutral: #6B7280;
+
+    /* Typography */
+    --font-headline: 'Boska', serif;
+    --font-body: 'Cabinet Grotesk', sans-serif;
+    --font-mono: 'Azeret Mono', monospace;
+
+    /* Spacing Scale */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+    --space-3xl: 64px;
+
+    /* Layout */
+    --max-width: 1440px;
+    --card-radius: 4px;
+    --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.08);
+
+    /* Semantic Mappings (Backwards Compatibility / Clarity) */
+    --bg-app: var(--color-paper);
+    --bg-surface: var(--color-paper);
+    /* Minimalist - no card background distinction */
+    --text-primary: var(--color-ink);
+    --text-secondary: var(--color-ink-subdued);
+    --text-muted: var(--color-ink-faint);
+
+    --border-default: var(--color-border);
+}

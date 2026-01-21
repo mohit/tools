@@ -7,9 +7,16 @@ const App = {
     },
 
     init: async function () {
+        // Configure Chart.js defaults
+        Chart.defaults.font.family = "'Azeret Mono', monospace";
+        Chart.defaults.color = '#3D3935';
+
         this.bindEvents();
         await this.fetchGoals();
-        await this.loadDashboard();
+
+        // Restore view from localStorage or default to dashboard
+        const savedView = localStorage.getItem('reflector_view') || 'dashboard';
+        this.navigate(savedView);
     },
 
     bindEvents: function () {
@@ -39,6 +46,8 @@ const App = {
 
     navigate: function (view) {
         this.state.view = view;
+        localStorage.setItem('reflector_view', view);
+
         document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
         const activeBtn = document.querySelector(`.nav-item[data-view="${view}"]`);
         if (activeBtn) activeBtn.classList.add('active');
@@ -112,66 +121,84 @@ const App = {
 
         const html = `
             <div class="dashboard-grid">
-                <div class="section-full">
-                    <h2 style="margin-bottom: var(--space-sm)">Weekly Pulse</h2>
-                    <p style="color: var(--text-secondary)">${data.current.start_date} — ${data.current.end_date}</p>
+                <!-- Hero Section -->
+                <div class="section-full dashboard-hero">
+                    <h1>Health Pulse</h1>
+                    <p>${data.current.start_date} — ${data.current.end_date}</p>
                 </div>
 
-                <div class="section-full" style="display: flex; gap: var(--space-lg); flex-wrap: wrap; justify-content: center;">
-                    ${Reflector.Components.GoalRing({
+                <!-- Compact Metrics Squircles -->
+                <div class="section-full">
+                    ${Reflector.Components.MetricSquircles({
+            metrics: [
+                {
+                    label: 'Steps',
+                    value: Math.round(stats.steps),
+                    metric: 'steps',
+                    change: this.calcDelta(current.total_steps, prev.total_steps)
+                },
+                {
+                    label: 'Exercise',
+                    value: Math.round(stats.exercise),
+                    metric: 'exercise',
+                    change: this.calcDelta(current.total_exercise_minutes, prev.total_exercise_minutes)
+                },
+                {
+                    label: 'Avg Sleep',
+                    value: stats.sleep.toFixed(1) + 'h',
+                    metric: 'sleep',
+                    change: this.calcDelta(current.avg_sleep_hours, prev.avg_sleep_hours)
+                },
+                {
+                    label: 'HRV',
+                    value: Math.round(stats.hrv),
+                    metric: 'hrv',
+                    change: this.calcDelta(current.avg_hrv, prev.avg_hrv)
+                }
+            ]
+        })}
+                </div>
+                
+                <!-- Week Calendar -->
+                <div class="section-half">
+                    ${Reflector.Components.WeekCalendar({ days: calendarDays })}
+                </div>
+
+                <!-- Progress Rings -->
+                <div class="section-half">
+                    <div class="card" style="height: 100%;">
+                        <div class="card-header"><h3 class="card-title">Weekly Goals</h3></div>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-md);">
+                            ${Reflector.Components.GoalRing({
             label: 'Steps',
             current: stats.steps,
             target: stepsGoal,
             unit: '',
             color: 'var(--color-movement)'
         })}
-                    ${Reflector.Components.GoalRing({
+                            ${Reflector.Components.GoalRing({
             label: 'Exercise',
             current: stats.exercise,
             target: exerciseGoal,
             unit: 'min',
             color: 'var(--color-heart)'
         })}
-                    ${Reflector.Components.GoalRing({
+                            ${Reflector.Components.GoalRing({
             label: 'Avg Sleep',
             current: stats.sleep,
-            target: sleepGoal, // Compare avg to avg
-            unit: 'hrs',
+            target: sleepGoal,
+            unit: 'h',
             color: 'var(--color-sleep)'
         })}
-                    ${Reflector.Components.GoalRing({
+                            ${Reflector.Components.GoalRing({
             label: 'HRV',
             current: stats.hrv,
             target: hrvGoal,
             unit: 'ms',
             color: 'var(--color-recovery)'
         })}
-                </div>
-                
-                 <div class="section-half">
-                    ${Reflector.Components.WeekCalendar({ days: calendarDays })}
-                </div>
-
-                <div class="section-half">
-                    ${Reflector.Components.ComparisonCard({
-            title: 'vs Last Week',
-            metrics: [
-                { label: 'Steps', delta: this.calcDelta(current.total_steps, prev.total_steps), isPositiveGood: true },
-                { label: 'Exercise', delta: this.calcDelta(current.total_exercise_minutes, prev.total_exercise_minutes), isPositiveGood: true },
-                { label: 'Sleep', delta: this.calcDelta(current.avg_sleep_hours, prev.avg_sleep_hours), isPositiveGood: true },
-                { label: 'Energy', delta: this.calcDelta(current.total_active_energy, prev.total_active_energy), isPositiveGood: true }
-            ]
-        })}
-                </div>
-                
-                 <div class="section-full">
-                     <div class="card">
-                        <div class="card-header"><h3 class="card-title">Highlights</h3></div>
-                        <p style="color:var(--text-secondary); font-size: 0.9em; padding: 10px;">
-                            ${stats.steps > stepsGoal ? '🎉 You hit your step goal!' : 'Keep moving to hit your step goal.'}<br>
-                            ${stats.sleep > sleepGoal ? '😴 Great sleep quality this week.' : 'Try to get more sleep.'}
-                        </p>
-                     </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -261,16 +288,11 @@ const App = {
         const corrData = await corrRes.json();
         const corrContainer = document.getElementById('correlations-container');
 
-        if (corrData.length === 0) {
-            corrContainer.innerHTML = '<p style="color:var(--text-secondary)">No significant correlations found.</p>';
-        } else {
-            corrContainer.innerHTML = corrData.map(c => `
-                <div class="card" style="margin-bottom:10px">
-                    <strong>${c.metric_a} & ${c.metric_b}</strong>: ${c.correlation.toFixed(2)} (${c.strength})
-                    <p style="font-size:0.9em; color:var(--text-secondary)">${c.description}</p>
-                </div>
-            `).join('');
-        }
+        // Use the new CorrelationGrid component - no wrapper card
+        corrContainer.innerHTML = `
+            <h2 style="margin-bottom: var(--space-md); color: var(--color-brand); font-family: var(--font-header); font-size: 2.5rem; font-weight: 700;">Discovered Patterns</h2>
+            ${Reflector.Components.CorrelationGrid({ correlations: corrData })}
+        `;
     },
 
     loadGoals: function () {

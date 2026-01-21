@@ -1,16 +1,17 @@
 /* Component: Card */
 .card {
     background: var(--bg-surface);
-    border-radius: var(--card-radius);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    /* Sharp corners or very subtle radius */
     padding: var(--space-md);
-    box-shadow: var(--shadow-md);
-    transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+    box-shadow: none;
+    transition: all 0.2s ease-out;
 }
 
 .card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    /* Slightly lifted */
+    border-color: var(--color-ink-subdued);
+    background: var(--color-surface-hover);
 }
 
 .card-header {
@@ -23,8 +24,10 @@
 .card-title {
     font-size: 16px;
     /* Card Titles: 18px in brief, but 16 fits better often. Let's use 18px as requested */
-    font-size: 1.125rem;
-    font-weight: 500;
+    font-family: var(--font-headline);
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
     color: var(--text-primary);
 }
 

@@ -1,0 +1,157 @@
+/* Compact Correlation Display - Squircles Grid */
+.correlations-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--space-sm);
+    margin: var(--space-md) 0;
+}
+
+.correlation-squircle {
+    aspect-ratio: 1;
+    border: 2px solid var(--color-border);
+    border-radius: 20px;
+    padding: var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    /* Start from top */
+    align-items: center;
+    /* Center metrics */
+    text-align: center;
+    transition: all 0.2s ease-out;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.correlation-squircle:hover {
+    border-color: var(--color-brand);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+    /* More dramatic */
+}
+
+/* Strength indicators - border thickness and opacity */
+.correlation-squircle[data-strength="strong"] {
+    border-width: 4px;
+    /* Extra bold for strong */
+    border-color: var(--color-brand);
+    /* Rust color by default */
+    background: rgba(204, 51, 0, 0.04);
+    /* Subtle brand tint */
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+}
+
+.correlation-squircle[data-strength="moderate"] {
+    border-width: 3px;
+    /* Medium bold */
+    border-color: var(--color-ink-subdued);
+    /* Darker border for moderate */
+    background: rgba(204, 51, 0, 0.02);
+    opacity: 0.95;
+}
+
+.correlation-squircle[data-strength="weak"] {
+    opacity: 0.85;
+}
+
+/* Correlation coefficient badge */
+/* Correlation coefficient badge */
+.correlation-coefficient {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    font-weight: 700;
+    color: #fff !important;
+    /* White text */
+    background: var(--color-brand);
+    /* Solid rust background */
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    /* Circle */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border: none;
+    z-index: 2;
+}
+
+.correlation-squircle[data-strength="strong"] .correlation-coefficient {
+    color: var(--color-brand);
+    border-color: var(--color-brand);
+    border-width: 2px;
+    font-weight: 800;
+    /* Extra bold */
+}
+
+/* Metric names */
+.correlation-metrics {
+    font-family: var(--font-body);
+    font-size: 1rem;
+    /* Slightly bigger */
+    font-weight: 700;
+    /* Bolder */
+    color: var(--color-ink);
+    margin-bottom: var(--space-xs);
+    line-height: 1.2;
+}
+
+.correlation-arrow {
+    font-size: 2.5rem;
+    /* Much bigger arrow */
+    color: inherit;
+    /* Inherit from card or set explicit */
+    margin: var(--space-xs) 0;
+    font-weight: 900;
+    /* Extra bold */
+    line-height: 1;
+}
+
+/* Description text */
+/* Description text */
+.correlation-description {
+    font-size: 0.8125rem;
+    color: var(--color-ink-subdued);
+    line-height: 1.4;
+    text-align: left;
+    /* Left align */
+    margin-top: auto;
+    /* Push to bottom */
+    width: 100%;
+    font-weight: 500;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .correlations-grid {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    }
+
+    .correlation-squircle {
+        padding: var(--space-sm);
+    }
+
+    .correlation-metrics {
+        font-size: 0.8125rem;
+    }
+}
+
+/* Alternative: Horizontal scrolling row for very compact display */
+.correlations-row {
+    display: flex;
+    gap: var(--space-sm);
+    overflow-x: auto;
+    padding: var(--space-sm) 0;
+    -webkit-overflow-scrolling: touch;
+}
+
+.correlations-row .correlation-squircle {
+    flex-shrink: 0;
+    width: 180px;
+    height: 180px;
+}

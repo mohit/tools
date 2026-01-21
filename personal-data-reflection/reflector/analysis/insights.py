@@ -254,12 +254,15 @@ class InsightGenerator:
             })
 
         # Correlation insights
+        # Correlation insights
         correlations = self.corr_analyzer.compute_correlations(start_date, end_date)
-        strong_corrs = [c for c in correlations if abs(c['correlation']) > 0.5]
+        # Show correlations > 0.3 (moderate & strong) to ensure grid isn't empty
+        strong_corrs = [c for c in correlations if abs(c['correlation']) > 0.3]
 
-        for corr in strong_corrs[:2]:  # Top 2 strong correlations
+        # Show ALL correlations, ordered by strength (no limit)
+        for corr in strong_corrs:
             insights.append({
-                'title': f"Connection: {corr['metric_a'].replace('_', ' ').title()} & {corr['metric_b'].replace('_', ' ').title()}",
+                'title': f"{corr['metric_a'].replace('_', ' ').title()} & {corr['metric_b'].replace('_', ' ').title()}",
                 'description': corr['description'],
                 'confidence': min(abs(corr['correlation']), 1.0),
                 'metrics': [corr['metric_a'], corr['metric_b']],

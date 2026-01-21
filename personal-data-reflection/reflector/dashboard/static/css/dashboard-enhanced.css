@@ -1,0 +1,174 @@
+.metrics-squircles {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    /* Force 4 columns to fill width */
+    gap: var(--space-md);
+    margin: var(--space-md) 0;
+    /* Reduced margin */
+    justify-content: center;
+    /* Center them */
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+    .metrics-squircles {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.metric-squircle {
+    aspect-ratio: 1;
+    border: 3px solid var(--color-border);
+    /* Bolder borders */
+    border-radius: 24px;
+    /* More pronounced rounding */
+    padding: var(--space-md);
+    /* Reduced padding */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    transition: all 0.2s ease-out;
+    cursor: pointer;
+    position: relative;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+    /* Subtle depth */
+}
+
+.metric-squircle:hover {
+    transform: translateY(-4px);
+    border-color: var(--color-ink-subdued);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+    /* More dramatic shadow */
+}
+
+/* Color accents for different metric types */
+.metric-squircle[data-metric="steps"] {
+    border-color: var(--color-movement);
+    border-width: 3px;
+    /* Bold colored borders */
+    background: rgba(59, 130, 246, 0.03);
+    /* Subtle tint */
+}
+
+.metric-squircle[data-metric="exercise"] {
+    border-color: var(--color-heart);
+    border-width: 3px;
+    background: rgba(239, 68, 68, 0.03);
+}
+
+.metric-squircle[data-metric="sleep"] {
+    border-color: var(--color-sleep);
+    border-width: 3px;
+    background: rgba(139, 92, 246, 0.03);
+}
+
+.metric-squircle[data-metric="hrv"] {
+    border-color: var(--color-recovery);
+    border-width: 3px;
+    background: rgba(16, 185, 129, 0.03);
+}
+
+.metric-value {
+    font-family: var(--font-mono);
+    font-size: 2.5rem;
+    /* Bigger! */
+    font-weight: 800;
+    /* Bolder! */
+    color: var(--color-ink);
+    line-height: 1;
+    margin-bottom: var(--space-sm);
+}
+
+.metric-label {
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    /* Bolder labels */
+    color: var(--color-ink-subdued);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    /* More spacing */
+}
+
+.metric-change {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    /* Bolder */
+    margin-top: var(--space-sm);
+    padding: 4px 12px;
+    /* More padding */
+    border-radius: 6px;
+}
+
+.metric-change.positive {
+    color: var(--color-recovery);
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.metric-change.negative {
+    color: var(--color-heart);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+/* Dashboard hero section */
+.dashboard-hero {
+    margin-bottom: var(--space-md) !important;
+    /* drastically reduce space */
+}
+
+.dashboard-hero h1 {
+    font-size: 4rem;
+    /* Even bigger! */
+    font-weight: 800;
+    /* Bolder! */
+    margin-bottom: var(--space-sm);
+    color: var(--color-brand);
+    letter-spacing: -0.02em;
+}
+
+.dashboard-hero p {
+    font-size: 1.25rem;
+    /* Slightly bigger */
+    font-weight: 500;
+    color: var(--color-ink-subdued);
+}
+
+/* Insights section */
+.insights-compact {
+    display: flex;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+    margin: var(--space-md) 0;
+}
+
+.insight-badge {
+    font-family: var(--font-body);
+    font-size: 0.875rem;
+    padding: var(--space-sm) var(--space-md);
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+    background: var(--color-paper);
+    color: var(--color-ink);
+    transition: all 0.2s ease-out;
+    cursor: default;
+}
+
+.insight-badge.highlight {
+    border-color: var(--color-recovery);
+    background: rgba(16, 185, 129, 0.05);
+    color: var(--color-recovery);
+}
+
+.insight-badge.lowlight {
+    border-color: var(--color-accent-blood);
+    background: rgba(185, 28, 28, 0.05);
+    color: var(--color-accent-blood);
+}
+
+.insight-badge:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+}
