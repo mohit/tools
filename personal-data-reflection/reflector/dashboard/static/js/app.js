@@ -11,7 +11,14 @@ const App = {
         Chart.defaults.font.family = "'Azeret Mono', monospace";
         Chart.defaults.color = '#3D3935';
 
+        // Restore date from localStorage or default to today
+        const savedDate = localStorage.getItem('reflector_date');
+        if (savedDate) {
+            this.state.date = new Date(savedDate);
+        }
+
         this.bindEvents();
+        this.updateDateDisplay();
         await this.fetchGoals();
 
         // Restore view from localStorage or default to dashboard
@@ -26,6 +33,17 @@ const App = {
                 if (view) this.navigate(view);
             });
         });
+
+        // Date navigation buttons
+        const prevBtn = document.getElementById('date-prev');
+        const nextBtn = document.getElementById('date-next');
+
+        if (prevBtn) {
+            prevBtn.addEventListener('click', () => this.navigateDate(-7));
+        }
+        if (nextBtn) {
+            nextBtn.addEventListener('click', () => this.navigateDate(7));
+        }
 
         const moreToggle = document.getElementById('more-menu-toggle');
         const moreContainer = document.getElementById('more-menu-container');
@@ -48,6 +66,57 @@ const App = {
                 btn.addEventListener('click', () => this.closeMoreMenu());
             });
         }
+    },
+
+    navigateDate: function (days) {
+        const newDate = new Date(this.state.date);
+        newDate.setDate(newDate.getDate() + days);
+
+        // Don't allow navigating to future weeks
+        const today = new Date();
+        if (newDate > today) {
+            return;
+        }
+
+        this.state.date = newDate;
+        localStorage.setItem('reflector_date', newDate.toISOString());
+        this.updateDateDisplay();
+        this.navigate(this.state.view); // Reload current view with new date
+    },
+
+    updateDateDisplay: function () {
+        const display = document.getElementById('date-range-display');
+        const nextBtn = document.getElementById('date-next');
+        if (!display) return;
+
+        const { weekStart, weekEnd } = this.getWeekRange(this.state.date);
+
+        const formatDate = (d) => {
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return `${months[d.getMonth()]} ${d.getDate()}`;
+        };
+
+        display.textContent = `${formatDate(weekStart)} – ${formatDate(weekEnd)}, ${weekEnd.getFullYear()}`;
+
+        // Disable next button if we're at current week
+        if (nextBtn) {
+            const today = new Date();
+            const { weekEnd: currentWeekEnd } = this.getWeekRange(today);
+            nextBtn.disabled = weekEnd >= currentWeekEnd;
+        }
+    },
+
+    getWeekRange: function (date) {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust to get Monday
+        const weekStart = new Date(d);
+        weekStart.setDate(diff);
+        weekStart.setHours(0, 0, 0, 0);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        weekEnd.setHours(23, 59, 59, 999);
+        return { weekStart, weekEnd };
     },
 
     fetchGoals: async function () {
@@ -108,17 +177,27 @@ const App = {
         try {
             const dateStr = this.state.date.toISOString().split('T')[0];
 
-            // Fetch Summary
+            // Fetch Summary (Weekly - aligned with selected week)
             const summaryRes = await fetch(`/api/summary?period=week&date=${dateStr}`);
             const summaryData = await summaryRes.json();
 
             if (summaryData.error) throw new Error(summaryData.error);
 
-            // Fetch Daily Data for Calendar
-            const start = summaryData.current.start_date;
-            const end = summaryData.current.end_date;
-            const dailyRes = await fetch(`/api/daily/${start}/${end}`);
+            // Get week range for daily data
+            const { weekStart, weekEnd } = this.getWeekRange(this.state.date);
+
+            const startStr = weekStart.toISOString().split('T')[0];
+            const endStr = weekEnd.toISOString().split('T')[0];
+
+            const dailyRes = await fetch(`/api/daily/${startStr}/${endStr}`);
             const dailyData = await dailyRes.json();
+
+            // Fetch Insights for Dashboard
+            const insightRes = await fetch(`/api/insights/${dateStr.split('-')[0]}/${dateStr.split('-')[1]}`);
+            const insightData = await insightRes.json();
+
+            // Merge insights into summaryData
+            summaryData.insights = insightData;
 
             this.renderDashboard(summaryData, dailyData, container);
         } catch (e) {
@@ -137,19 +216,24 @@ const App = {
             hrv: current.avg_hrv || 0
         };
 
-        // Sleep goal is usually daily, so we compare Avg Weekly Sleep to Daily Goal
-        const sleepGoal = this.state.goals && this.state.goals.sleep_hours ? this.state.goals.sleep_hours.target : 7.5;
+        // Weekly Goals = Daily Target * 7
+        const getWeeklyTarget = (metric) => {
+            if (!this.state.goals || !this.state.goals[metric]) return 0;
+            const goal = this.state.goals[metric];
+            return goal.target * 7;
+        };
 
-        // Steps/Exercise are cumulative totals
-        const stepsGoal = this.getWeeklyTarget('steps') || 70000;
-        const exerciseGoal = this.getWeeklyTarget('exercise_minutes') || 210;
+        const sleepGoal = this.state.goals && this.state.goals.sleep_hours ? this.state.goals.sleep_hours.target : 7.5;
+        const stepsGoal = getWeeklyTarget('steps') || 70000;
+        const exerciseGoal = getWeeklyTarget('exercise_minutes') || 210;
         const hrvGoal = this.state.goals && this.state.goals.hrv ? this.state.goals.hrv.target : 50;
 
-        // Prepare Calendar Data
-        // Map daily metrics to calendar day format
-        // Ensure we have 7 days even if data is missing? The WeekCalendar assumes we pass what we have.
-        // But for visual consistency we might want to map to Mon-Sun.
-        // For now, let's just pass the data we have.
+        // --- Fetch Insights Content (Highlights/Recs) --- 
+        // We do this async inside render, which isn't ideal but fits current structure.
+        // Better would be to fetch in loadDashboard and pass it in. 
+        // For now, we'll placeholder it or let the loadDashboard handle it.
+        // Actually, let's update loadDashboard to fetch insights too.
+
         const calendarDays = dailyData.metrics.map(d => ({
             date: d.date,
             sleepHours: d.sleep_hours ? d.sleep_hours.toFixed(1) : '-',
@@ -159,12 +243,6 @@ const App = {
 
         const html = `
             <div class="dashboard-grid">
-                <!-- Hero Section -->
-                <div class="section-full dashboard-hero">
-                    <h1>Health Pulse</h1>
-                    <p>${data.current.start_date} — ${data.current.end_date}</p>
-                </div>
-
                 <!-- Compact Metrics Squircles -->
                 <div class="section-full">
                     ${Reflector.Components.MetricSquircles({
@@ -173,25 +251,29 @@ const App = {
                     label: 'Steps',
                     value: Math.round(stats.steps),
                     metric: 'steps',
-                    change: this.calcDelta(current.total_steps, prev.total_steps)
+                    change: this.calcDelta(current.total_steps, prev.total_steps),
+                    isPositiveGood: true
                 },
                 {
                     label: 'Exercise',
                     value: Math.round(stats.exercise),
                     metric: 'exercise',
-                    change: this.calcDelta(current.total_exercise_minutes, prev.total_exercise_minutes)
+                    change: this.calcDelta(current.total_exercise_minutes, prev.total_exercise_minutes),
+                    isPositiveGood: true
                 },
                 {
                     label: 'Avg Sleep',
                     value: stats.sleep.toFixed(1) + 'h',
                     metric: 'sleep',
-                    change: this.calcDelta(current.avg_sleep_hours, prev.avg_sleep_hours)
+                    change: this.calcDelta(current.avg_sleep_hours, prev.avg_sleep_hours),
+                    isPositiveGood: true
                 },
                 {
                     label: 'HRV',
                     value: Math.round(stats.hrv),
                     metric: 'hrv',
-                    change: this.calcDelta(current.avg_hrv, prev.avg_hrv)
+                    change: this.calcDelta(current.avg_hrv, prev.avg_hrv),
+                    isPositiveGood: true
                 }
             ]
         })}
@@ -238,6 +320,43 @@ const App = {
                         </div>
                     </div>
                 </div>
+
+                <!-- Highlights & Lowlights (moved from Insights) -->
+                <div class="section-full">
+                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-md);">
+                        <div class="card">
+                            <div class="card-header"><h3 class="card-title">Highlights</h3></div>
+                            ${data.insights?.highlights?.length ? data.insights.highlights.map(h => `
+                                <div class="insight-alert success">
+                                    <strong>${h.title}</strong>
+                                    <div style="margin-top: 6px; color: var(--text-secondary);">${h.description}</div>
+                                </div>
+                            `).join('') : '<p style="color:var(--text-muted)">No major highlights yet.</p>'}
+                        </div>
+                        <div class="card">
+                            <div class="card-header"><h3 class="card-title">Areas for Focus</h3></div>
+                            ${data.insights?.lowlights?.length ? data.insights.lowlights.map(h => `
+                                <div class="insight-alert warning">
+                                    <strong>${h.title}</strong>
+                                    <div style="margin-top: 6px; color: var(--text-secondary);">${h.description}</div>
+                                </div>
+                            `).join('') : '<p style="color:var(--text-muted)">No major issues detected.</p>'}
+                        </div>
+                     </div>
+                </div>
+
+                <!-- Recommendations -->
+                <div class="section-full">
+                     <div class="card">
+                        <div class="card-header"><h3 class="card-title">Recommendations</h3></div>
+                        ${data.insights?.recommendations?.length ? data.insights.recommendations.map(h => `
+                            <div class="insight-alert info">
+                                <strong>${h.title}</strong>
+                                <div style="margin-top: 6px; color: var(--text-secondary);">${h.description}</div>
+                            </div>
+                        `).join('') : '<p style="color:var(--text-muted)">Keep up the good work!</p>'}
+                     </div>
+                </div>
             </div>
         `;
 
@@ -254,83 +373,135 @@ const App = {
         container.innerHTML = `
             <div class="dashboard-grid">
                 <div class="section-full">
-                    <h2>Monthly Analysis</h2>
+                    <h2>Analysis</h2>
                     <canvas id="trendChart" style="background: white; border-radius: 12px; padding: 20px; box-shadow: var(--shadow-sm); width: 100%; height: 300px; margin-top: 20px;"></canvas>
                 </div>
+                
                  <div class="section-full" id="correlations-container">
                     <h3>Correlations</h3>
                     <div class="loading">Loading correlations...</div>
                  </div>
+
+                 <!-- Detected Patterns (Moved from Insights) -->
+                 <div class="section-full" id="patterns-container">
+                    <!-- Loaded dynamically -->
+                 </div>
             </div>
         `;
 
-        // Load 30 day data
-        const end = new Date();
-        const start = new Date();
-        start.setDate(end.getDate() - 30);
+        // Load data for selected week + 3 weeks prior (4 weeks total for meaningful analysis)
+        const { weekStart, weekEnd } = this.getWeekRange(this.state.date);
+        const start = new Date(weekStart);
+        start.setDate(start.getDate() - 21); // 3 weeks before
+        const end = weekEnd;
 
-        const res = await fetch(`/api/daily/${start.toISOString().split('T')[0]}/${end.toISOString().split('T')[0]}`);
-        const data = await res.json();
+        try {
+            const res = await fetch(`/api/daily/${start.toISOString().split('T')[0]}/${end.toISOString().split('T')[0]}`);
+            const data = await res.json();
 
-        // Render Chart
-        const ctx = document.getElementById('trendChart').getContext('2d');
-        this.state.charts.trends = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: data.metrics.map(d => d.date.slice(5)), // MM-DD
-                datasets: [
-                    {
-                        label: 'Steps',
-                        data: data.metrics.map(d => d.steps),
-                        borderColor: '#3B82F6',
-                        yAxisID: 'y',
-                        tension: 0.4
-                    },
-                    {
-                        label: 'Sleep (hrs)',
-                        data: data.metrics.map(d => d.sleep_hours),
-                        borderColor: '#8B5CF6',
-                        yAxisID: 'y1',
-                        tension: 0.4
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                interaction: {
-                    mode: 'index',
-                    intersect: false,
+            // Render Chart
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            this.state.charts.trends = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.metrics.map(d => d.date.slice(5)), // MM-DD
+                    datasets: [
+                        {
+                            label: 'Steps',
+                            data: data.metrics.map(d => d.steps),
+                            borderColor: '#3B82F6',
+                            yAxisID: 'y',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Sleep (hrs)',
+                            data: data.metrics.map(d => d.sleep_hours),
+                            borderColor: '#8B5CF6',
+                            yAxisID: 'y1',
+                            tension: 0.4
+                        }
+                    ]
                 },
-                scales: {
-                    y: {
-                        type: 'linear',
-                        display: true,
-                        position: 'left',
-                        grid: { display: false }
+                options: {
+                    responsive: true,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
                     },
-                    y1: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        grid: { display: false }
-                    },
-                    x: {
-                        grid: { display: false }
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            grid: { display: false }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            grid: { display: false }
+                        },
+                        x: {
+                            grid: { display: false }
+                        }
                     }
                 }
+            });
+
+            // Load correlations
+            const corrRes = await fetch(`/api/correlations/${start.toISOString().split('T')[0]}/${end.toISOString().split('T')[0]}`);
+            const corrData = await corrRes.json();
+            const corrContainer = document.getElementById('correlations-container');
+
+            // Load patterns for Analyze view
+            const patRes = await fetch(`/api/patterns/${start.toISOString().split('T')[0]}/${end.toISOString().split('T')[0]}`);
+            const patData = await patRes.json();
+            const patContainer = document.getElementById('patterns-container');
+
+            if (patContainer) {
+                // Reuse the pattern render logic from loadPatterns or simplify it here
+                // Helper to render individual list items based on pattern type
+                const renderPatternItem = (item) => {
+                    if (item.type && item.count !== undefined) {
+                        return `<li><strong>${item.type}</strong>: ${item.count} sessions</li>`;
+                    }
+                    if (item.length_days !== undefined) {
+                        return `<li><strong>${item.length_days} days</strong>: ${item.start_date} → ${item.end_date}</li>`;
+                    }
+                    if (item.date) {
+                        const details = item.issues ? item.issues.join(', ') : (item.notes || '');
+                        if (details) {
+                            return `<li><strong>${item.date}</strong>: ${details}</li>`;
+                        }
+                        return `<li><strong>${item.date}</strong></li>`;
+                    }
+                    return '';
+                };
+
+                const renderList = (title, list) => list && list.length ? `
+                    <div class="card" style="margin-bottom: 20px;">
+                        <div class="card-header"><h3 class="card-title">${title}</h3></div>
+                        <ul class="pattern-list">
+                            ${list.map(i => renderPatternItem(i)).join('')}
+                        </ul>
+                    </div>
+                 ` : '';
+
+                patContainer.innerHTML = `
+                    <h3>Detected Patterns of Habit</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                        ${renderList('Good Days', patData.good_days)}
+                        ${renderList('Days to Watch', patData.bad_days)}
+                        ${renderList('Step Streaks', patData.step_streaks)}
+                        ${renderList('Workout Patterns', patData.workouts ? patData.workouts.workout_types : [])}
+                    </div>
+                 `;
             }
-        });
 
-        // Load correlations
-        const corrRes = await fetch(`/api/correlations/${start.toISOString().split('T')[0]}/${end.toISOString().split('T')[0]}`);
-        const corrData = await corrRes.json();
-        const corrContainer = document.getElementById('correlations-container');
-
-        // Use the new CorrelationGrid component - no wrapper card
-        corrContainer.innerHTML = `
-            <h2 style="margin-bottom: var(--space-md); color: var(--color-brand); font-family: var(--font-header); font-size: 2.5rem; font-weight: 700;">Discovered Patterns</h2>
-            ${Reflector.Components.CorrelationGrid({ correlations: corrData })}
-        `;
+            corrContainer.innerHTML = Reflector.Components.CorrelationGrid({ correlations: corrData });
+        } catch (e) {
+            console.error(e);
+        }
     },
 
     loadGoals: function () {
@@ -405,10 +576,6 @@ const App = {
 
             container.innerHTML = `
                 <div class="dashboard-grid">
-                    <div class="section-full dashboard-hero">
-                        <h1>Insights</h1>
-                        <p>${data.year}-${String(data.month).padStart(2, '0')}</p>
-                    </div>
                     <div class="section-full">
                         ${renderSection('Highlights', data.insights.highlights, 'success')}
                     </div>
@@ -433,11 +600,12 @@ const App = {
         container.innerHTML = '<div class="loading">Loading patterns...</div>';
 
         try {
-            const end = new Date();
-            const start = new Date();
-            start.setDate(end.getDate() - 30);
+            // Use current week range, expanded to 4 weeks back for pattern detection
+            const { weekStart, weekEnd } = this.getWeekRange(this.state.date);
+            const start = new Date(weekStart);
+            start.setDate(start.getDate() - 21); // 3 weeks before the selected week
             const startDate = start.toISOString().split('T')[0];
-            const endDate = end.toISOString().split('T')[0];
+            const endDate = weekEnd.toISOString().split('T')[0];
 
             const res = await fetch(`/api/patterns/${startDate}/${endDate}`);
             const data = await res.json();
@@ -492,10 +660,6 @@ const App = {
 
             container.innerHTML = `
                 <div class="dashboard-grid">
-                    <div class="section-full dashboard-hero">
-                        <h1>Patterns</h1>
-                        <p>Last 30 days</p>
-                    </div>
                     <div class="section-half">
                         ${renderDayList('Good Days', data.good_days || [])}
                     </div>
@@ -520,22 +684,16 @@ const App = {
         container.innerHTML = '<div class="loading">Loading calendar...</div>';
 
         try {
-            const year = this.state.date.getFullYear();
-            const monthIndex = this.state.date.getMonth();
-            const startDate = new Date(year, monthIndex, 1);
-            const endDate = new Date(year, monthIndex + 1, 0);
-            const start = startDate.toISOString().split('T')[0];
-            const end = endDate.toISOString().split('T')[0];
+            // Use the selected week range
+            const { weekStart, weekEnd } = this.getWeekRange(this.state.date);
+            const start = weekStart.toISOString().split('T')[0];
+            const end = weekEnd.toISOString().split('T')[0];
 
             const res = await fetch(`/api/daily/${start}/${end}`);
             const data = await res.json();
 
             container.innerHTML = `
                 <div class="dashboard-grid">
-                    <div class="section-full dashboard-hero">
-                        <h1>Calendar</h1>
-                        <p>${year}-${String(monthIndex + 1).padStart(2, '0')}</p>
-                    </div>
                     <div class="section-full">
                         <div class="card">
                             <div class="card-header"><h3 class="card-title">Daily Summary</h3></div>
