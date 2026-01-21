@@ -141,6 +141,16 @@ class ReflectionDB:
             )
         """)
 
+        # User Goals configuration
+        self.con.execute("""
+            CREATE TABLE IF NOT EXISTS goals (
+                metric VARCHAR PRIMARY KEY,
+                target_value DOUBLE,
+                period VARCHAR, -- 'daily', 'weekly'
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Create indexes for common queries
         self._create_indexes()
 
@@ -343,6 +353,37 @@ class ReflectionDB:
                 GROUP BY DATE(start_time)
             ) w ON hm.date = w.workout_date
         """)
+
+    def get_goals(self) -> dict:
+        """Get current user goals."""
+        rows = self.con.execute("SELECT metric, target_value, period FROM goals").fetchall()
+        
+        # Default goals if none exist
+        defaults = {
+            "steps": {"target": 10000, "period": "daily"},
+            "exercise_minutes": {"target": 30, "period": "daily"},
+            "sleep_hours": {"target": 7.5, "period": "daily"},
+            "resting_hr": {"target": 60, "period": "daily"},
+            "hrv": {"target": 50, "period": "daily"}
+        }
+        
+        goals = {}
+        for row in rows:
+            goals[row[0]] = {"target": row[1], "period": row[2]}
+            
+        # Merge with defaults
+        for k, v in defaults.items():
+            if k not in goals:
+                goals[k] = v
+                
+        return goals
+
+    def update_goal(self, metric: str, target: float, period: str = "daily"):
+        """Update a specific goal."""
+        self.con.execute("""
+            INSERT OR REPLACE INTO goals (metric, target_value, period, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, [metric, target, period])
 
     def close(self):
         """Close database connection."""
