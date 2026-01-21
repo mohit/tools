@@ -6,12 +6,69 @@ const App = {
         charts: {}
     },
 
+    /**
+     * Format a date string as a relative time (e.g., "Today", "Yesterday", "3 days ago")
+     * with the day name for context.
+     */
+    formatRelativeDate: function (dateStr) {
+        const date = new Date(dateStr + 'T00:00:00'); // Parse as local date
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const diffTime = today - date;
+        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+        
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const dayName = dayNames[date.getDay()];
+        
+        // Format the month and day
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthDay = `${monthNames[date.getMonth()]} ${date.getDate()}`;
+        
+        let relative;
+        if (diffDays === 0) {
+            relative = 'Today';
+        } else if (diffDays === 1) {
+            relative = 'Yesterday';
+        } else if (diffDays < 7) {
+            relative = `${diffDays} days ago`;
+        } else if (diffDays < 14) {
+            relative = '1 week ago';
+        } else if (diffDays < 30) {
+            const weeks = Math.floor(diffDays / 7);
+            relative = `${weeks} weeks ago`;
+        } else {
+            relative = monthDay;
+        }
+        
+        return { relative, dayName, monthDay, diffDays };
+    },
+
+    /**
+     * Format a date range (e.g., for streaks) as relative with context
+     */
+    formatDateRange: function (startDateStr, endDateStr) {
+        const start = this.formatRelativeDate(startDateStr);
+        const end = this.formatRelativeDate(endDateStr);
+        
+        // If the end date is recent, show relative
+        if (end.diffDays <= 7) {
+            if (end.diffDays === 0) {
+                return `${start.monthDay} → Today`;
+            }
+            return `${start.monthDay} → ${end.relative}`;
+        }
+        
+        return `${start.monthDay} → ${end.monthDay}`;
+    },
+
     init: async function () {
         // Configure Chart.js defaults
         Chart.defaults.font.family = "'Azeret Mono', monospace";
         Chart.defaults.color = '#3D3935';
 
         this.bindEvents();
+        this.updateDateDisplay();
         await this.fetchGoals();
 
         // Restore view from localStorage or default to dashboard
@@ -47,6 +104,53 @@ const App = {
             moreMenu.querySelectorAll('[data-view]').forEach(btn => {
                 btn.addEventListener('click', () => this.closeMoreMenu());
             });
+        }
+
+        // Date navigator
+        const datePrev = document.getElementById('date-prev');
+        const dateNext = document.getElementById('date-next');
+
+        if (datePrev) {
+            datePrev.addEventListener('click', () => this.navigateDate(-1));
+        }
+        if (dateNext) {
+            dateNext.addEventListener('click', () => this.navigateDate(1));
+        }
+    },
+
+    /**
+     * Navigate the date by a given number of months
+     */
+    navigateDate: function (delta) {
+        const current = this.state.date;
+        const newDate = new Date(current.getFullYear(), current.getMonth() + delta, 1);
+        this.state.date = newDate;
+        this.updateDateDisplay();
+        
+        // Reload the current view with the new date
+        this.navigate(this.state.view);
+    },
+
+    /**
+     * Update the date display in the header
+     */
+    updateDateDisplay: function () {
+        const display = document.getElementById('date-range-display');
+        const nextBtn = document.getElementById('date-next');
+        
+        if (display) {
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const month = monthNames[this.state.date.getMonth()];
+            const year = this.state.date.getFullYear();
+            display.textContent = `${month} ${year}`;
+        }
+
+        // Disable next button if we're at the current month
+        if (nextBtn) {
+            const now = new Date();
+            const isCurrentMonth = this.state.date.getFullYear() === now.getFullYear() 
+                && this.state.date.getMonth() === now.getMonth();
+            nextBtn.disabled = isCurrentMonth;
         }
     },
 
@@ -180,12 +284,6 @@ const App = {
 
         const html = `
             <div class="dashboard-grid">
-                <!-- Hero Section -->
-                <div class="section-full dashboard-hero">
-                    <h1>Health Pulse</h1>
-                    <p>${data.current.start_date} — ${data.current.end_date}</p>
-                </div>
-
                 <!-- Compact Metrics Squircles -->
                 <div class="section-full">
                     ${Reflector.Components.MetricSquircles({
@@ -401,21 +499,23 @@ const App = {
             const patContainer = document.getElementById('patterns-container');
 
             if (patContainer) {
-                // Reuse the pattern render logic from loadPatterns or simplify it here
                 // Helper to render individual list items based on pattern type
                 const renderPatternItem = (item) => {
                     if (item.type && item.count !== undefined) {
-                        return `<li><strong>${item.type}</strong>: ${item.count} sessions</li>`;
+                        return `<li><strong>${item.type}</strong><span>${item.count} sessions</span></li>`;
                     }
                     if (item.length_days !== undefined) {
-                        return `<li><strong>${item.length_days} days</strong>: ${item.start_date} → ${item.end_date}</li>`;
+                        const dateRange = this.formatDateRange(item.start_date, item.end_date);
+                        return `<li><strong>${item.length_days} days</strong><span>${dateRange}</span></li>`;
                     }
                     if (item.date) {
+                        const formatted = this.formatRelativeDate(item.date);
+                        const dateDisplay = `<span class="pattern-date"><span class="relative">${formatted.relative}</span><span class="day-context">${formatted.dayName}, ${formatted.monthDay}</span></span>`;
                         const details = item.issues ? item.issues.join(', ') : (item.notes || '');
                         if (details) {
-                            return `<li><strong>${item.date}</strong>: ${details}</li>`;
+                            return `<li>${dateDisplay}<span class="pattern-details">${details}</span></li>`;
                         }
-                        return `<li><strong>${item.date}</strong></li>`;
+                        return `<li>${dateDisplay}</li>`;
                     }
                     return '';
                 };
@@ -560,12 +660,12 @@ const App = {
                     <div class="card-header"><h3 class="card-title">${title}</h3></div>
                     ${days.length === 0 ? '<p style="color: var(--text-muted);">No days found.</p>' : `
                         <ul class="pattern-list">
-                            ${days.map(day => `
-                                <li>
-                                    <strong>${day.date}</strong>
-                                    <span>${day.notes || (day.issues ? day.issues.join(', ') : '')}</span>
-                                </li>
-                            `).join('')}
+                            ${days.map(day => {
+                                const formatted = this.formatRelativeDate(day.date);
+                                const dateDisplay = `<span class="pattern-date"><span class="relative">${formatted.relative}</span><span class="day-context">${formatted.dayName}, ${formatted.monthDay}</span></span>`;
+                                const details = day.notes || (day.issues ? day.issues.join(', ') : '');
+                                return `<li>${dateDisplay}${details ? `<span class="pattern-details">${details}</span>` : ''}</li>`;
+                            }).join('')}
                         </ul>
                     `}
                 </div>
@@ -576,12 +676,10 @@ const App = {
                     <div class="card-header"><h3 class="card-title">Step Streaks</h3></div>
                     ${streaks.length === 0 ? '<p style="color: var(--text-muted);">No streaks detected.</p>' : `
                         <ul class="pattern-list">
-                            ${streaks.map(streak => `
-                                <li>
-                                    <strong>${streak.length_days} days</strong>
-                                    <span>${streak.start_date} → ${streak.end_date}</span>
-                                </li>
-                            `).join('')}
+                            ${streaks.map(streak => {
+                                const dateRange = this.formatDateRange(streak.start_date, streak.end_date);
+                                return `<li><strong>${streak.length_days} days</strong><span>${dateRange}</span></li>`;
+                            }).join('')}
                         </ul>
                     `}
                 </div>

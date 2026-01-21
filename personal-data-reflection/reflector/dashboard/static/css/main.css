@@ -131,7 +131,7 @@ h6 {
     font-size: 13px;
     font-weight: 500;
     color: var(--text-primary);
-    min-width: 180px;
+    min-width: 100px;
     text-align: center;
     white-space: nowrap;
 }
