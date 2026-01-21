@@ -1,0 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap');
+
+:root {
+    /* Core Palette - Light (Default) */
+    --bg-app: #F8F9FA;
+    --bg-surface: #FFFFFF;
+    --text-primary: #1A1D21;
+    --text-secondary: #656D76;
+    --text-muted: #9CA3AF;
+    
+    /* Metrics */
+    --color-movement: #3B82F6;
+    --color-heart: #EF4444;
+    --color-sleep: #8B5CF6;
+    --color-recovery: #10B981;
+    --color-energy: #F59E0B;
+    --color-mindfulness: #6366F1;
+
+    /* Status */
+    --status-success: #10B981;
+    --status-warning: #F59E0B;
+    --status-danger: #EF4444;
+    --status-neutral: #6B7280;
+
+    /* Spacing Scale */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+
+    /* Typography */
+    --font-sans: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+
+    /* Layout */
+    --max-width: 1440px;
+    --header-height: 64px;
+    --card-radius: 12px;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-md: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-app: #0D1117;
+        --bg-surface: #161B22;
+        --text-primary: #E6EDF3;
+        --text-secondary: #8B949E;
+        --text-muted: #6E7681;
+    }
+}

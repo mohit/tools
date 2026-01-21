@@ -246,10 +246,26 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
         else:
             return jsonify({'error': 'Invalid period'}), 400
 
+        # Handle "Period-to-Date" comparison if the period includes today
+        today = datetime.now().date()
+        current_query_end = end_date.date()
+        prev_query_end = prev_end.date()
+
+        if start_date.date() <= today <= end_date.date():
+            # Current period is active. We should compare "to-date"
+            days_elapsed = (today - start_date.date()).days
+            
+            current_query_end = today
+            # Clamp previous end to same duration, but do not exceed the previous period end
+            prev_query_end = min(
+                prev_start.date() + timedelta(days=days_elapsed),
+                prev_end.date()
+            )
+
         # Fetch data
         db = get_db()
-        current_stats = db.get_aggregated_stats(str(start_date.date()), str(end_date.date()))
-        previous_stats = db.get_aggregated_stats(str(prev_start.date()), str(prev_end.date()))
+        current_stats = db.get_aggregated_stats(str(start_date.date()), str(current_query_end))
+        previous_stats = db.get_aggregated_stats(str(prev_start.date()), str(prev_query_end))
         db.close()
 
         return jsonify(clean_nan({
@@ -257,12 +273,12 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
             'ref_date': ref_date_str,
             'current': {
                 'start_date': str(start_date.date()),
-                'end_date': str(end_date.date()),
+                'end_date': str(current_query_end),
                 'stats': current_stats
             },
             'previous': {
                 'start_date': str(prev_start.date()),
-                'end_date': str(prev_end.date()),
+                'end_date': str(prev_query_end),
                 'stats': previous_stats
             }
         }))
@@ -277,10 +293,36 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
 
         return jsonify(clean_nan(insights))
 
+    @app.route('/api/goals', methods=['GET'])
+    def get_goals():
+        """Get user goals."""
+        db = get_db()
+        goals = db.get_goals()
+        db.close()
+        return jsonify(goals)
+
+    @app.route('/api/goals', methods=['PUT'])
+    def update_goal():
+        """Update a goal."""
+        data = request.json
+        if not data or 'metric' not in data or 'target' not in data:
+            return jsonify({'error': 'Missing metric or target'}), 400
+            
+        db = get_db()
+        db.update_goal(data['metric'], float(data['target']), data.get('period', 'daily'))
+        goals = db.get_goals()
+        db.close()
+        return jsonify(goals)
+
     return app
 
 
-def run_server(db_path: str = "./data/reflection.duckdb", port: int = 5000, debug: bool = False):
+def run_server(
+    db_path: str = "./data/reflection.duckdb",
+    port: int = 5000,
+    debug: bool = False,
+    host: str = "127.0.0.1"
+):
     """Run the Flask development server."""
     app = create_app(db_path)
-    app.run(host='127.0.0.1', port=port, debug=debug)
+    app.run(host=host, port=port, debug=debug)

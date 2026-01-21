@@ -1,0 +1,384 @@
+/* Component: Card */
+.card {
+    background: var(--bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: var(--space-sm) var(--space-md);
+    box-shadow: none;
+    transition: all 0.2s ease-out;
+}
+
+.card:hover {
+    border-color: var(--color-ink-subdued);
+    background: var(--color-surface-hover);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-sm);
+}
+
+.card-title {
+    font-family: var(--font-headline);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+}
+
+/* Component: Goal Progress Ring Card */
+.goal-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: var(--space-sm);
+}
+
+.ring-container {
+    position: relative;
+    width: 90px;
+    height: 90px;
+    margin-bottom: var(--space-xs);
+}
+
+.ring-value {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.ring-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.goal-stats {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-xs);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: var(--space-xs);
+}
+
+/* Component: Week Calendar */
+.week-calendar {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: var(--space-xs);
+}
+
+/* Component: Month Calendar Grid */
+.month-calendar-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.cal-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.cal-header {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+    margin-bottom: 4px;
+}
+
+.cal-header-cell {
+    text-align: center;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    padding: 4px 0;
+}
+
+.cal-week {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+}
+
+.cal-cell {
+    aspect-ratio: 1;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.03);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    padding: 4px;
+    transition: all 0.15s ease;
+    min-height: 48px;
+}
+
+.cal-cell.empty {
+    background: transparent;
+}
+
+.cal-cell.has-data:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.cal-cell.focus {
+    background: rgba(59, 130, 246, 0.15);
+    box-shadow: inset 0 0 0 2px var(--color-movement);
+}
+
+.cal-cell.no-data {
+    opacity: 0.5;
+}
+
+.cal-day-num {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.cal-intensity {
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    margin-top: 4px;
+    background: var(--color-movement);
+}
+
+.cal-intensity.high {
+    opacity: 1;
+}
+
+.cal-intensity.med {
+    opacity: 0.5;
+}
+
+.cal-intensity.low {
+    opacity: 0.2;
+}
+
+.cal-sleep {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.cal-workout-dot {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-heart);
+}
+
+.cal-popover {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: #2B4356;
+    /* Using a dark navy from tokens */
+    color: white;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 100;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cal-popover::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #2B4356 transparent transparent transparent;
+}
+
+.cal-cell:hover .cal-popover {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.popover-item {
+    margin: 2px 0;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.popover-item strong {
+    color: rgba(255, 255, 255, 0.6);
+    font-weight: 500;
+}
+
+.focus-week-label {
+    font-size: 0.75rem;
+    color: var(--color-movement);
+    font-weight: 600;
+}
+
+/* Responsive - smaller cells on narrow screens */
+@media (max-width: 600px) {
+    .cal-cell {
+        min-height: 40px;
+        padding: 2px;
+    }
+
+    .cal-day-num {
+        font-size: 0.75rem;
+    }
+
+    .cal-sleep {
+        display: none;
+    }
+}
+
+.day-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.day-header {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.day-cell {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.05);
+    /* Default empty */
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+}
+
+.day-cell:hover {
+    transform: scale(1.05);
+}
+
+.day-cell.active {
+    background: var(--color-movement);
+    color: white;
+}
+
+.day-cell.high {
+    opacity: 1;
+}
+
+.day-cell.med {
+    opacity: 0.7;
+}
+
+.day-cell.low {
+    opacity: 0.4;
+}
+
+/* Indicators */
+.dot-indicator {
+    position: absolute;
+    bottom: 4px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--bg-surface);
+}
+
+/* Component: Comparison Card */
+.comparison-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.metric-name {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.metric-delta {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.delta-up {
+    color: var(--color-recovery);
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.delta-down {
+    color: var(--color-heart);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.delta-neutral {
+    color: var(--text-secondary);
+    background: rgba(0, 0, 0, 0.05);
+}
+
+/* Component: Highlights/Insight */
+.insight-alert {
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--card-radius);
+    background: var(--bg-surface);
+    border-left: 3px solid var(--text-muted);
+    margin-bottom: var(--space-xs);
+}
+
+.insight-alert.success {
+    border-left-color: var(--status-success);
+}
+
+.insight-alert.warning {
+    border-left-color: var(--status-warning);
+}
+
+.insight-alert.info {
+    border-left-color: var(--color-movement);
+}

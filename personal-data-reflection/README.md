@@ -38,6 +38,18 @@ This tool consolidates data from Apple Health and Strava into a unified DuckDB d
 - **Patterns**: Behavioral clusters and their outcomes
 - **Recommendations**: Data-driven behavior change suggestions
 
+## Screenshots
+
+### Dashboard
+![Dashboard](docs/assets/screenshots/dashboard.png)
+
+### Monthly Analysis
+![Analyze](docs/assets/screenshots/analyze.png)
+
+### Goals Editor
+![Goals](docs/assets/screenshots/goals.png)
+
+
 ## Installation
 
 This project uses `uv` for dependency management.
@@ -117,6 +129,7 @@ python reflect.py analyze                   # Run correlation analysis
 # Start dashboard
 python reflect.py serve                     # Launch web dashboard
 python reflect.py serve --port 8080         # Custom port
+python reflect.py serve --host 0.0.0.0      # Bind for external access
 ```
 
 ### Web Dashboard
