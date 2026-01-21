@@ -1,9 +1,9 @@
 .metrics-squircles {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    /* Force 4 columns to fill width */
+    grid-template-columns: repeat(2, 1fr);
+    /* 2x2 grid for sidebar layout */
     gap: var(--space-sm);
-    margin: var(--space-sm) 0;
+    margin: 0;
     justify-content: center;
 }
 
@@ -99,6 +99,11 @@
 .metric-change.negative {
     color: var(--color-heart);
     background: rgba(239, 68, 68, 0.1);
+}
+
+.metric-change.neutral {
+    color: var(--color-ink-subdued);
+    background: rgba(0, 0, 0, 0.05);
 }
 
 /* Dashboard hero section */

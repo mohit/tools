@@ -273,12 +273,12 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
             'ref_date': ref_date_str,
             'current': {
                 'start_date': str(start_date.date()),
-                'end_date': str(end_date.date()),
+                'end_date': str(current_query_end),
                 'stats': current_stats
             },
             'previous': {
                 'start_date': str(prev_start.date()),
-                'end_date': str(prev_end.date()),
+                'end_date': str(prev_query_end),
                 'stats': previous_stats
             }
         }))

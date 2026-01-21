@@ -14,17 +14,17 @@ const App = {
         const date = new Date(dateStr + 'T00:00:00'); // Parse as local date
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        
+
         const diffTime = today - date;
         const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-        
+
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const dayName = dayNames[date.getDay()];
-        
+
         // Format the month and day
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const monthDay = `${monthNames[date.getMonth()]} ${date.getDate()}`;
-        
+
         let relative;
         if (diffDays === 0) {
             relative = 'Today';
@@ -40,7 +40,7 @@ const App = {
         } else {
             relative = monthDay;
         }
-        
+
         return { relative, dayName, monthDay, diffDays };
     },
 
@@ -50,7 +50,7 @@ const App = {
     formatDateRange: function (startDateStr, endDateStr) {
         const start = this.formatRelativeDate(startDateStr);
         const end = this.formatRelativeDate(endDateStr);
-        
+
         // If the end date is recent, show relative
         if (end.diffDays <= 7) {
             if (end.diffDays === 0) {
@@ -58,7 +58,7 @@ const App = {
             }
             return `${start.monthDay} → ${end.relative}`;
         }
-        
+
         return `${start.monthDay} → ${end.monthDay}`;
     },
 
@@ -126,7 +126,7 @@ const App = {
         const newDate = new Date(current.getFullYear(), current.getMonth() + delta, 1);
         this.state.date = newDate;
         this.updateDateDisplay();
-        
+
         // Reload the current view with the new date
         this.navigate(this.state.view);
     },
@@ -137,7 +137,7 @@ const App = {
     updateDateDisplay: function () {
         const display = document.getElementById('date-range-display');
         const nextBtn = document.getElementById('date-next');
-        
+
         if (display) {
             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             const month = monthNames[this.state.date.getMonth()];
@@ -148,7 +148,7 @@ const App = {
         // Disable next button if we're at the current month
         if (nextBtn) {
             const now = new Date();
-            const isCurrentMonth = this.state.date.getFullYear() === now.getFullYear() 
+            const isCurrentMonth = this.state.date.getFullYear() === now.getFullYear()
                 && this.state.date.getMonth() === now.getMonth();
             nextBtn.disabled = isCurrentMonth;
         }
@@ -218,17 +218,18 @@ const App = {
 
             if (summaryData.error) throw new Error(summaryData.error);
 
-            // Fetch Daily Data for Current Week (Monday - Sunday)
-            const now = new Date(this.state.date);
-            const day = now.getDay(); // 0 (Sun) - 6 (Sat)
-            const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Adjust to get Monday
-            const weekStart = new Date(now);
-            weekStart.setDate(diff);
-            const weekEnd = new Date(weekStart);
-            weekEnd.setDate(weekStart.getDate() + 6);
+            // Fetch the entire month's daily data
+            const selectedYear = this.state.date.getFullYear();
+            const selectedMonth = this.state.date.getMonth();
+            const today = new Date();
+            const isCurrentMonth = selectedYear === today.getFullYear() && selectedMonth === today.getMonth();
 
-            const startStr = weekStart.toISOString().split('T')[0];
-            const endStr = weekEnd.toISOString().split('T')[0];
+            // Month date range
+            const monthStart = new Date(selectedYear, selectedMonth, 1);
+            const monthEnd = isCurrentMonth ? today : new Date(selectedYear, selectedMonth + 1, 0);
+
+            const startStr = monthStart.toISOString().split('T')[0];
+            const endStr = monthEnd.toISOString().split('T')[0];
 
             const dailyRes = await fetch(`/api/daily/${startStr}/${endStr}`);
             const dailyData = await dailyRes.json();
@@ -239,6 +240,44 @@ const App = {
 
             // Merge insights into summaryData
             summaryData.insights = insightData;
+
+            // Calculate the "focus week" (most recent week)
+            // For current month: the week containing today
+            // For past months: the last complete week of the month
+            let focusWeekStart, focusWeekEnd;
+
+            if (isCurrentMonth) {
+                const dayOfWeek = today.getDay();
+                const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                focusWeekStart = new Date(today);
+                focusWeekStart.setDate(today.getDate() - daysToSubtract);
+                focusWeekEnd = new Date(today);
+            } else {
+                // Find the last Sunday of the month
+                const lastDay = new Date(selectedYear, selectedMonth + 1, 0);
+                const dayOfWeek = lastDay.getDay();
+                let lastSunday = new Date(lastDay);
+                if (dayOfWeek !== 0) {
+                    lastSunday.setDate(lastDay.getDate() - dayOfWeek);
+                }
+                focusWeekStart = new Date(lastSunday);
+                focusWeekStart.setDate(lastSunday.getDate() - 6);
+                focusWeekEnd = new Date(lastSunday);
+            }
+
+            // Pass month and focus week info for display
+            summaryData.monthDateRange = {
+                start: monthStart,
+                end: monthEnd,
+                startStr: startStr,
+                endStr: endStr
+            };
+            summaryData.focusWeek = {
+                start: focusWeekStart,
+                end: focusWeekEnd,
+                startStr: focusWeekStart.toISOString().split('T')[0],
+                endStr: focusWeekEnd.toISOString().split('T')[0]
+            };
 
             this.renderDashboard(summaryData, dailyData, container);
         } catch (e) {
@@ -269,23 +308,77 @@ const App = {
         const exerciseGoal = getMonthlyTarget('exercise_minutes') || 900;
         const hrvGoal = this.state.goals && this.state.goals.hrv ? this.state.goals.hrv.target : 50;
 
-        // --- Fetch Insights Content (Highlights/Recs) --- 
-        // We do this async inside render, which isn't ideal but fits current structure.
-        // Better would be to fetch in loadDashboard and pass it in. 
-        // For now, we'll placeholder it or let the loadDashboard handle it.
-        // Actually, let's update loadDashboard to fetch insights too.
+        // Format the focus week date range for display
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        let focusWeekStr = '';
+        if (data.focusWeek) {
+            const start = data.focusWeek.start;
+            const end = data.focusWeek.end;
+            const startMonth = monthNames[start.getMonth()];
+            const endMonth = monthNames[end.getMonth()];
+
+            if (startMonth === endMonth) {
+                focusWeekStr = `${startMonth} ${start.getDate()} - ${end.getDate()}`;
+            } else {
+                focusWeekStr = `${startMonth} ${start.getDate()} - ${endMonth} ${end.getDate()}`;
+            }
+        }
+
+        // Prepare calendar days with focus week highlighting
+        const focusStartStr = data.focusWeek?.startStr || '';
+        const focusEndStr = data.focusWeek?.endStr || '';
 
         const calendarDays = dailyData.metrics.map(d => ({
             date: d.date,
+            steps: d.steps || 0,
             sleepHours: d.sleep_hours ? d.sleep_hours.toFixed(1) : '-',
+            exerciseMinutes: d.exercise_minutes || 0,
             intensity: d.steps > 15000 ? 4 : (d.steps > 10000 ? 3 : (d.steps > 5000 ? 2 : (d.steps > 0 ? 1 : 0))),
-            hasWorkout: dailyData.workouts.some(w => w.start_time.startsWith(d.date))
-        }));
+            hasWorkout: dailyData.workouts.some(w => w.start_time.startsWith(d.date)),
+            isFocusWeek: d.date >= focusStartStr && d.date <= focusEndStr
+        })).reverse(); // Reverse to show most recent first
 
         const html = `
             <div class="dashboard-grid">
-                <!-- Compact Metrics Squircles -->
-                <div class="section-full">
+                <!-- Left Column: Recommendations, Focus, Calendar -->
+                <div class="section-half" style="display: flex; flex-direction: column; gap: var(--space-md);">
+                    
+                    <!-- Recommendations -->
+                    ${data.insights?.recommendations?.length ? `
+                    <div class="card">
+                        <div class="card-header"><h3 class="card-title">Recommendations</h3></div>
+                        ${data.insights.recommendations.map(h => `
+                            <div class="insight-alert info">
+                                <strong style="font-size: 0.9rem;">${h.title}</strong>
+                                <div style="margin-top: 4px; color: var(--text-secondary); font-size: 0.8rem;">${h.description}</div>
+                            </div>
+                        `).join('')}
+                    </div>` : ''}
+
+                    <!-- Areas for Focus -->
+                    <div class="card">
+                        <div class="card-header"><h3 class="card-title">Areas for Focus</h3></div>
+                        ${data.insights?.lowlights?.length ? data.insights.lowlights.map(h => `
+                            <div class="insight-alert warning">
+                                <strong style="font-size: 0.9rem;">${h.title}</strong>
+                                <div style="margin-top: 4px; color: var(--text-secondary); font-size: 0.8rem;">${h.description}</div>
+                            </div>
+                        `).join('') : '<p style="color:var(--text-muted); font-size: 0.85rem;">No major issues detected.</p>'}
+                    </div>
+
+                    <!-- Calendar -->
+                    <div style="flex: 1;">
+                        ${Reflector.Components.MonthCalendar({
+            days: calendarDays,
+            focusWeekLabel: focusWeekStr
+        })}
+                    </div>
+                </div>
+
+                <!-- Right Column: Metrics, Goals -->
+                <div class="section-half" style="display: flex; flex-direction: column; gap: var(--space-md); justify-content: space-between;">
+                    
+                    <!-- Top Level Metrics (Squircles) -->
                     ${Reflector.Components.MetricSquircles({
             metrics: [
                 {
@@ -318,16 +411,9 @@ const App = {
                 }
             ]
         })}
-                </div>
-                
-                <!-- Week Calendar -->
-                <div class="section-half">
-                    ${Reflector.Components.WeekCalendar({ days: calendarDays })}
-                </div>
 
-                <!-- Progress Rings -->
-                <div class="section-half">
-                    <div class="card" style="height: 100%;">
+                    <!-- Monthly Goals -->
+                    <div class="card">
                         <div class="card-header"><h3 class="card-title">Monthly Goals</h3></div>
                         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-sm);">
                             ${Reflector.Components.GoalRing({
@@ -362,41 +448,19 @@ const App = {
                     </div>
                 </div>
 
-                <!-- Highlights & Lowlights (moved from Insights) -->
+                <!-- Bottom Full Width: Highlights -->
                 <div class="section-full">
-                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-sm);">
-                        <div class="card">
-                            <div class="card-header"><h3 class="card-title">Highlights</h3></div>
+                    <div class="card">
+                        <div class="card-header"><h3 class="card-title">Highlights</h3></div>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-sm);">
                             ${data.insights?.highlights?.length ? data.insights.highlights.map(h => `
-                                <div class="insight-alert success">
+                                <div class="insight-alert success" style="height: 100%;">
                                     <strong style="font-size: 0.9rem;">${h.title}</strong>
                                     <div style="margin-top: 4px; color: var(--text-secondary); font-size: 0.8rem;">${h.description}</div>
                                 </div>
-                            `).join('') : '<p style="color:var(--text-muted); font-size: 0.85rem;">No major highlights yet.</p>'}
+                            `).join('') : '<p style="color:var(--text-muted); font-size: 0.85rem; grid-column: span 2;">No major highlights yet.</p>'}
                         </div>
-                        <div class="card">
-                            <div class="card-header"><h3 class="card-title">Areas for Focus</h3></div>
-                            ${data.insights?.lowlights?.length ? data.insights.lowlights.map(h => `
-                                <div class="insight-alert warning">
-                                    <strong style="font-size: 0.9rem;">${h.title}</strong>
-                                    <div style="margin-top: 4px; color: var(--text-secondary); font-size: 0.8rem;">${h.description}</div>
-                                </div>
-                            `).join('') : '<p style="color:var(--text-muted); font-size: 0.85rem;">No major issues detected.</p>'}
-                        </div>
-                     </div>
-                </div>
-
-                <!-- Recommendations -->
-                <div class="section-full">
-                     <div class="card">
-                        <div class="card-header"><h3 class="card-title">Recommendations</h3></div>
-                        ${data.insights?.recommendations?.length ? data.insights.recommendations.map(h => `
-                            <div class="insight-alert info">
-                                <strong style="font-size: 0.9rem;">${h.title}</strong>
-                                <div style="margin-top: 4px; color: var(--text-secondary); font-size: 0.8rem;">${h.description}</div>
-                            </div>
-                        `).join('') : '<p style="color:var(--text-muted); font-size: 0.85rem;">Keep up the good work!</p>'}
-                     </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -411,10 +475,27 @@ const App = {
 
     loadAnalyze: async function () {
         const container = document.getElementById('main-content');
+
+        // Use the selected month's date range
+        const selectedYear = this.state.date.getFullYear();
+        const selectedMonth = this.state.date.getMonth();
+        const start = new Date(selectedYear, selectedMonth, 1);
+        const end = new Date(selectedYear, selectedMonth + 1, 0); // Last day of month
+
+        // If viewing current month, cap end date to today
+        const today = new Date();
+        if (selectedYear === today.getFullYear() && selectedMonth === today.getMonth()) {
+            end.setTime(today.getTime());
+        }
+
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthLabel = `${monthNames[selectedMonth]} ${selectedYear}`;
+
         container.innerHTML = `
             <div class="dashboard-grid">
                 <div class="section-full">
                     <h2 style="font-size: 1.5rem; margin-bottom: 8px;">Monthly Analysis</h2>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 12px;">${monthLabel}</p>
                     <canvas id="trendChart" style="background: white; border-radius: 8px; padding: 12px; box-shadow: var(--shadow-sm); width: 100%; height: 220px;"></canvas>
                 </div>
                 
@@ -429,11 +510,6 @@ const App = {
                  </div>
             </div>
         `;
-
-        // Load 30 day data
-        const end = new Date();
-        const start = new Date();
-        start.setDate(end.getDate() - 30);
 
         try {
             const res = await fetch(`/api/daily/${start.toISOString().split('T')[0]}/${end.toISOString().split('T')[0]}`);
@@ -646,11 +722,23 @@ const App = {
         container.innerHTML = '<div class="loading">Loading patterns...</div>';
 
         try {
-            const end = new Date();
-            const start = new Date();
-            start.setDate(end.getDate() - 30);
+            // Use the selected month's date range
+            const selectedYear = this.state.date.getFullYear();
+            const selectedMonth = this.state.date.getMonth();
+            const start = new Date(selectedYear, selectedMonth, 1);
+            const end = new Date(selectedYear, selectedMonth + 1, 0); // Last day of month
+
+            // If viewing current month, cap end date to today
+            const today = new Date();
+            if (selectedYear === today.getFullYear() && selectedMonth === today.getMonth()) {
+                end.setTime(today.getTime());
+            }
+
             const startDate = start.toISOString().split('T')[0];
             const endDate = end.toISOString().split('T')[0];
+
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+            const monthLabel = `${monthNames[selectedMonth]} ${selectedYear}`;
 
             const res = await fetch(`/api/patterns/${startDate}/${endDate}`);
             const data = await res.json();
@@ -661,11 +749,11 @@ const App = {
                     ${days.length === 0 ? '<p style="color: var(--text-muted);">No days found.</p>' : `
                         <ul class="pattern-list">
                             ${days.map(day => {
-                                const formatted = this.formatRelativeDate(day.date);
-                                const dateDisplay = `<span class="pattern-date"><span class="relative">${formatted.relative}</span><span class="day-context">${formatted.dayName}, ${formatted.monthDay}</span></span>`;
-                                const details = day.notes || (day.issues ? day.issues.join(', ') : '');
-                                return `<li>${dateDisplay}${details ? `<span class="pattern-details">${details}</span>` : ''}</li>`;
-                            }).join('')}
+                const formatted = this.formatRelativeDate(day.date);
+                const dateDisplay = `<span class="pattern-date"><span class="relative">${formatted.relative}</span><span class="day-context">${formatted.dayName}, ${formatted.monthDay}</span></span>`;
+                const details = day.notes || (day.issues ? day.issues.join(', ') : '');
+                return `<li>${dateDisplay}${details ? `<span class="pattern-details">${details}</span>` : ''}</li>`;
+            }).join('')}
                         </ul>
                     `}
                 </div>
@@ -677,9 +765,9 @@ const App = {
                     ${streaks.length === 0 ? '<p style="color: var(--text-muted);">No streaks detected.</p>' : `
                         <ul class="pattern-list">
                             ${streaks.map(streak => {
-                                const dateRange = this.formatDateRange(streak.start_date, streak.end_date);
-                                return `<li><strong>${streak.length_days} days</strong><span>${dateRange}</span></li>`;
-                            }).join('')}
+                const dateRange = this.formatDateRange(streak.start_date, streak.end_date);
+                return `<li><strong>${streak.length_days} days</strong><span>${dateRange}</span></li>`;
+            }).join('')}
                         </ul>
                     `}
                 </div>
@@ -705,7 +793,7 @@ const App = {
                 <div class="dashboard-grid">
                     <div class="section-full dashboard-hero">
                         <h1>Patterns</h1>
-                        <p>Last 30 days</p>
+                        <p>${monthLabel}</p>
                     </div>
                     <div class="section-half">
                         ${renderDayList('Good Days', data.good_days || [])}

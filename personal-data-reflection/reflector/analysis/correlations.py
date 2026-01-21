@@ -94,10 +94,6 @@ class CorrelationAnalyzer:
             # Generate user-friendly, actionable description
             strength = self._describe_correlation_strength(corr)
             
-            # Only generate descriptions for meaningful correlations (>0.3)
-            if abs(corr) < 0.3:
-                return None  # Skip weak correlations entirely
-                
             # Use plain language instead of "positive/negative correlation"
             description = self._generate_plain_language_description(
                 metric_a, metric_b, corr, avg_a, avg_b, strength
