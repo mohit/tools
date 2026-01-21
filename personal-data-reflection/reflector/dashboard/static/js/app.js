@@ -26,6 +26,28 @@ const App = {
                 if (view) this.navigate(view);
             });
         });
+
+        const moreToggle = document.getElementById('more-menu-toggle');
+        const moreContainer = document.getElementById('more-menu-container');
+        const moreMenu = document.getElementById('more-menu');
+
+        if (moreToggle && moreContainer && moreMenu) {
+            moreToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isOpen = moreContainer.classList.toggle('is-open');
+                moreToggle.setAttribute('aria-expanded', String(isOpen));
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!moreContainer.contains(e.target)) {
+                    this.closeMoreMenu();
+                }
+            });
+
+            moreMenu.querySelectorAll('[data-view]').forEach(btn => {
+                btn.addEventListener('click', () => this.closeMoreMenu());
+            });
+        }
     },
 
     fetchGoals: async function () {
@@ -61,6 +83,22 @@ const App = {
         if (view === 'dashboard') this.loadDashboard();
         else if (view === 'analyze') this.loadAnalyze();
         else if (view === 'goals') this.loadGoals();
+        else if (view === 'insights') this.loadInsights();
+        else if (view === 'patterns') this.loadPatterns();
+        else if (view === 'calendar') this.loadCalendar();
+        else this.loadDashboard();
+
+        this.closeMoreMenu();
+    },
+    closeMoreMenu: function () {
+        const moreToggle = document.getElementById('more-menu-toggle');
+        const moreContainer = document.getElementById('more-menu-container');
+        if (moreContainer) {
+            moreContainer.classList.remove('is-open');
+        }
+        if (moreToggle) {
+            moreToggle.setAttribute('aria-expanded', 'false');
+        }
     },
 
     loadDashboard: async function () {
@@ -330,6 +368,196 @@ const App = {
                 ${renderSlider('resting_hr', 'Resting Heart Rate (bpm)', 40, 100, 1)}
             </div>
         `;
+    },
+
+    loadInsights: async function () {
+        const container = document.getElementById('main-content');
+        container.innerHTML = '<div class="loading">Loading insights...</div>';
+
+        try {
+            const year = this.state.date.getFullYear();
+            const month = this.state.date.getMonth() + 1;
+            const res = await fetch(`/api/monthly/${year}/${month}`);
+            const data = await res.json();
+
+            const renderSection = (title, items, tone) => {
+                if (!items || items.length === 0) {
+                    return `
+                        <div class="card">
+                            <div class="card-header"><h3 class="card-title">${title}</h3></div>
+                            <p style="color: var(--text-muted);">No insights yet for this period.</p>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div class="card">
+                        <div class="card-header"><h3 class="card-title">${title}</h3></div>
+                        ${items.map(item => `
+                            <div class="insight-alert ${tone}">
+                                <strong>${item.title}</strong>
+                                <div style="margin-top: 6px; color: var(--text-secondary);">${item.description}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            };
+
+            container.innerHTML = `
+                <div class="dashboard-grid">
+                    <div class="section-full dashboard-hero">
+                        <h1>Insights</h1>
+                        <p>${data.year}-${String(data.month).padStart(2, '0')}</p>
+                    </div>
+                    <div class="section-full">
+                        ${renderSection('Highlights', data.insights.highlights, 'success')}
+                    </div>
+                    <div class="section-full">
+                        ${renderSection('Lowlights', data.insights.lowlights, 'warning')}
+                    </div>
+                    <div class="section-full">
+                        ${renderSection('Patterns', data.insights.patterns, 'info')}
+                    </div>
+                    <div class="section-full">
+                        ${renderSection('Recommendations', data.insights.recommendations, 'info')}
+                    </div>
+                </div>
+            `;
+        } catch (e) {
+            container.innerHTML = `<div class="insight-alert warning">Error loading insights: ${e.message}</div>`;
+        }
+    },
+
+    loadPatterns: async function () {
+        const container = document.getElementById('main-content');
+        container.innerHTML = '<div class="loading">Loading patterns...</div>';
+
+        try {
+            const end = new Date();
+            const start = new Date();
+            start.setDate(end.getDate() - 30);
+            const startDate = start.toISOString().split('T')[0];
+            const endDate = end.toISOString().split('T')[0];
+
+            const res = await fetch(`/api/patterns/${startDate}/${endDate}`);
+            const data = await res.json();
+
+            const renderDayList = (title, days) => `
+                <div class="card">
+                    <div class="card-header"><h3 class="card-title">${title}</h3></div>
+                    ${days.length === 0 ? '<p style="color: var(--text-muted);">No days found.</p>' : `
+                        <ul class="pattern-list">
+                            ${days.map(day => `
+                                <li>
+                                    <strong>${day.date}</strong>
+                                    <span>${day.notes || (day.issues ? day.issues.join(', ') : '')}</span>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    `}
+                </div>
+            `;
+
+            const renderStreaks = (streaks) => `
+                <div class="card">
+                    <div class="card-header"><h3 class="card-title">Step Streaks</h3></div>
+                    ${streaks.length === 0 ? '<p style="color: var(--text-muted);">No streaks detected.</p>' : `
+                        <ul class="pattern-list">
+                            ${streaks.map(streak => `
+                                <li>
+                                    <strong>${streak.length_days} days</strong>
+                                    <span>${streak.start_date} → ${streak.end_date}</span>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    `}
+                </div>
+            `;
+
+            const renderWorkoutPatterns = (workouts) => `
+                <div class="card">
+                    <div class="card-header"><h3 class="card-title">Workout Patterns</h3></div>
+                    ${workouts.workout_types.length === 0 ? '<p style="color: var(--text-muted);">No workout patterns detected.</p>' : `
+                        <ul class="pattern-list">
+                            ${workouts.workout_types.map(item => `
+                                <li>
+                                    <strong>${item.type}</strong>
+                                    <span>${item.count} sessions</span>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    `}
+                </div>
+            `;
+
+            container.innerHTML = `
+                <div class="dashboard-grid">
+                    <div class="section-full dashboard-hero">
+                        <h1>Patterns</h1>
+                        <p>Last 30 days</p>
+                    </div>
+                    <div class="section-half">
+                        ${renderDayList('Good Days', data.good_days || [])}
+                    </div>
+                    <div class="section-half">
+                        ${renderDayList('Bad Days', data.bad_days || [])}
+                    </div>
+                    <div class="section-half">
+                        ${renderStreaks(data.step_streaks || [])}
+                    </div>
+                    <div class="section-half">
+                        ${renderWorkoutPatterns(data.workouts || { workout_types: [] })}
+                    </div>
+                </div>
+            `;
+        } catch (e) {
+            container.innerHTML = `<div class="insight-alert warning">Error loading patterns: ${e.message}</div>`;
+        }
+    },
+
+    loadCalendar: async function () {
+        const container = document.getElementById('main-content');
+        container.innerHTML = '<div class="loading">Loading calendar...</div>';
+
+        try {
+            const year = this.state.date.getFullYear();
+            const monthIndex = this.state.date.getMonth();
+            const startDate = new Date(year, monthIndex, 1);
+            const endDate = new Date(year, monthIndex + 1, 0);
+            const start = startDate.toISOString().split('T')[0];
+            const end = endDate.toISOString().split('T')[0];
+
+            const res = await fetch(`/api/daily/${start}/${end}`);
+            const data = await res.json();
+
+            container.innerHTML = `
+                <div class="dashboard-grid">
+                    <div class="section-full dashboard-hero">
+                        <h1>Calendar</h1>
+                        <p>${year}-${String(monthIndex + 1).padStart(2, '0')}</p>
+                    </div>
+                    <div class="section-full">
+                        <div class="card">
+                            <div class="card-header"><h3 class="card-title">Daily Summary</h3></div>
+                            <div class="calendar-list">
+                                ${data.metrics.map(day => `
+                                    <div class="calendar-row">
+                                        <div class="calendar-date">${day.date}</div>
+                                        <div class="calendar-metric">
+                                            <span>${day.steps?.toLocaleString() || 0} steps</span>
+                                            <span>${day.sleep_hours ? day.sleep_hours.toFixed(1) : '-'}h sleep</span>
+                                            <span>${day.exercise_minutes || 0} min exercise</span>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } catch (e) {
+            container.innerHTML = `<div class="insight-alert warning">Error loading calendar: ${e.message}</div>`;
+        }
     },
 
     updateGoal: async function (metric, value) {

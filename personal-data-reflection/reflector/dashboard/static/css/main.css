@@ -91,6 +91,34 @@ h6 {
     gap: var(--space-md);
 }
 
+.more-menu {
+    position: relative;
+}
+
+.more-menu-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    display: none;
+    flex-direction: column;
+    background: var(--bg-app);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: var(--space-xs);
+    min-width: 160px;
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+    z-index: 10;
+}
+
+.more-menu-popover .nav-item {
+    width: 100%;
+    text-align: left;
+}
+
+.more-menu.is-open .more-menu-popover {
+    display: flex;
+}
+
 /* Dashboard Grid */
 .dashboard-grid {
     display: grid;
