@@ -82,9 +82,9 @@
 }
 
 .correlation-squircle[data-strength="strong"] .correlation-coefficient {
-    color: var(--color-brand);
-    border-color: var(--color-brand);
-    border-width: 2px;
+    color: #fff;
+    background: var(--color-brand);
+    border: 2px solid var(--color-brand);
     font-weight: 800;
     /* Extra bold */
 }
