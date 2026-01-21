@@ -181,12 +181,13 @@ def generate_report(args):
 
 def serve_dashboard(args):
     """Start the web dashboard."""
-    print(f"Starting dashboard on http://localhost:{args.port}")
+    host_label = args.host if args.host not in ["0.0.0.0", "127.0.0.1"] else "localhost"
+    print(f"Starting dashboard on http://{host_label}:{args.port}")
     print("Press Ctrl+C to stop")
 
     try:
         app = create_app(args.database)
-        app.run(host='127.0.0.1', port=args.port, debug=args.debug)
+        app.run(host=args.host, port=args.port, debug=args.debug)
     except KeyboardInterrupt:
         print("\nShutting down...")
     except Exception as e:
@@ -281,6 +282,11 @@ Examples:
         '--debug',
         action='store_true',
         help='Run in debug mode'
+    )
+    serve_parser.add_argument(
+        '--host',
+        default='127.0.0.1',
+        help='Host to bind the dashboard (default: 127.0.0.1)'
     )
 
     args = parser.parse_args()

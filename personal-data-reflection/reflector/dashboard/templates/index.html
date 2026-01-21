@@ -34,7 +34,16 @@
             </nav>
 
             <div class="header-actions">
-                <button class="nav-item">Settings</button>
+                <div class="more-menu" id="more-menu-container">
+                    <button class="nav-item" id="more-menu-toggle" aria-expanded="false" aria-haspopup="true">
+                        More
+                    </button>
+                    <div class="more-menu-popover" id="more-menu" role="menu" aria-label="More views">
+                        <button class="nav-item" data-view="insights" role="menuitem">Insights</button>
+                        <button class="nav-item" data-view="patterns" role="menuitem">Patterns</button>
+                        <button class="nav-item" data-view="calendar" role="menuitem">Calendar</button>
+                    </div>
+                </div>
             </div>
         </header>
 

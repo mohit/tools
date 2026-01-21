@@ -117,6 +117,7 @@ python reflect.py analyze                   # Run correlation analysis
 # Start dashboard
 python reflect.py serve                     # Launch web dashboard
 python reflect.py serve --port 8080         # Custom port
+python reflect.py serve --host 0.0.0.0      # Bind for external access
 ```
 
 ### Web Dashboard

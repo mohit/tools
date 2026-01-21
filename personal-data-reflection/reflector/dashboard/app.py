@@ -256,8 +256,11 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
             days_elapsed = (today - start_date.date()).days
             
             current_query_end = today
-            # Clamp previous end to same duration
-            prev_query_end = prev_start.date() + timedelta(days=days_elapsed)
+            # Clamp previous end to same duration, but do not exceed the previous period end
+            prev_query_end = min(
+                prev_start.date() + timedelta(days=days_elapsed),
+                prev_end.date()
+            )
 
         # Fetch data
         db = get_db()
@@ -314,7 +317,12 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
     return app
 
 
-def run_server(db_path: str = "./data/reflection.duckdb", port: int = 5000, debug: bool = False):
+def run_server(
+    db_path: str = "./data/reflection.duckdb",
+    port: int = 5000,
+    debug: bool = False,
+    host: str = "127.0.0.1"
+):
     """Run the Flask development server."""
     app = create_app(db_path)
-    app.run(host='127.0.0.1', port=port, debug=debug)
+    app.run(host=host, port=port, debug=debug)
