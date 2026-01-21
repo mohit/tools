@@ -6,10 +6,10 @@
     /* Solarized Light Background (pale cream, not brown) */
     --color-ink: #0A0A0B;
     /* Deep Black Text (higher contrast) */
-    --color-ink-subdued: #3D3935;
-    /* Dark Taupe Secondary Text (darker) */
-    --color-ink-faint: #68615C;
-    /* Medium Grey Meta/Captions (darker) */
+    --color-ink-subdued: #45413D;
+    /* Dark Taupe Secondary Text */
+    --color-ink-faint: #7A746F;
+    /* Medium Grey Meta/Captions */
 
     --color-brand: #CC3300;
     /* Rust Accent */
@@ -52,14 +52,14 @@
     --font-body: 'Cabinet Grotesk', sans-serif;
     --font-mono: 'Azeret Mono', monospace;
 
-    /* Spacing Scale */
+    /* Spacing Scale - Compact for laptop displays */
     --space-xs: 4px;
-    --space-sm: 8px;
-    --space-md: 16px;
-    --space-lg: 24px;
-    --space-xl: 32px;
-    --space-2xl: 48px;
-    --space-3xl: 64px;
+    --space-sm: 6px;
+    --space-md: 12px;
+    --space-lg: 16px;
+    --space-xl: 20px;
+    --space-2xl: 32px;
+    --space-3xl: 48px;
 
     /* Layout */
     --max-width: 1440px;

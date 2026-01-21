@@ -11,40 +11,41 @@ window.Reflector.Components = {
      * @param {string} props.color - CSS color string
      * @param {string} props.icon - SVG icon string
      */
+    /**
+     * Renders a Circular Goal Progress Ring with premium styling
+     */
     GoalRing: function ({ label, current, target, unit, color, icon }) {
         const percent = Math.min(100, Math.max(0, (current / target) * 100));
-        const radius = 45;
+        const radius = 32;
         const circumference = 2 * Math.PI * radius;
         const offset = circumference - (percent / 100) * circumference;
 
         return `
-            <div class="card goal-card">
-                <div class="ring-container">
-                    <svg width="120" height="120" viewBox="0 0 120 120">
+            <div class="correlation-squircle" style="align-items: center; justify-content: center; min-height: 140px; border-width: 3px; padding: 12px;">
+                 <div style="position: relative; width: 80px; height: 80px; margin-bottom: 8px;">
+                    <svg width="80" height="80" viewBox="0 0 80 80">
                         <!-- Background Circle -->
-                        <circle cx="60" cy="60" r="${radius}" 
+                        <circle cx="40" cy="40" r="${radius}" 
                             fill="none" 
                             stroke="rgba(0,0,0,0.08)" 
-                            stroke-width="10" />
+                            stroke-width="7" />
                         <!-- Progress Circle -->
-                        <circle cx="60" cy="60" r="${radius}" 
+                        <circle cx="40" cy="40" r="${radius}" 
                             fill="none" 
                             stroke="${color}" 
-                            stroke-width="10" 
+                            stroke-width="7" 
                             stroke-dasharray="${circumference}" 
                             stroke-dashoffset="${offset}"
                             stroke-linecap="round"
-                            transform="rotate(-90 60 60)" />
+                            transform="rotate(-90 40 40)" />
                     </svg>
-                    <div class="ring-value" style="font-size: 1.75rem;">
-                        ${Math.round(percent)}<span style="font-size:0.5em; opacity:0.7">%</span>
+                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 1rem; font-weight: 700; color: var(--color-ink);">
+                        ${Math.round(percent)}%
                     </div>
                 </div>
-                <h3 class="card-title">${label}</h3>
-                <div class="goal-stats">
-                    <span>${current.toLocaleString()}</span>
-                    <span>/</span>
-                    <span>${target.toLocaleString()} ${unit}</span>
+                <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--color-ink); margin-bottom: 2px;">${label}</h3>
+                <div style="font-size: 0.75rem; color: var(--color-ink-subdued); font-weight: 500;">
+                    ${current.toLocaleString()} / ${target.toLocaleString()} ${unit}
                 </div>
             </div>
         `;
@@ -139,22 +140,43 @@ window.Reflector.Components = {
     },
 
     /**
-     * Renders compact metric squircles for key stats
-     * @param {Object} props
-     * @param {Array} props.metrics - Array of { label, value, unit, change, metric }
+     * Renders compact metric squircles for key stats with PREMIUM styling
      */
     MetricSquircles: function ({ metrics }) {
-        const renderSquircle = (m) => {
-            const changeClass = m.change > 0 ? 'positive' : (m.change < 0 ? 'negative' : '');
+        // We'll treat these as a grid of distinct cards now
+        const renderSquircle = (m, index) => {
+            let changeClass = '';
+            if (m.change > 0) {
+                changeClass = m.isPositiveGood === false ? 'negative' : 'positive';
+            } else if (m.change < 0) {
+                changeClass = m.isPositiveGood === false ? 'positive' : 'negative';
+            }
             const changeSymbol = m.change > 0 ? '↑' : (m.change < 0 ? '↓' : '→');
 
+            // Map metrics to themes
+            let theme = 'navy';
+            if (m.metric == 'steps') theme = 'blue-grey';
+            if (m.metric == 'exercise') theme = 'orange';
+            if (m.metric == 'sleep') theme = 'red'; // as per correlations
+
+            // Use local styling to override some correlation specifics if needed, 
+            // but sharing the main class gives us the shape/border.
             return `
-                <div class="metric-squircle" data-metric="${m.metric}">
-                    <div class="metric-value">${typeof m.value === 'number' ? m.value.toLocaleString() : m.value}</div>
-                    <div class="metric-label">${m.label}</div>
+                <div class="correlation-squircle" data-theme="${theme}" style="min-height: 130px; padding: 14px;">
+                    <div style="font-size: 0.8rem; font-weight: 700; color: var(--color-ink-subdued); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;">
+                        ${m.label}
+                    </div>
+                    
+                    <div style="font-size: 2rem; font-weight: 800; color: var(--color-ink); line-height: 1.1; margin-bottom: 8px;">
+                        ${typeof m.value === 'number' ? m.value.toLocaleString() : m.value}
+                    </div>
+
                     ${m.change !== undefined ? `
-                        <div class="metric-change ${changeClass}">
-                            ${changeSymbol} ${Math.abs(m.change)}%
+                        <div style="margin-top: auto; display: flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600;">
+                            <span class="${changeClass}" style="padding: 2px 8px; border-radius: 12px; background: rgba(0,0,0,0.05);">
+                                ${changeSymbol} ${Math.abs(m.change)}%
+                            </span>
+                            <span style="color: var(--color-ink-faint); font-size: 0.75rem; font-weight: 400;">vs last</span>
                         </div>
                     ` : ''}
                 </div>
@@ -162,17 +184,14 @@ window.Reflector.Components = {
         };
 
         return `
-            <div class="metrics-squircles">
-                ${metrics.map(renderSquircle).join('')}
+            <div class="correlations-grid" style="margin-top: 0;">
+                ${metrics.map((m, i) => renderSquircle(m, i)).join('')}
             </div>
         `;
     },
 
     /**
-     * Renders compact correlation squircles in a grid
-     * @param {Object} props
-     * @param {Array} props.correlations - Array of correlation objects
-     * Each correlation: { metric_a, metric_b, correlation, description, strength }
+     * Renders compact correlation squircles in a grid with premium styling
      */
     CorrelationGrid: function ({ correlations }) {
         if (!correlations || correlations.length === 0) {
@@ -184,43 +203,48 @@ window.Reflector.Components = {
             Math.abs(b.correlation) - Math.abs(a.correlation)
         );
 
-        const renderSquircle = (corr) => {
-            const absCorr = Math.abs(corr.correlation);
-            const coefficient = corr.correlation.toFixed(2);
+        const themes = ['red', 'orange', 'peach', 'navy', 'blue-grey', 'pale-blue'];
 
-            // Determine strength for styling
-            const strength = absCorr >= 0.7 ? 'strong' : (absCorr >= 0.5 ? 'moderate' : 'weak');
+        const renderSquircle = (corr, index) => {
+            const coefficient = (corr.correlation > 0 ? '' : '') + corr.correlation.toFixed(2);
+
+            // Cycle through themes
+            const theme = themes[index % themes.length];
+            const isFeatured = index === 6; // Featured card (Meditation Minutes in mockup)
 
             // Short metric names
-            const nameA = corr.metric_a.replace('_', ' ').split(' ')
-                .map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-            const nameB = corr.metric_b.replace('_', ' ').split(' ')
-                .map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            const formatName = (name) => name.replace(/_/g, ' ')
+                .split(' ')
+                .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+                .join(' ');
 
-            // Determine arrow direction
-            const arrow = corr.correlation > 0 ? '→' : '⤓';
+            const nameA = formatName(corr.metric_a);
+            const nameB = formatName(corr.metric_b);
 
-            // Determine arrow color matching the primary metric
-            let arrowColor = 'var(--color-brand)';
-            if (corr.metric_a.includes('sleep')) arrowColor = 'var(--color-sleep)';
-            else if (corr.metric_a.includes('step') || corr.metric_a.includes('movement') || corr.metric_a.includes('run')) arrowColor = 'var(--color-movement)';
-            else if (corr.metric_a.includes('heart') || corr.metric_a.includes('hrv')) arrowColor = 'var(--color-recovery)';
-            else if (corr.metric_a.includes('exercise') || corr.metric_a.includes('active') || corr.metric_a.includes('energy')) arrowColor = 'var(--color-heart)';
+            // Arrow direction SVG
+            const isPositive = corr.correlation > 0;
+            const arrowSvg = isPositive ?
+                `<svg class="correlation-arrow-svg" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor"/></svg>` :
+                `<svg class="correlation-arrow-svg" viewBox="0 0 24 24" style="transform: rotate(45deg)"><path d="M19 5L5 19M5 9v10h10" stroke="currentColor"/></svg>`;
 
             return `
-                <div class="correlation-squircle" data-strength="${strength}">
+                <div class="correlation-squircle ${isFeatured ? 'featured' : ''}" data-theme="${theme}">
                     <div class="correlation-coefficient">${coefficient}</div>
-                    <div class="correlation-metrics">${nameA}</div>
-                    <div class="correlation-arrow" style="color: ${arrowColor}">${arrow}</div>
-                    <div class="correlation-metrics">${nameB}</div>
-                    <div class="correlation-description">${corr.description || ''}</div>
+                    <div class="correlation-metrics-container" style="${isFeatured ? 'width: 50%;' : ''}">
+                        <div class="correlation-metric-top">${nameA}</div>
+                        <div class="correlation-arrow" style="color: var(--corr-${theme})">
+                            ${arrowSvg}
+                        </div>
+                        <div class="correlation-metric-bottom">${nameB}</div>
+                    </div>
+                    <div class="correlation-description" style="${isFeatured ? 'width: 50%;' : ''}">${corr.description || ''}</div>
                 </div>
             `;
         };
 
         return `
             <div class="correlations-grid">
-                ${sorted.map(renderSquircle).join('')}
+                ${sorted.map((c, i) => renderSquircle(c, i)).join('')}
             </div>
         `;
     }

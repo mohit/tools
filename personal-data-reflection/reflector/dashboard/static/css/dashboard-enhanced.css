@@ -2,11 +2,9 @@
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     /* Force 4 columns to fill width */
-    gap: var(--space-md);
-    margin: var(--space-md) 0;
-    /* Reduced margin */
+    gap: var(--space-sm);
+    margin: var(--space-sm) 0;
     justify-content: center;
-    /* Center them */
 }
 
 /* Responsive adjustments */
@@ -19,11 +17,8 @@
 .metric-squircle {
     aspect-ratio: 1;
     border: 3px solid var(--color-border);
-    /* Bolder borders */
-    border-radius: 24px;
-    /* More pronounced rounding */
-    padding: var(--space-md);
-    /* Reduced padding */
+    border-radius: 18px;
+    padding: var(--space-sm);
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -33,7 +28,6 @@
     cursor: pointer;
     position: relative;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
-    /* Subtle depth */
 }
 
 .metric-squircle:hover {
@@ -72,35 +66,29 @@
 
 .metric-value {
     font-family: var(--font-mono);
-    font-size: 2.5rem;
-    /* Bigger! */
+    font-size: 2rem;
     font-weight: 800;
-    /* Bolder! */
     color: var(--color-ink);
     line-height: 1;
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-xs);
 }
 
 .metric-label {
     font-family: var(--font-body);
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     font-weight: 700;
-    /* Bolder labels */
     color: var(--color-ink-subdued);
     text-transform: uppercase;
-    letter-spacing: 1px;
-    /* More spacing */
+    letter-spacing: 0.5px;
 }
 
 .metric-change {
     font-family: var(--font-mono);
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     font-weight: 700;
-    /* Bolder */
-    margin-top: var(--space-sm);
-    padding: 4px 12px;
-    /* More padding */
-    border-radius: 6px;
+    margin-top: var(--space-xs);
+    padding: 2px 8px;
+    border-radius: 4px;
 }
 
 .metric-change.positive {
@@ -115,23 +103,21 @@
 
 /* Dashboard hero section */
 .dashboard-hero {
-    margin-bottom: var(--space-md) !important;
-    /* drastically reduce space */
+    margin-bottom: var(--space-xs) !important;
+    padding-bottom: 0;
 }
 
 .dashboard-hero h1 {
-    font-size: 4rem;
-    /* Even bigger! */
+    font-size: 2.5rem;
     font-weight: 800;
-    /* Bolder! */
-    margin-bottom: var(--space-sm);
+    margin-bottom: 2px;
     color: var(--color-brand);
     letter-spacing: -0.02em;
+    line-height: 1.1;
 }
 
 .dashboard-hero p {
-    font-size: 1.25rem;
-    /* Slightly bigger */
+    font-size: 0.95rem;
     font-weight: 500;
     color: var(--color-ink-subdued);
 }

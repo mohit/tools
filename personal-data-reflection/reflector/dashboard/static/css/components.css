@@ -3,8 +3,7 @@
     background: var(--bg-surface);
     border: 1px solid var(--color-border);
     border-radius: 4px;
-    /* Sharp corners or very subtle radius */
-    padding: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
     box-shadow: none;
     transition: all 0.2s ease-out;
 }
@@ -18,14 +17,12 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-sm);
 }
 
 .card-title {
-    font-size: 16px;
-    /* Card Titles: 18px in brief, but 16 fits better often. Let's use 18px as requested */
     font-family: var(--font-headline);
-    font-size: 1.25rem;
+    font-size: 1rem;
     font-weight: 700;
     letter-spacing: -0.01em;
     color: var(--text-primary);
@@ -37,14 +34,14 @@
     flex-direction: column;
     align-items: center;
     text-align: center;
-    padding: var(--space-lg);
+    padding: var(--space-sm);
 }
 
 .ring-container {
     position: relative;
-    width: 120px;
-    height: 120px;
-    margin-bottom: var(--space-md);
+    width: 90px;
+    height: 90px;
+    margin-bottom: var(--space-xs);
 }
 
 .ring-value {
@@ -53,24 +50,24 @@
     left: 50%;
     transform: translate(-50%, -50%);
     font-family: var(--font-mono);
-    font-size: 1.5rem;
+    font-size: 1.1rem;
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .ring-label {
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     color: var(--text-secondary);
-    margin-top: 4px;
+    margin-top: 2px;
 }
 
 .goal-stats {
     display: flex;
     justify-content: center;
-    gap: var(--space-sm);
-    font-size: 0.75rem;
+    gap: var(--space-xs);
+    font-size: 0.7rem;
     color: var(--text-muted);
-    margin-top: var(--space-sm);
+    margin-top: var(--space-xs);
 }
 
 /* Component: Week Calendar */
@@ -186,11 +183,11 @@
 
 /* Component: Highlights/Insight */
 .insight-alert {
-    padding: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
     border-radius: var(--card-radius);
     background: var(--bg-surface);
-    border-left: 4px solid var(--text-muted);
-    margin-bottom: var(--space-sm);
+    border-left: 3px solid var(--text-muted);
+    margin-bottom: var(--space-xs);
 }
 
 .insight-alert.success {

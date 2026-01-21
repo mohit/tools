@@ -1,157 +1,188 @@
-/* Compact Correlation Display - Squircles Grid */
+/* Correlation Dashboard - Target Design Style */
+
+:root {
+    /* Correlation Specific Colors from Mockup */
+    --corr-red: #B94232;
+    --corr-orange: #D98A5F;
+    --corr-peach: #E9B891;
+    --corr-navy: #2B4356;
+    --corr-blue-grey: #7A9DB5;
+    --corr-pale-blue: #A9C3D6;
+
+    --card-bg: #FDF9F0;
+    /* Slightly creamier than paper */
+}
+
 .correlations-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: var(--space-sm);
-    margin: var(--space-md) 0;
+    margin: var(--space-sm) 0;
+    padding: 0;
 }
 
 .correlation-squircle {
-    aspect-ratio: 1;
-    border: 2px solid var(--color-border);
-    border-radius: 20px;
-    padding: var(--space-lg);
+    border-radius: 18px;
+    padding: 16px 14px;
     display: flex;
     flex-direction: column;
-    justify-content: flex-start;
-    /* Start from top */
-    align-items: center;
-    /* Center metrics */
-    text-align: center;
-    transition: all 0.2s ease-out;
+    align-items: flex-start;
+    text-align: left;
+    transition: all 0.3s ease;
     cursor: pointer;
     position: relative;
-    overflow: hidden;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+    background: var(--card-bg);
+    border: 4px solid var(--color-border);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    min-height: 180px;
 }
 
 .correlation-squircle:hover {
-    border-color: var(--color-brand);
-    transform: translateY(-3px);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
-    /* More dramatic */
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
 }
 
-/* Strength indicators - border thickness and opacity */
-.correlation-squircle[data-strength="strong"] {
-    border-width: 4px;
-    /* Extra bold for strong */
-    border-color: var(--color-brand);
-    /* Rust color by default */
-    background: rgba(204, 51, 0, 0.04);
-    /* Subtle brand tint */
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+.correlation-squircle.featured {
+    grid-column: span 2;
 }
 
-.correlation-squircle[data-strength="moderate"] {
-    border-width: 3px;
-    /* Medium bold */
-    border-color: var(--color-ink-subdued);
-    /* Darker border for moderate */
-    background: rgba(204, 51, 0, 0.02);
-    opacity: 0.95;
+/* Theme Variant Styles */
+.correlation-squircle[data-theme="red"] {
+    border-color: var(--corr-red);
 }
 
-.correlation-squircle[data-strength="weak"] {
-    opacity: 0.85;
+.correlation-squircle[data-theme="orange"] {
+    border-color: var(--corr-orange);
 }
 
-/* Correlation coefficient badge */
+.correlation-squircle[data-theme="peach"] {
+    border-color: var(--corr-peach);
+}
+
+.correlation-squircle[data-theme="navy"] {
+    border-color: var(--corr-navy);
+}
+
+.correlation-squircle[data-theme="blue-grey"] {
+    border-color: var(--corr-blue-grey);
+}
+
+.correlation-squircle[data-theme="pale-blue"] {
+    border-color: var(--corr-pale-blue);
+}
+
 /* Correlation coefficient badge */
 .correlation-coefficient {
     position: absolute;
     top: 12px;
     right: 12px;
-    font-family: var(--font-mono);
-    font-size: 1rem;
+    font-family: var(--font-body);
+    font-size: 0.85rem;
     font-weight: 700;
-    color: #fff !important;
-    /* White text */
-    background: var(--color-brand);
-    /* Solid rust background */
-    width: 44px;
-    height: 44px;
+    color: #fff;
+    width: 42px;
+    height: 42px;
     border-radius: 50%;
-    /* Circle */
     display: flex;
     justify-content: center;
     align-items: center;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    border: none;
     z-index: 2;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
-.correlation-squircle[data-strength="strong"] .correlation-coefficient {
-    color: #fff;
-    background: var(--color-brand);
-    border: 2px solid var(--color-brand);
-    font-weight: 800;
-    /* Extra bold */
+.correlation-squircle[data-theme="red"] .correlation-coefficient {
+    background-color: var(--corr-red);
+}
+
+.correlation-squircle[data-theme="orange"] .correlation-coefficient {
+    background-color: var(--corr-orange);
+}
+
+.correlation-squircle[data-theme="peach"] .correlation-coefficient {
+    background-color: var(--corr-peach);
+}
+
+.correlation-squircle[data-theme="navy"] .correlation-coefficient {
+    background-color: var(--corr-navy);
+}
+
+.correlation-squircle[data-theme="blue-grey"] .correlation-coefficient {
+    background-color: var(--corr-blue-grey);
+}
+
+.correlation-squircle[data-theme="pale-blue"] .correlation-coefficient {
+    background-color: var(--corr-pale-blue);
 }
 
 /* Metric names */
-.correlation-metrics {
+.correlation-metrics-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+    width: 100%;
+}
+
+.correlation-metric-top {
     font-family: var(--font-body);
-    font-size: 1rem;
-    /* Slightly bigger */
-    font-weight: 700;
-    /* Bolder */
+    font-size: 1.35rem;
+    font-weight: 800;
+    line-height: 1.1;
     color: var(--color-ink);
-    margin-bottom: var(--space-xs);
-    line-height: 1.2;
+    max-width: 80%;
 }
 
-.correlation-arrow {
-    font-size: 2.5rem;
-    /* Much bigger arrow */
-    color: inherit;
-    /* Inherit from card or set explicit */
-    margin: var(--space-xs) 0;
-    font-weight: 900;
-    /* Extra bold */
-    line-height: 1;
+.correlation-metric-bottom {
+    font-family: var(--font-body);
+    font-size: 1.35rem;
+    font-weight: 400;
+    line-height: 1.1;
+    color: var(--color-ink);
+    margin-bottom: 8px;
 }
 
-/* Description text */
+.correlation-arrow-svg {
+    width: 28px;
+    height: 28px;
+    margin: 4px 0;
+}
+
+.correlation-arrow-svg path {
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+}
+
 /* Description text */
 .correlation-description {
-    font-size: 0.8125rem;
+    font-size: 0.8rem;
     color: var(--color-ink-subdued);
-    line-height: 1.4;
-    text-align: left;
-    /* Left align */
+    line-height: 1.3;
+    font-weight: 400;
     margin-top: auto;
-    /* Push to bottom */
-    width: 100%;
-    font-weight: 500;
 }
 
-/* Responsive adjustments */
+/* Responsive */
 @media (max-width: 768px) {
     .correlations-grid {
-        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        grid-template-columns: 1fr;
     }
 
+    .correlation-metric-top,
+    .correlation-metric-bottom {
+        font-size: 1.25rem;
+    }
+
+    .correlation-squircle.featured {
+        grid-column: span 1;
+    }
+}
+
+/* Extra compact on small laptop displays */
+@media (max-height: 900px) {
     .correlation-squircle {
-        padding: var(--space-sm);
+        min-height: 160px;
+        padding: 12px 12px;
     }
-
-    .correlation-metrics {
-        font-size: 0.8125rem;
-    }
-}
-
-/* Alternative: Horizontal scrolling row for very compact display */
-.correlations-row {
-    display: flex;
-    gap: var(--space-sm);
-    overflow-x: auto;
-    padding: var(--space-sm) 0;
-    -webkit-overflow-scrolling: touch;
-}
-
-.correlations-row .correlation-squircle {
-    flex-shrink: 0;
-    width: 180px;
-    height: 180px;
 }

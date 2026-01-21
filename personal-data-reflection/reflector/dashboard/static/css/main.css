@@ -28,7 +28,7 @@ h6 {
 .app-container {
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: var(--space-lg);
+    padding: var(--space-md) var(--space-lg);
     min-height: 100vh;
 }
 
@@ -37,19 +37,19 @@ h6 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--space-xl);
-    padding-bottom: var(--space-md);
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-sm);
     border-bottom: 1px solid var(--color-border);
 }
 
 .header-brand {
     font-family: var(--font-headline);
-    font-size: 28px;
+    font-size: 22px;
     font-weight: 700;
     color: var(--color-brand);
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-xs);
     letter-spacing: -0.02em;
 }
 
@@ -168,7 +168,7 @@ h6 {
 .dashboard-grid {
     display: grid;
     grid-template-columns: repeat(12, 1fr);
-    gap: var(--space-lg);
+    gap: var(--space-md);
 }
 
 .section-full {
