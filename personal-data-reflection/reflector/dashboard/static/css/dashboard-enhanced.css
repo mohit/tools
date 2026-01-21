@@ -171,14 +171,43 @@
 .pattern-list li {
     display: flex;
     justify-content: space-between;
+    align-items: flex-start;
     gap: var(--space-md);
     padding: var(--space-sm) 0;
     border-bottom: 1px solid var(--color-border);
     color: var(--text-secondary);
+    flex-wrap: wrap;
 }
 
 .pattern-list li strong {
     color: var(--text-primary);
+}
+
+/* Pattern date display with relative time */
+.pattern-date {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 100px;
+}
+
+.pattern-date .relative {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.pattern-date .day-context {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.pattern-details {
+    flex: 1;
+    text-align: right;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
 }
 
 .calendar-list {

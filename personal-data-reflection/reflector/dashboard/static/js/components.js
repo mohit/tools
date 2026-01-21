@@ -205,6 +205,19 @@ window.Reflector.Components = {
 
         const themes = ['red', 'orange', 'peach', 'navy', 'blue-grey', 'pale-blue'];
 
+        // Human-readable metric display names
+        const metricDisplayNames = {
+            'sleep_hours': 'Sleep',
+            'steps': 'Steps',
+            'active_energy_kcal': 'Calories Burned',
+            'resting_heart_rate': 'Resting HR',
+            'hrv_sdnn': 'Heart Rate Variability',
+            'exercise_minutes': 'Exercise',
+            'distance_km': 'Distance',
+            'walking_hr': 'Walking HR',
+            'body_mass_kg': 'Weight'
+        };
+
         const renderSquircle = (corr, index) => {
             const coefficient = (corr.correlation > 0 ? '' : '') + corr.correlation.toFixed(2);
 
@@ -212,11 +225,17 @@ window.Reflector.Components = {
             const theme = themes[index % themes.length];
             const isFeatured = index === 6; // Featured card (Meditation Minutes in mockup)
 
-            // Short metric names
-            const formatName = (name) => name.replace(/_/g, ' ')
-                .split(' ')
-                .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-                .join(' ');
+            // Get friendly metric names with fallback to formatted field name
+            const formatName = (name) => {
+                if (metricDisplayNames[name]) {
+                    return metricDisplayNames[name];
+                }
+                // Fallback: convert snake_case to Title Case
+                return name.replace(/_/g, ' ')
+                    .split(' ')
+                    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+                    .join(' ');
+            };
 
             const nameA = formatName(corr.metric_a);
             const nameB = formatName(corr.metric_b);
