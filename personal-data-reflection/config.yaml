@@ -55,3 +55,9 @@ dashboard:
 reports:
   default_format: markdown  # 'markdown' or 'text'
   output_directory: ./reports/
+
+# Data retention settings (quarterly data management)
+data_retention:
+  quarters_to_keep: 1  # Number of quarters to retain
+  auto_cleanup: false  # Automatically cleanup old data on import
+  archive_old_data: false  # Archive data before deletion

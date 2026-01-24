@@ -9,8 +9,9 @@ from datetime import datetime
 from reflector.database import ReflectionDB
 from reflector.importers import HealthImporter, StravaImporter
 from reflector.analysis import CorrelationAnalyzer, InsightGenerator
-from reflector.reports import MonthlyReportGenerator
+from reflector.reports import MonthlyReportGenerator, QuarterlyReportGenerator
 from reflector.dashboard import create_app
+from reflector.data_retention import DataRetentionManager
 
 
 def import_health_data(args):
@@ -179,6 +180,117 @@ def generate_report(args):
     return 0
 
 
+def generate_quarterly_report(args):
+    """Generate a quarterly reflection report."""
+    if args.quarter:
+        # Parse YYYY-QN format (e.g., 2024-Q1)
+        try:
+            parts = args.quarter.split('-Q')
+            year = int(parts[0])
+            quarter = int(parts[1])
+            if quarter < 1 or quarter > 4:
+                raise ValueError("Quarter must be 1-4")
+        except (ValueError, IndexError):
+            print("Error: Quarter should be in YYYY-QN format (e.g., 2024-Q1)")
+            return 1
+    else:
+        # Use current quarter
+        now = datetime.now()
+        year = now.year
+        quarter = (now.month - 1) // 3 + 1
+
+    print(f"Generating quarterly report for {year}-Q{quarter}...")
+
+    with ReflectionDB(args.database) as db:
+        generator = QuarterlyReportGenerator(db.con)
+
+        try:
+            if args.output:
+                # Save to file
+                output_path = Path(args.output)
+                output_format = 'markdown' if output_path.suffix in ['.md', '.markdown'] else 'text'
+
+                saved_path = generator.save_report(year, quarter, output_path, output_format)
+                print(f"\nReport saved to: {saved_path}")
+            else:
+                # Print to stdout
+                report = generator.generate_report(year, quarter, 'text')
+                print("\n" + report)
+
+        except Exception as e:
+            print(f"Error generating quarterly report: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
+
+    return 0
+
+
+def manage_data_retention(args):
+    """Manage data retention and cleanup."""
+    with ReflectionDB(args.database) as db:
+        manager = DataRetentionManager(db.con)
+
+        if args.retention_action == 'stats':
+            # Show retention statistics
+            stats = manager.get_retention_stats()
+            print("\nData Retention Statistics:")
+            print("=" * 60)
+            print(f"Oldest data: {stats.get('oldest_data', 'N/A')}")
+            print(f"Newest data: {stats.get('newest_data', 'N/A')}")
+            print(f"Data span: {stats.get('data_span_days', 0)} days")
+            print(f"\nCurrent quarter: {stats['current_quarter_start']} to {stats['current_quarter_end']}")
+            print(f"\nRecord counts:")
+            print(f"  Total health metrics: {stats['health_metrics_count']}")
+            print(f"  Current quarter: {stats['current_quarter_health_metrics']}")
+            print(f"  Total workouts: {stats['workouts_count']}")
+            print(f"  Current quarter: {stats['current_quarter_workouts']}")
+            print(f"  Total Strava activities: {stats['strava_activities_count']}")
+
+        elif args.retention_action == 'cleanup':
+            # Cleanup old data
+            quarters = args.quarters_to_keep or 1
+            dry_run = not args.confirm
+
+            if dry_run:
+                print(f"\n[DRY RUN] Simulating cleanup (keeping {quarters} quarter(s))...")
+            else:
+                print(f"\nCleaning up data (keeping {quarters} quarter(s))...")
+
+            stats = manager.cleanup_old_data(quarters_to_keep=quarters, dry_run=dry_run)
+
+            print(f"\nCutoff date: {stats['cutoff_date']}")
+            print(f"Data to delete:")
+            print(f"  Health metrics: {stats['deleted']['health_metrics']}")
+            print(f"  Workouts: {stats['deleted']['workouts']}")
+            print(f"  Strava activities: {stats['deleted']['strava_activities']}")
+            print(f"  Insights: {stats['deleted']['insights']}")
+
+            if dry_run:
+                print("\nNo data was deleted (dry run). Use --confirm to actually delete.")
+            else:
+                print("\nCleanup complete!")
+
+        elif args.retention_action == 'archive':
+            # Archive old data
+            quarters = args.quarters_to_keep or 1
+            archive_path = args.archive_path
+
+            print(f"\nArchiving data (keeping {quarters} quarter(s) in main DB)...")
+
+            stats = manager.archive_old_data(quarters_to_keep=quarters, archive_path=archive_path)
+
+            print(f"\nArchived to: {stats['archive_path']}")
+            print(f"Cutoff date: {stats['cutoff_date']}")
+            print(f"Archived records:")
+            print(f"  Health metrics: {stats['archived']['health_metrics']}")
+            print(f"  Workouts: {stats['archived']['workouts']}")
+            print(f"  Strava activities: {stats['archived']['strava_activities']}")
+            print("\nArchive complete!")
+
+    return 0
+
+
 def serve_dashboard(args):
     """Start the web dashboard."""
     host_label = args.host if args.host not in ["0.0.0.0", "127.0.0.1"] else "localhost"
@@ -212,6 +324,14 @@ Examples:
   %(prog)s analyze
   %(prog)s report --month 2024-01
   %(prog)s report --output reports/january-2024.md
+  %(prog)s quarterly --quarter 2024-Q1
+  %(prog)s quarterly --output reports/q1-2024.md
+
+  # Manage data retention (quarterly cleanup)
+  %(prog)s retention stats
+  %(prog)s retention cleanup --quarters-to-keep 1
+  %(prog)s retention cleanup --quarters-to-keep 1 --confirm
+  %(prog)s retention archive --quarters-to-keep 1
 
   # Start dashboard
   %(prog)s serve
@@ -289,6 +409,69 @@ Examples:
         help='Host to bind the dashboard (default: 127.0.0.1)'
     )
 
+    # Quarterly report
+    quarterly_parser = subparsers.add_parser(
+        'quarterly',
+        help='Generate quarterly reflection report'
+    )
+    quarterly_parser.add_argument(
+        '--quarter',
+        help='Quarter to generate report for (YYYY-QN format, e.g., 2024-Q1, default: current quarter)'
+    )
+    quarterly_parser.add_argument(
+        '--output',
+        help='Output file path (default: print to stdout)'
+    )
+
+    # Data retention
+    retention_parser = subparsers.add_parser(
+        'retention',
+        help='Manage data retention and cleanup'
+    )
+    retention_subparsers = retention_parser.add_subparsers(
+        dest='retention_action',
+        help='Retention action to perform'
+    )
+
+    # Retention stats
+    retention_subparsers.add_parser(
+        'stats',
+        help='Show data retention statistics'
+    )
+
+    # Retention cleanup
+    cleanup_parser = retention_subparsers.add_parser(
+        'cleanup',
+        help='Clean up old data (keep only recent quarters)'
+    )
+    cleanup_parser.add_argument(
+        '--quarters-to-keep',
+        type=int,
+        default=1,
+        help='Number of quarters to keep (default: 1)'
+    )
+    cleanup_parser.add_argument(
+        '--confirm',
+        action='store_true',
+        help='Actually delete data (without this, runs in dry-run mode)'
+    )
+
+    # Retention archive
+    archive_parser = retention_subparsers.add_parser(
+        'archive',
+        help='Archive old data to separate database'
+    )
+    archive_parser.add_argument(
+        '--quarters-to-keep',
+        type=int,
+        default=1,
+        help='Number of quarters to keep in main database (default: 1)'
+    )
+    archive_parser.add_argument(
+        '--archive-path',
+        help='Path to archive database (default: ./data/archive_YYYYMMDD.duckdb)'
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -301,6 +484,8 @@ Examples:
         'import-strava': import_strava_data,
         'analyze': analyze_data,
         'report': generate_report,
+        'quarterly': generate_quarterly_report,
+        'retention': manage_data_retention,
         'serve': serve_dashboard,
     }
 

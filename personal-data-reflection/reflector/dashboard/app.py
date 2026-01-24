@@ -8,6 +8,8 @@ import math
 
 from reflector.database import ReflectionDB
 from reflector.analysis import CorrelationAnalyzer, PatternDetector, InsightGenerator
+from reflector.reports import QuarterlyReportGenerator
+from reflector.data_retention import DataRetentionManager
 
 
 def create_app(db_path: str = "./data/reflection.duckdb"):
@@ -307,12 +309,102 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
         data = request.json
         if not data or 'metric' not in data or 'target' not in data:
             return jsonify({'error': 'Missing metric or target'}), 400
-            
+
         db = get_db()
         db.update_goal(data['metric'], float(data['target']), data.get('period', 'daily'))
         goals = db.get_goals()
         db.close()
         return jsonify(goals)
+
+    @app.route('/api/quarterly/<int:year>/<int:quarter>')
+    def api_quarterly(year, quarter):
+        """Get quarterly statistics and insights."""
+        db = get_db()
+        generator = QuarterlyReportGenerator(db.con)
+
+        try:
+            start_date, end_date = generator.get_quarter_dates(year, quarter)
+            stats = generator._get_quarterly_stats(start_date, end_date)
+            insights = generator._generate_quarterly_insights(year, quarter, start_date, end_date)
+            monthly_stats = generator._get_monthly_breakdown(year, quarter)
+
+            db.close()
+
+            return jsonify(clean_nan({
+                'year': year,
+                'quarter': quarter,
+                'period': {
+                    'start': start_date,
+                    'end': end_date
+                },
+                'stats': stats,
+                'insights': insights,
+                'monthly_breakdown': monthly_stats
+            }))
+        except ValueError as e:
+            db.close()
+            return jsonify({'error': str(e)}), 400
+
+    @app.route('/api/quarterly/current')
+    def api_quarterly_current():
+        """Get current quarter statistics."""
+        now = datetime.now()
+        year = now.year
+        quarter = (now.month - 1) // 3 + 1
+
+        db = get_db()
+        generator = QuarterlyReportGenerator(db.con)
+
+        start_date, end_date = generator.get_quarter_dates(year, quarter)
+        stats = generator._get_quarterly_stats(start_date, end_date)
+        insights = generator._generate_quarterly_insights(year, quarter, start_date, end_date)
+        monthly_stats = generator._get_monthly_breakdown(year, quarter)
+
+        db.close()
+
+        return jsonify(clean_nan({
+            'year': year,
+            'quarter': quarter,
+            'period': {
+                'start': start_date,
+                'end': end_date
+            },
+            'stats': stats,
+            'insights': insights,
+            'monthly_breakdown': monthly_stats
+        }))
+
+    @app.route('/api/retention/stats')
+    def api_retention_stats():
+        """Get data retention statistics."""
+        db = get_db()
+        manager = DataRetentionManager(db.con)
+        stats = manager.get_retention_stats()
+        db.close()
+
+        return jsonify(clean_nan(stats))
+
+    @app.route('/api/quarterly/report/<int:year>/<int:quarter>')
+    def api_quarterly_report(year, quarter):
+        """Get quarterly report in markdown or text format."""
+        format = request.args.get('format', 'markdown')
+
+        db = get_db()
+        generator = QuarterlyReportGenerator(db.con)
+
+        try:
+            report = generator.generate_report(year, quarter, format)
+            db.close()
+
+            return jsonify({
+                'year': year,
+                'quarter': quarter,
+                'format': format,
+                'report': report
+            })
+        except ValueError as e:
+            db.close()
+            return jsonify({'error': str(e)}), 400
 
     return app
 
