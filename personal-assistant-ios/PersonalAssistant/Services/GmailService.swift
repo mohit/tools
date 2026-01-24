@@ -70,6 +70,7 @@ class GmailService: ObservableObject {
         }
 
         let group = DispatchGroup()
+        let syncQueue = DispatchQueue(label: "com.personalassistant.gmail.sync")
         var fetchedMessages: [GmailMessage] = []
 
         for messageId in messageIds {
@@ -96,7 +97,10 @@ class GmailService: ObservableObject {
                 do {
                     if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                        let message = self.parseMessage(json) {
-                        fetchedMessages.append(message)
+                        // Safely append to shared array using serial queue
+                        syncQueue.async {
+                            fetchedMessages.append(message)
+                        }
                     }
                 } catch {
                     print("Error parsing message details: \(error.localizedDescription)")
@@ -105,9 +109,16 @@ class GmailService: ObservableObject {
         }
 
         group.notify(queue: .main) { [weak self] in
-            self?.messages = fetchedMessages.sorted { $0.date > $1.date }
-            self?.unreadCount = fetchedMessages.filter { $0.isUnread }.count
-            self?.isLoading = false
+            // Ensure final read happens after all writes complete
+            syncQueue.async {
+                let sortedMessages = fetchedMessages.sorted { $0.date > $1.date }
+                let unread = fetchedMessages.filter { $0.isUnread }.count
+                DispatchQueue.main.async {
+                    self?.messages = sortedMessages
+                    self?.unreadCount = unread
+                    self?.isLoading = false
+                }
+            }
         }
     }
 

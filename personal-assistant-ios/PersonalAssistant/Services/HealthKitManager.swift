@@ -169,8 +169,9 @@ class HealthKitManager: ObservableObject {
     // MARK: - Fetch All Data for Sync
 
     func fetchAllHealthData(since date: Date, completion: @escaping ([HealthData]) -> Void) {
-        var allData: [HealthData] = []
         let group = DispatchGroup()
+        let syncQueue = DispatchQueue(label: "com.personalassistant.healthdata.sync")
+        var allData: [HealthData] = []
 
         let types: [HKQuantityTypeIdentifier] = [
             .stepCount,
@@ -197,9 +198,11 @@ class HealthKitManager: ObservableObject {
 
                 guard let samples = samples as? [HKQuantitySample] else { return }
 
-                for sample in samples {
-                    let data = HealthData(from: sample)
-                    allData.append(data)
+                let healthDataBatch = samples.map { HealthData(from: $0) }
+
+                // Safely append to shared array using serial queue
+                syncQueue.async {
+                    allData.append(contentsOf: healthDataBatch)
                 }
             }
 
@@ -207,7 +210,12 @@ class HealthKitManager: ObservableObject {
         }
 
         group.notify(queue: .main) {
-            completion(allData)
+            // Ensure final read happens after all writes complete
+            syncQueue.async {
+                DispatchQueue.main.async {
+                    completion(allData)
+                }
+            }
         }
     }
 

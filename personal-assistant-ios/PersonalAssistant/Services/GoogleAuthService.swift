@@ -39,8 +39,11 @@ class GoogleAuthService: NSObject, ObservableObject {
 
         guard let url = URL(string: authURL) else { return }
 
+        // Extract just the scheme part for callback matching (e.g., "com.googleusercontent.apps.XXX")
+        let callbackScheme = redirectUri.components(separatedBy: ":").first ?? redirectUri
+
         // Use ASWebAuthenticationSession for OAuth
-        authSession = ASWebAuthenticationSession(url: url, callbackURLScheme: redirectUri) { [weak self] callbackURL, error in
+        authSession = ASWebAuthenticationSession(url: url, callbackURLScheme: callbackScheme) { [weak self] callbackURL, error in
             guard error == nil, let callbackURL = callbackURL else {
                 print("Authentication error: \(error?.localizedDescription ?? "Unknown error")")
                 self?.authSession = nil
