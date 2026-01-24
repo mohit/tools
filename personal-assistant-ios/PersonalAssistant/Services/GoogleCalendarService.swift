@@ -111,8 +111,15 @@ class GoogleCalendarService: ObservableObject {
     }
 
     private func parseDate(_ dateString: String) -> Date? {
-        // Try ISO8601 format first
+        // Try ISO8601 with fractional seconds first
         if let date = dateFormatter.date(from: dateString) {
+            return date
+        }
+
+        // Try ISO8601 without fractional seconds (common in Google Calendar)
+        let noFractionsFormatter = ISO8601DateFormatter()
+        noFractionsFormatter.formatOptions = [.withInternetDateTime]
+        if let date = noFractionsFormatter.date(from: dateString) {
             return date
         }
 

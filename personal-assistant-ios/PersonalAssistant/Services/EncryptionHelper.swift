@@ -27,6 +27,7 @@ class EncryptionHelper {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: "healthDataEncryptionKey",
+            kSecAttrSynchronizable as String: true, // Must match saveKeyToKeychain
             kSecReturnData as String: true
         ]
 

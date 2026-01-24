@@ -11,6 +11,9 @@ class GoogleAuthService: NSObject, ObservableObject {
     private let clientId = "YOUR-GOOGLE-CLIENT-ID.apps.googleusercontent.com"
     private let redirectUri = "com.googleusercontent.apps.YOUR-CLIENT-ID:/oauth2redirect"
 
+    // Retain session to prevent deallocation during OAuth flow
+    private var authSession: ASWebAuthenticationSession?
+
     private override init() {
         super.init()
         checkStoredAuth()
@@ -37,9 +40,10 @@ class GoogleAuthService: NSObject, ObservableObject {
         guard let url = URL(string: authURL) else { return }
 
         // Use ASWebAuthenticationSession for OAuth
-        let session = ASWebAuthenticationSession(url: url, callbackURLScheme: redirectUri) { [weak self] callbackURL, error in
+        authSession = ASWebAuthenticationSession(url: url, callbackURLScheme: redirectUri) { [weak self] callbackURL, error in
             guard error == nil, let callbackURL = callbackURL else {
                 print("Authentication error: \(error?.localizedDescription ?? "Unknown error")")
+                self?.authSession = nil
                 return
             }
 
@@ -47,10 +51,11 @@ class GoogleAuthService: NSObject, ObservableObject {
             if let code = self?.extractAuthCode(from: callbackURL) {
                 self?.exchangeCodeForToken(code)
             }
+            self?.authSession = nil // Release after completion
         }
 
-        session.presentationContextProvider = self
-        session.start()
+        authSession?.presentationContextProvider = self
+        authSession?.start()
     }
 
     func signOut() {
