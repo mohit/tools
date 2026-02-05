@@ -1,0 +1,26 @@
+db_path: ./data/location.duckdb
+
+sources:
+  google_takeout:
+    enabled: true
+    path: ./imports/google_takeout
+
+  foursquare_api:
+    enabled: false
+    oauth_token_env: FOURSQUARE_OAUTH_TOKEN
+    api_version: "20240201"
+    checkins_limit: 250
+
+  foursquare_export:
+    enabled: true
+    path: ./imports/foursquare
+
+  manual_csv:
+    enabled: false
+    path: ./imports/manual/manual_visits.csv
+
+enrichment:
+  google_places:
+    enabled: false
+    api_key_env: GOOGLE_PLACES_API_KEY
+    max_rows_per_run: 200
