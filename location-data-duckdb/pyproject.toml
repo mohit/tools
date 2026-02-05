@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "location-data-duckdb"
+version = "0.1.0"
+description = "Ingest personal location exports into DuckDB with optional Google Places enrichment"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "duckdb>=1.0.0",
+  "pyyaml>=6.0.0",
+  "requests>=2.31.0"
+]
+
+[project.scripts]
+location-pipeline = "location_pipeline.cli:main"
+
+[tool.setuptools]
+packages = ["location_pipeline", "location_pipeline.sources", "location_pipeline.enrich"]
