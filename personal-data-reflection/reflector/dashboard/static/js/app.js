@@ -296,11 +296,18 @@ const App = {
             hrv: current.avg_hrv || 0
         };
 
-        // Monthly Goals = Daily Target * 30
+        const periodStart = data.monthDateRange?.startStr || null;
+        const periodEnd = data.monthDateRange?.endStr || null;
+
+        // Goal totals should match the selected summary period length.
         const getMonthlyTarget = (metric) => {
             if (!this.state.goals || !this.state.goals[metric]) return 0;
             const goal = this.state.goals[metric];
-            return goal.target * 30; // Approximation for monthly goal
+            const math = window.Reflector?.DashboardMath;
+            if (!math || typeof math.getGoalTargetForPeriod !== 'function') {
+                return goal.target * 30;
+            }
+            return math.getGoalTargetForPeriod(goal.target, periodStart, periodEnd, 30);
         };
 
         const sleepGoal = this.state.goals && this.state.goals.sleep_hours ? this.state.goals.sleep_hours.target : 7.5;
@@ -337,16 +344,6 @@ const App = {
             hasWorkout: dailyData.workouts.some(w => w.start_time.startsWith(d.date)),
             isFocusWeek: d.date >= focusStartStr && d.date <= focusEndStr
         })).reverse(); // Reverse to show most recent first
-
-        // Calculate the expected progress multiplier based on today's date in the month
-        const selectedYear = this.state.date.getFullYear();
-        const selectedMonth = this.state.date.getMonth();
-        const today = new Date();
-        const isCurrentMonth = selectedYear === today.getFullYear() && selectedMonth === today.getMonth();
-
-        const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
-        const currentDay = isCurrentMonth ? today.getDate() : daysInMonth; // If past month, expected is 100%
-        const paceMultiplier = (currentDay / daysInMonth) * 100;
 
         const html = `
             <div class="dashboard-grid">
@@ -431,32 +428,28 @@ const App = {
             current: stats.steps,
             target: stepsGoal,
             unit: '',
-            color: 'var(--color-movement)',
-            expectedPercent: paceMultiplier
+            color: 'var(--color-movement)'
         })}
                             ${Reflector.Components.GoalRing({
             label: 'Exercise',
             current: stats.exercise,
             target: exerciseGoal,
             unit: 'min',
-            color: 'var(--color-heart)',
-            expectedPercent: paceMultiplier
+            color: 'var(--color-heart)'
         })}
                             ${Reflector.Components.GoalRing({
             label: 'Avg Sleep',
             current: stats.sleep,
             target: sleepGoal,
             unit: 'h',
-            color: 'var(--color-sleep)',
-            expectedPercent: 100 // Averages are always compared to full daily target
+            color: 'var(--color-sleep)'
         })}
                             ${Reflector.Components.GoalRing({
             label: 'HRV',
             current: stats.hrv,
             target: hrvGoal,
             unit: 'ms',
-            color: 'var(--color-recovery)',
-            expectedPercent: 100
+            color: 'var(--color-recovery)'
         })}
                         </div>
                     </div>

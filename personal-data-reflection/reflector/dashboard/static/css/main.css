@@ -53,17 +53,6 @@ h6 {
     letter-spacing: -0.02em;
 }
 
-.brand-contour {
-    font-family: var(--font-body);
-    font-weight: 800;
-    letter-spacing: -0.03em;
-    color: var(--color-ink);
-}
-
-.header-brand:has(.brand-contour) {
-    color: var(--color-ink);
-}
-
 .header-nav {
     display: flex;
     gap: var(--space-xs);

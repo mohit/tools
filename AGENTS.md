@@ -28,3 +28,14 @@
 ## Security & Configuration Tips
 - Do not introduce remote telemetry or data exfiltration by default.
 - If a tool handles credentials or codes, keep processing local and document retention policies.
+
+## Agent Workflow Standards
+- Keep shared agent instructions in this root `AGENTS.md` so all agents can consistently load the same guidance.
+- Use focused branches and PRs for a single feature/focus area at a time (use `codex/*` for Codex-created branches).
+- Resolve conflicts locally before merge; avoid relying on ad-hoc web edits that can drift from local verification.
+- Leave code better than found, without scope creep:
+- If you find a real issue in files already being changed, fix it in the same PR when practical.
+- If an issue is outside current scope, open a clear, detailed GitHub issue with context, impact, and proposed follow-up.
+- Add tests that capture intended behavior for every new feature or meaningful behavior change so regressions are easy to detect.
+- Update documentation in required places (`README.md`, tool-level docs, optional tool `AGENTS.md`) so architecture, goals, and tool choices remain clear for future agents.
+- Exclude local artifacts and machine-specific files (for example `.cursor/`) from commits and PRs.
