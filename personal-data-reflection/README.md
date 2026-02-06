@@ -113,23 +113,31 @@ Launch the dashboard at any time:
 uv run setup_interactive.py --serve
 ```
 
+## Testing
+
+No repo-wide test runner exists, so run tool-specific checks from this folder:
+
+```bash
+node --test tests/dashboard-math.test.js
+```
+
 ## Usage
 
 ### Command Line Interface
 
 ```bash
 # Import data
-python reflect.py import-health <path>     # Import Apple Health CSV/JSON
-python reflect.py import-strava <path>      # Import Strava Parquet files
+uv run reflect.py import-health <path>      # Import Apple Health CSV/JSON
+uv run reflect.py import-strava <path>      # Import Strava Parquet files
 
 # Generate reports
-python reflect.py report --month 2026-01    # Generate monthly report
-python reflect.py analyze                   # Run correlation analysis
+uv run reflect.py report --month 2026-01    # Generate monthly report
+uv run reflect.py analyze                    # Run correlation analysis
 
 # Start dashboard
-python reflect.py serve                     # Launch web dashboard
-python reflect.py serve --port 8080         # Custom port
-python reflect.py serve --host 0.0.0.0      # Bind for external access
+uv run reflect.py serve                      # Launch web dashboard
+uv run reflect.py serve --port 8080          # Custom port
+uv run reflect.py serve --host 0.0.0.0       # Bind for external access
 ```
 
 ### Web Dashboard
@@ -140,6 +148,12 @@ Navigate to different sections:
 - **Correlations**: Heatmaps and scatter plots
 - **Patterns**: Clustering analysis
 - **Reflection**: AI-generated insights and recommendations
+
+### Dashboard Goal Semantics
+
+- Goal rings scale daily goals by the selected summary period length.
+- February uses 28/29 days, while month-to-date uses elapsed days in the current month.
+- Shared logic is in `reflector/dashboard/static/js/dashboard-math.js`.
 
 ## Data Model
 

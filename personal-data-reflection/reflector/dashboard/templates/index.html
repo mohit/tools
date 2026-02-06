@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Contour</title>
+    <title>Personal Health Reflection</title>
 
     <!-- Design System -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/design-tokens.css') }}?v=2">
@@ -23,7 +23,7 @@
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
                 </svg>
-                <span class="brand-contour">Contour</span>
+                <span>Health Reflection</span>
             </div>
 
             <nav class="header-nav">
@@ -68,6 +68,7 @@
     </div>
 
     <!-- Application Logic -->
+    <script src="{{ url_for('static', filename='js/dashboard-math.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/components.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}?v=2"></script>
 </body>
