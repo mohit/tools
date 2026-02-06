@@ -14,28 +14,14 @@ window.Reflector.Components = {
     /**
      * Renders a Circular Goal Progress Ring with premium styling
      */
-    GoalRing: function ({ label, current, target, unit, color, icon, expectedPercent }) {
-        const percent = (current / target) * 100;
-        const displayPercent = Math.round(percent);
-        const ringPercent = Math.min(100, Math.max(0, percent));
+    GoalRing: function ({ label, current, target, unit, color, icon }) {
+        const percent = Math.min(100, Math.max(0, (current / target) * 100));
         const radius = 32;
         const circumference = 2 * Math.PI * radius;
-        const offset = circumference - (ringPercent / 100) * circumference;
-
-        // Calculate if ahead or behind pace
-        let paceStatus = '';
-        if (expectedPercent !== undefined) {
-            if (percent >= expectedPercent * 1.1) {
-                paceStatus = '<span style="color: var(--color-recovery); font-size: 0.65rem; font-weight: 700;">▲ Ahead of pace</span>';
-            } else if (percent < expectedPercent * 0.9) {
-                paceStatus = '<span style="color: var(--color-heart); font-size: 0.65rem; font-weight: 700;">▼ Behind pace</span>';
-            } else {
-                paceStatus = '<span style="color: var(--color-ink-subdued); font-size: 0.65rem; font-weight: 700;">● On track</span>';
-            }
-        }
+        const offset = circumference - (percent / 100) * circumference;
 
         return `
-            <div class="correlation-squircle" style="align-items: center; justify-content: center; min-height: 155px; border-width: 3px; padding: 12px;">
+            <div class="correlation-squircle" style="align-items: center; justify-content: center; min-height: 140px; border-width: 3px; padding: 12px;">
                  <div style="position: relative; width: 80px; height: 80px; margin-bottom: 8px;">
                     <svg width="80" height="80" viewBox="0 0 80 80">
                         <!-- Background Circle -->
@@ -54,14 +40,13 @@ window.Reflector.Components = {
                             transform="rotate(-90 40 40)" />
                     </svg>
                     <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 1rem; font-weight: 700; color: var(--color-ink);">
-                        ${displayPercent}%
+                        ${Math.round(percent)}%
                     </div>
                 </div>
                 <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--color-ink); margin-bottom: 2px;">${label}</h3>
-                <div style="font-size: 0.75rem; color: var(--color-ink-subdued); font-weight: 500; margin-bottom: 4px;">
+                <div style="font-size: 0.75rem; color: var(--color-ink-subdued); font-weight: 500;">
                     ${current.toLocaleString()} / ${target.toLocaleString()} ${unit}
                 </div>
-                ${paceStatus}
             </div>
         `;
     },
