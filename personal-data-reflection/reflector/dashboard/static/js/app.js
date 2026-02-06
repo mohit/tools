@@ -296,11 +296,18 @@ const App = {
             hrv: current.avg_hrv || 0
         };
 
-        // Monthly Goals = Daily Target * 30
+        const periodStart = data.monthDateRange?.startStr || null;
+        const periodEnd = data.monthDateRange?.endStr || null;
+
+        // Goal totals should match the selected summary period length.
         const getMonthlyTarget = (metric) => {
             if (!this.state.goals || !this.state.goals[metric]) return 0;
             const goal = this.state.goals[metric];
-            return goal.target * 30; // Approximation for monthly goal
+            const math = window.Reflector?.DashboardMath;
+            if (!math || typeof math.getGoalTargetForPeriod !== 'function') {
+                return goal.target * 30;
+            }
+            return math.getGoalTargetForPeriod(goal.target, periodStart, periodEnd, 30);
         };
 
         const sleepGoal = this.state.goals && this.state.goals.sleep_hours ? this.state.goals.sleep_hours.target : 7.5;
