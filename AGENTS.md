@@ -1,41 +1,55 @@
-# Repository Guidelines
+# AGENTS.md — mohit/tools
 
-## Project Structure & Module Organization
-- Each tool is a top-level folder (e.g., `firefox-2fa-autofill/`).
-- Tool-specific docs live inside each tool folder (typically `README.md`, and optional `AGENTS.md`).
-- Shared repo docs live at the root (`README.md`, `CONTRIBUTING.md`, `LICENSE`).
+## What this repo is
+Personal data tools — ingest, transform, and reflect on health/fitness/music/location data. Each top-level folder is a standalone tool. Data flows into a personal datalake (raw → curated parquet) on iCloud.
 
-## Build, Test, and Development Commands
-- Commands are tool-specific; check each tool’s `README.md` for build/run steps.
-- Example (Firefox extension): load `firefox-2fa-autofill/manifest.json` via `about:debugging`.
-- If you add a tool with a CLI, include a `make` or `npm` command example in that tool’s README.
+## Repo structure
+```
+apple-health-export/     # Apple Health XML → parquet (Python, DuckDB)
+firefox-2fa-autofill/    # Browser extension (JS, WebExtension manifest)
+location-data-duckdb/    # Location/checkin data → DuckDB pipeline (Python)
+music-history/           # Last.fm + Apple Music ingestion (Python, parquet)
+personal-assistant-ios/  # iOS app (Swift)
+personal-data-reflection/ # Health dashboard — Flask API + DuckDB (Python, uv)
+strava-data-puller/      # Strava API → raw JSON + curated parquet (Python, DuckDB)
+```
 
-## Coding Style & Naming Conventions
-- Follow the conventions of each tool’s language and ecosystem.
-- Use consistent, descriptive folder names at the repo root (kebab-case is preferred).
-- Keep scripts and binaries inside the tool folder; avoid adding them to the repo root.
+## Tech stack
+- **Language:** Python 3.11+ (most tools), JS (browser extension), Swift (iOS)
+- **Data:** DuckDB for transforms, Parquet for storage, JSON for raw API dumps
+- **Package management:** uv (for tools with pyproject.toml), pip otherwise
+- **Web:** Flask (personal-data-reflection dashboard)
+- **No monorepo build system** — each tool is independent
 
-## Testing Guidelines
-- No repo-wide test runner is configured.
-- Document any tool-specific testing commands in the tool’s README.
-- If you add automated tests, note frameworks and naming patterns in that tool’s docs.
+## Datalake conventions
+- **Raw data:** `~/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/<source>/`
+- **Curated data:** `.../datalake/curated/<source>/` (parquet)
+- **State files:** `~/.local/share/datalake/` (last sync timestamps, etc.)
+- Raw = immutable API dumps. Curated = cleaned, typed, deduplicated parquet.
 
-## Commit & Pull Request Guidelines
-- No enforced commit message convention; keep messages concise and action-oriented.
-- PRs should include: a short summary, verification steps, and screenshots/GIFs for UI changes.
-- Link related issues when applicable.
+## Coding conventions
+- Standalone scripts with argparse CLIs — no frameworks beyond Flask
+- Use `pathlib.Path` not string paths
+- Environment variables for credentials (never hardcode)
+- DuckDB for any data transforms — don't write pandas-heavy ETL
+- Each tool has its own README with run instructions
 
-## Security & Configuration Tips
-- Do not introduce remote telemetry or data exfiltration by default.
-- If a tool handles credentials or codes, keep processing local and document retention policies.
+## Testing
+- `personal-data-reflection/` has pytest tests in `tests/`
+- `location-data-duckdb/` has tests in `tests/`
+- Other tools: add tests if making non-trivial changes
+- Run with: `cd <tool> && python -m pytest tests/`
 
-## Agent Workflow Standards
-- Keep shared agent instructions in this root `AGENTS.md` so all agents can consistently load the same guidance.
-- Use focused branches and PRs for a single feature/focus area at a time (use `codex/*` for Codex-created branches).
-- Resolve conflicts locally before merge; avoid relying on ad-hoc web edits that can drift from local verification.
-- Leave code better than found, without scope creep:
-- If you find a real issue in files already being changed, fix it in the same PR when practical.
-- If an issue is outside current scope, open a clear, detailed GitHub issue with context, impact, and proposed follow-up.
-- Add tests that capture intended behavior for every new feature or meaningful behavior change so regressions are easy to detect.
-- Update documentation in required places (`README.md`, tool-level docs, optional tool `AGENTS.md`) so architecture, goals, and tool choices remain clear for future agents.
-- Exclude local artifacts and machine-specific files (for example `.cursor/`) from commits and PRs.
+## When fixing issues
+- Read the tool's README first
+- Check if there's existing state files/data you need to understand
+- Don't break the raw → curated pipeline — raw is immutable
+- If an issue requires API credentials, check env vars (STRAVA_*, LASTFM_*, etc.)
+- Prefer incremental fixes over rewrites
+- Add/update tests for behavioral changes
+
+## PR guidelines
+- One issue per PR, branch name: `fix/issue-{N}`
+- Commit messages: reference the issue number
+- Don't modify tools outside the scope of the issue
+- If you find adjacent problems, file a new issue instead of scope-creeping
