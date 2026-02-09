@@ -38,7 +38,7 @@ def test_resolve_from_uts_cli_precedence(tmp_path):
     state_file = tmp_path / "state.txt"
     curated_dir = tmp_path / "curated"
 
-    assert lastfm_ingest.resolve_from_uts(10, None, False, state_file, curated_dir) == 10
+    assert lastfm_ingest.resolve_from_uts(10, None, False, state_file, curated_dir) == 11
     assert lastfm_ingest.resolve_from_uts(None, "1970-01-01T00:00:20Z", False, state_file, curated_dir) == 20
     assert lastfm_ingest.resolve_from_uts(10, "1970-01-01T00:00:20Z", True, state_file, curated_dir) == 0
 

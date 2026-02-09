@@ -102,7 +102,8 @@ def resolve_from_uts(
     if full_refetch:
         return 0
     if cli_from_uts is not None:
-        return cli_from_uts
+        # Last.fm `from` is inclusive; +1 preserves strict "after this timestamp" CLI semantics.
+        return cli_from_uts + 1
     if cli_since is not None:
         return parse_since_to_uts(cli_since)
 
