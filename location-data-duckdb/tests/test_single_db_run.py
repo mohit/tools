@@ -25,7 +25,7 @@ def test_multiple_sources_share_single_db(duckdb_conn, monkeypatch) -> None:
             )
         ]
 
-    def fake_foursquare_export(_path: str) -> list[VisitRecord]:
+    def fake_foursquare_export(_path: str, **_kwargs) -> list[VisitRecord]:
         return [
             VisitRecord(
                 visit_id="fs-1",
