@@ -46,11 +46,27 @@ It currently includes:
 
 ## Usage
 
+
 ### Last.fm incremental pull
 
 Run the `main.py` script to fetch and process Last.fm scrobbles:
 ```bash
-python main.py
+python scripts/lastfm_ingest.py
+```
+
+Incremental mode is the default. If no arguments are provided, the script starts from the latest known timestamp (state file and curated parquet max `uts`) and only fetches new scrobbles.
+
+Optional flags:
+
+```bash
+# Start from a specific unix timestamp
+python scripts/lastfm_ingest.py --from-uts 1735689600
+
+# Start from an ISO timestamp (UTC)
+python scripts/lastfm_ingest.py --since 2026-01-01T00:00:00Z
+
+# Force full historical re-fetch
+python scripts/lastfm_ingest.py --full-refetch
 ```
 
 ### Apple Music local export from Music.app
