@@ -1,10 +1,14 @@
-# Last.fm Data Ingestion
+# Music History Ingestion
 
-This project ingests Last.fm scrobble data, processes it, and stores it in Parquet format.
+This project ingests music listening history and writes analytics-friendly Parquet data.
+It currently includes:
+
+- Last.fm scrobble ingestion via API.
+- Apple Music library/play history export + ingestion.
 
 ## Setup
 
-1.  **Environment Variables:**
+1.  **Environment Variables (Last.fm API workflow):**
     Set the following environment variables:
     *   `LASTFM_USER`: Your Last.fm username.
     *   `LASTFM_API_KEY`: Your Last.fm API key. You can get one [here](https://www.last.fm/api/account/create).
@@ -42,10 +46,45 @@ This project ingests Last.fm scrobble data, processes it, and stores it in Parqu
 
 ## Usage
 
+### Last.fm incremental pull
+
 Run the `main.py` script to fetch and process Last.fm scrobbles:
 ```bash
 python main.py
 ```
+
+### Apple Music local export from Music.app
+
+Export Apple Music listening/library metadata into JSONL:
+```bash
+python export_apple_music.py
+```
+
+Ingest that JSONL into curated Parquet and refresh the DuckDB view:
+```bash
+python ingest_apple_music.py
+```
+
+### Apple Music privacy export freshness reminder (Issue #15)
+
+The Apple Music dataset in the data lake became stale and requires a new privacy export request.
+
+Known stale snapshot:
+- Location: `~/datalake.me/raw/apple-music/`
+- Rows: `88,949`
+- Data range: `2015-07-02` to `2023-11-09`
+- Latest play date: `2023-11-05`
+- Source export date: `~2023-11-10`
+- Last ingested: `2026-02-07`
+- Apple Health status: healthy (`latest=2026-01-20`, 19 days old as of 2026-02-08)
+
+Run this reminder check:
+```bash
+python remind_apple_music_reexport.py
+```
+
+If stale, request a new Apple data export at `https://privacy.apple.com/`.
+Apple usually takes a few days before the export is ready.
 
 ## Example Query
 
