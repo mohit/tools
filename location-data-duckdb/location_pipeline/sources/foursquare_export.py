@@ -2,13 +2,24 @@ from __future__ import annotations
 
 import csv
 import json
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
+from typing import Any
+
+import requests
 
 from .base import VisitRecord
 
 
-def load_foursquare_export(base_path: str) -> list[VisitRecord]:
+def load_foursquare_export(
+    base_path: str,
+    *,
+    places_api_key: str | None = None,
+    cache_path: str | Path | None = None,
+    places_api_base_url: str = "https://api.foursquare.com/v3/places",
+    request_timeout_seconds: float = 30.0,
+) -> list[VisitRecord]:
     root = Path(base_path)
     visits: list[VisitRecord] = []
 
@@ -57,6 +68,19 @@ def load_foursquare_export(base_path: str) -> list[VisitRecord]:
                 )
             )
 
+    if not places_api_key:
+        return visits
+
+    cache_file = Path(cache_path) if cache_path else (root / ".foursquare_places_cache.json")
+    venue_cache = _load_cache(cache_file)
+    _enrich_with_places_api(
+        visits=visits,
+        places_api_key=places_api_key,
+        places_api_base_url=places_api_base_url,
+        request_timeout_seconds=request_timeout_seconds,
+        venue_cache=venue_cache,
+    )
+    _save_cache(cache_file, venue_cache)
     return visits
 
 
@@ -76,3 +100,103 @@ def _safe_float(value: str | float | int | None) -> float | None:
         return float(value)
     except ValueError:
         return None
+
+
+def _enrich_with_places_api(
+    visits: list[VisitRecord],
+    places_api_key: str,
+    places_api_base_url: str,
+    request_timeout_seconds: float,
+    venue_cache: dict[str, dict[str, Any]],
+) -> None:
+    for visit in visits:
+        if (visit.lat is not None and visit.lon is not None) or not visit.place_id:
+            continue
+
+        venue_id = visit.place_id
+        cached = venue_cache.get(venue_id)
+        if cached is None:
+            cached = _fetch_venue_location(
+                venue_id=venue_id,
+                places_api_key=places_api_key,
+                places_api_base_url=places_api_base_url,
+                request_timeout_seconds=request_timeout_seconds,
+            )
+            venue_cache[venue_id] = cached
+
+        if visit.lat is None:
+            visit.lat = _safe_float(cached.get("lat"))
+        if visit.lon is None:
+            visit.lon = _safe_float(cached.get("lon"))
+
+        if isinstance(visit.payload, dict):
+            visit.payload.setdefault("venue_location", {})
+            location = visit.payload["venue_location"]
+            if isinstance(location, dict):
+                location.update(cached)
+
+
+def _fetch_venue_location(
+    venue_id: str,
+    places_api_key: str,
+    places_api_base_url: str,
+    request_timeout_seconds: float,
+) -> dict[str, Any]:
+    url = f"{places_api_base_url.rstrip('/')}/{venue_id}"
+    headers = {
+        "Authorization": places_api_key,
+        "accept": "application/json",
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=request_timeout_seconds)
+        if not response.ok:
+            return {}
+        data = response.json()
+    except (requests.RequestException, ValueError):
+        return {}
+
+    geocodes = data.get("geocodes") if isinstance(data, Mapping) else None
+    main_geocode = geocodes.get("main") if isinstance(geocodes, Mapping) else None
+    location = data.get("location") if isinstance(data, Mapping) else None
+
+    lat = None
+    lon = None
+    if isinstance(main_geocode, Mapping):
+        lat = _safe_float(main_geocode.get("latitude"))
+        lon = _safe_float(main_geocode.get("longitude"))
+
+    if lat is None and isinstance(location, Mapping):
+        lat = _safe_float(location.get("lat") or location.get("latitude"))
+    if lon is None and isinstance(location, Mapping):
+        lon = _safe_float(location.get("lng") or location.get("lon") or location.get("longitude"))
+
+    result = {
+        "lat": lat,
+        "lon": lon,
+    }
+    if isinstance(location, Mapping):
+        result["address"] = location.get("address")
+        result["city"] = location.get("locality")
+        result["country"] = location.get("country")
+    return result
+
+
+def _load_cache(cache_path: Path) -> dict[str, dict[str, Any]]:
+    if not cache_path.exists():
+        return {}
+    try:
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    cache: dict[str, dict[str, Any]] = {}
+    for venue_id, location in data.items():
+        if isinstance(venue_id, str) and isinstance(location, dict):
+            cache[venue_id] = location
+    return cache
+
+
+def _save_cache(cache_path: Path, cache: dict[str, dict[str, Any]]) -> None:
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(cache, ensure_ascii=True, sort_keys=True, indent=2), encoding="utf-8")

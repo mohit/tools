@@ -14,6 +14,9 @@ sources:
   foursquare_export:
     enabled: true
     path: ./imports/foursquare
+    places_api_key_env: FOURSQUARE_PLACES_API_KEY
+    places_cache_path: ./data/foursquare_places_cache.json
+    places_api_base_url: https://api.foursquare.com/v3/places
 
   manual_csv:
     enabled: false

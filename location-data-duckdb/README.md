@@ -24,6 +24,8 @@ using OAuth token auth and API version pinning.
 
 > Note: legacy personal endpoints can vary by app/account access. Keep `foursquare_export` enabled as a safety fallback.
 
+If your Foursquare export check-ins only include venue IDs (no lat/lon), `foursquare_export` can enrich missing coordinates via the Foursquare Places API. Set `FOURSQUARE_PLACES_API_KEY` and configure `places_cache_path` so venue lookups are cached between runs.
+
 ---
 
 ## Feasibility by source (practical pathways)
