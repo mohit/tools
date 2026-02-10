@@ -7,6 +7,7 @@ A Python-based tool for exporting and analyzing Apple Health and Fitness data on
 - **Export Health Data** - Helper to trigger manual export from Health.app
 - **Parse XML Export** - Parse the exported XML into usable formats
 - **Convert to CSV** - Export health records and workouts to CSV
+- **Ingest Health Auto Export JSON** - Receive automated iOS exports via REST API
 - **Filter Data** - Filter by type, date range, or other criteria
 - **Summary Statistics** - Get overview of your health data
 
@@ -34,9 +35,13 @@ This will install the package in development mode with all dependencies.
 # Install development dependencies (optional, for testing)
 pip3 install pytest pytest-cov
 
-# The scripts use only Python standard library, so they work without installation
+# Runtime dependency for automated JSON -> parquet ingestion
+pip3 install duckdb
+
+# XML export/parser scripts use only Python standard library
 python3 health_export.py --help
 python3 health_parser.py --help
+python3 health_auto_export.py --help
 ```
 
 ### Option 3: Using Make
@@ -209,13 +214,47 @@ python3 health_parser.py export.xml export-workouts \
   --output running.csv
 ```
 
+### 5. Automate Incremental Sync with Health Auto Export
+
+Run the local ingestion API:
+
+```bash
+python3 health_auto_export.py serve \
+  --host 0.0.0.0 \
+  --port 8787 \
+  --raw-dir ~/datalake.me/raw/apple-health/health-auto-export \
+  --curated-dir ~/datalake.me/datalake/curated/apple-health
+```
+
+Configure the iOS Health Auto Export app:
+1. Destination: `REST API`
+2. URL: `http://<your-mac-ip>:8787/health-auto-export`
+3. Method: `POST`
+4. Header: `Content-Type: application/json`
+5. Optional auth header: `X-API-Key: <your-secret>` and set env var `HEALTH_AUTO_EXPORT_API_KEY=<your-secret>`
+6. Schedule: daily incremental export for selected data types (steps, heart rate, workouts, etc.)
+
+Verify liveness and local ingestion:
+
+```bash
+curl http://localhost:8787/health
+
+health-auto-export ingest-file \
+  --file sample_payload.json \
+  --raw-dir ~/datalake.me/raw/apple-health/health-auto-export \
+  --curated-dir ~/datalake.me/datalake/curated/apple-health
+```
+
+See `HEALTH_AUTO_EXPORT.md` for endpoint contract and payload notes.
+
 ## File Structure
 
 ```
 apple-health-export/
 ├── README.md                # This file
 ├── health_export.py         # Export and extraction utilities
-└── health_parser.py         # XML parsing and CSV export
+├── health_parser.py         # XML parsing and CSV export
+└── health_auto_export.py    # REST ingestion for Health Auto Export app
 ```
 
 ## How It Works
