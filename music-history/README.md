@@ -1,55 +1,90 @@
-# Last.fm Data Ingestion
+# Music History Ingestion
 
-This project ingests Last.fm scrobble data, processes it, and stores it in Parquet format.
+This tool ingests music listening data (Last.fm + Apple Music), processes it, and stores it in parquet.
 
 ## Setup
 
-1.  **Environment Variables:**
-    Set the following environment variables:
-    *   `LASTFM_USER`: Your Last.fm username.
-    *   `LASTFM_API_KEY`: Your Last.fm API key. You can get one [here](https://www.last.fm/api/account/create).
-    *   `DATALAKE_RAW_ROOT`: (Optional) The root directory for raw data. Defaults to `/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports`.
-    *   `DATALAKE_CURATED_ROOT`: (Optional) The root directory for curated data. Defaults to `/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated`.
+1. Environment variables:
+- `LASTFM_USER`: Last.fm username.
+- `LASTFM_API_KEY`: Last.fm API key.
+- `DATALAKE_RAW_ROOT` (optional): defaults to `/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports`.
+- `DATALAKE_CURATED_ROOT` (optional): defaults to `/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated`.
 
-    Example (add to your `.bashrc`, `.zshrc`, or similar):
-    ```bash
-    export LASTFM_USER="your_username"
-    export LASTFM_API_KEY="your_api_key"
-    export DATALAKE_RAW_ROOT="/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports"
-    export DATALAKE_CURATED_ROOT="/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated"
-    ```
+2. Install dependencies:
 
-2.  **Create Directories:**
-    Ensure the necessary directories exist. You can use the following commands:
-    ```bash
-    ICLOUD="/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs"
-    RAW_ROOT="$ICLOUD/Data Exports"
-    DATALAKE_ROOT="$ICLOUD/Data Exports/datalake"
-    CURATED_ROOT="$DATALAKE_ROOT/curated"
-    CATALOG_ROOT="$DATALAKE_ROOT/catalog"
-    CODE_ROOT="/Users/mohit/Documents/code/datalake.me" # This project's root
+```bash
+uv sync
+```
 
-    mkdir -p "$CURATED_ROOT/lastfm/scrobbles" \
-             "$RAW_ROOT/lastfm" \
-             "$CATALOG_ROOT"
-    ```
+## Last.fm usage
 
-3.  **Install Dependencies:**
-    This project uses `uv` for dependency management. Run the following command to install dependencies:
-    ```bash
-    uv sync
-    ```
-
-## Usage
-
-Run the `main.py` script to fetch and process Last.fm scrobbles:
 ```bash
 python main.py
 ```
 
-## Example Query
+## Apple Music usage
 
-Once data is processed into Parquet files, you can query it using tools like DuckDB:
+MusicKit does not provide full historical listening history. Use the hybrid flow:
+- Quarterly: privacy.apple.com export (full history)
+- Daily/optional: MusicKit recent played snapshot (max ~50 tracks)
+
+### 1. Manual export helper (privacy.apple.com)
+
+Open privacy portal and request/export data:
+
+```bash
+python apple_music_export_helper.py --open-browser
+```
+
+After Apple sends the zip, extract `Play Activity` CSV into raw folder:
+
+```bash
+python apple_music_export_helper.py --extract
+# or specify zip
+python apple_music_export_helper.py --extract --zip-file ~/Downloads/privacy-export.zip
+```
+
+Default raw destination:
+- `~/datalake.me/raw/apple-music/<YYYYMMDD>/...Play Activity...csv`
+
+### 2. Process CSV to curated parquet
+
+```bash
+python apple_music_processor.py
+```
+
+Optional explicit paths:
+
+```bash
+python apple_music_processor.py \
+  --csv-file ~/datalake.me/raw/apple-music/20260210/Apple_Music_Play_Activity.csv \
+  --curated-root ~/datalake.me/curated/apple-music/play-activity
+```
+
+### 3. Freshness monitoring
+
+```bash
+python apple_music_monitor.py --json
+```
+
+Exit codes:
+- `0`: fresh
+- `1`: warning (default >= 30 days stale)
+- `2`: critical (default >= 90 days stale)
+
+### 4. Optional MusicKit supplement (recent played only)
+
+```bash
+python apple_music_musickit_sync.py \
+  --developer-token "$APPLE_MUSIC_DEVELOPER_TOKEN" \
+  --user-token "$APPLE_MUSIC_USER_TOKEN"
+```
+
+This stores a raw JSON snapshot plus curated parquet at:
+- `~/datalake.me/raw/apple-music/musickit/`
+- `~/datalake.me/curated/apple-music/recent-played/`
+
+## Example query
 
 ```sql
 SELECT artist, COUNT(*) plays
