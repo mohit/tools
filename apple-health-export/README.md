@@ -7,6 +7,8 @@ A Python-based tool for exporting and analyzing Apple Health and Fitness data on
 - **Export Health Data** - Helper to trigger manual export from Health.app
 - **Parse XML Export** - Parse the exported XML into usable formats
 - **Convert to CSV** - Export health records and workouts to CSV
+- **Automated REST Ingestion** - Receive Health Auto Export payloads on a local endpoint
+- **Curated Parquet Output** - Merge and deduplicate incremental payloads into parquet
 - **Filter Data** - Filter by type, date range, or other criteria
 - **Summary Statistics** - Get overview of your health data
 
@@ -209,6 +211,39 @@ python3 health_parser.py export.xml export-workouts \
   --output running.csv
 ```
 
+### 5. Run Automated Ingestion with Health Auto Export
+
+Use this when you want daily incremental ingestion without manual Health.app exports.
+
+```bash
+# Set an API token used by Health Auto Export
+export HEALTH_AUTO_EXPORT_TOKEN="replace-with-strong-token"
+
+# Run local ingestion server
+python3 health_auto_export.py serve \
+  --host 0.0.0.0 \
+  --port 8080 \
+  --raw-dir "$HOME/Library/Mobile Documents/com~apple~CloudDocs/datalake.me/raw/apple-health" \
+  --curated-dir "$HOME/Library/Mobile Documents/com~apple~CloudDocs/datalake.me/curated/apple-health"
+```
+
+Health Auto Export app configuration:
+1. `Destination`: REST API
+2. `URL`: `http://<your-mac-ip>:8080/health-auto-export/v1/ingest`
+3. `Method`: `POST`
+4. `Header`: `Authorization: Bearer <HEALTH_AUTO_EXPORT_TOKEN>`
+5. `Payload`: include records and/or workouts as JSON objects
+
+The server writes:
+- Immutable raw payload archive to `.../raw/apple-health/health-auto-export/YYYY/MM/DD/*.json`
+- Curated deduplicated parquet to `.../curated/apple-health/health_records.parquet` and `.../curated/apple-health/workouts.parquet`
+
+You can also test ingestion without running the server:
+
+```bash
+python3 health_auto_export.py ingest-file sample_payload.json
+```
+
 ## File Structure
 
 ```
@@ -301,6 +336,11 @@ python3 health_parser.py $EXPORT_XML export-records \
   --end-date $TODAY \
   --output "steps_week_${TODAY}.csv"
 ```
+
+For a hybrid workflow:
+- Daily: Health Auto Export REST sync for incremental data.
+- Quarterly: Manual full `export.zip` from Health.app as a recovery path.
+- Reconcile by re-running XML parse and comparing parquet totals.
 
 ## Troubleshooting
 

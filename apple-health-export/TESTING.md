@@ -2,7 +2,7 @@
 
 ## Test Coverage
 
-The Apple Health Export tool includes comprehensive test coverage with 48 unit tests covering all major functionality.
+The Apple Health Export tool includes comprehensive test coverage with 53 unit tests covering all major functionality.
 
 ## Test Suite Overview
 
@@ -10,7 +10,8 @@ The Apple Health Export tool includes comprehensive test coverage with 48 unit t
 
 1. **`tests/test_health_export.py`** - Tests for `health_export.py`
 2. **`tests/test_health_parser.py`** - Tests for `health_parser.py`
-3. **`tests/fixtures/sample_export.xml`** - Sample Apple Health export data
+3. **`tests/test_health_auto_export.py`** - Tests for `health_auto_export.py`
+4. **`tests/fixtures/sample_export.xml`** - Sample Apple Health export data
 
 ### Running Tests
 
@@ -106,6 +107,14 @@ make test-cov      # Run with coverage report
 29. **`test_cli_with_date_filters`** - Test date range filtering
 30. **`test_cli_invalid_xml_file`** - Handle invalid file paths
 
+### health_auto_export.py Tests (5 tests)
+
+1. **`test_ingest_payload_writes_raw_and_parquet`** - Raw archive + parquet creation
+2. **`test_ingest_payload_deduplicates_repeated_batches`** - Dedup by deterministic hash
+3. **`test_ingest_payload_rejects_invalid_record`** - Required field validation
+4. **`test_ingest_endpoint_requires_token`** - API auth enforcement
+5. **`test_ingest_endpoint_accepts_bearer_token`** - Authorized ingest via bearer token
+
 ## Test Fixtures
 
 ### Sample Export Data
@@ -131,7 +140,7 @@ The test suite uses `tests/fixtures/sample_export.xml` which contains:
 ## Test Results
 
 ```
-Ran 48 tests in 0.068s
+Ran 53 tests
 
 OK
 ```
