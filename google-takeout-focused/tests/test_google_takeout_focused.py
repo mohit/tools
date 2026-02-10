@@ -153,3 +153,64 @@ def test_process_writes_parquet_outputs(tmp_path: Path) -> None:
 
     assert len(search_files) == 1
     assert len(music_files) == 1
+
+
+def test_event_ids_are_stable_across_different_input_roots(tmp_path: Path) -> None:
+    inner_takeout = tmp_path / "nested" / "Takeout"
+
+    _write_json(
+        inner_takeout / "Location History (Timeline)" / "Records.json",
+        {
+            "locations": [
+                {
+                    "timestampMs": "1700000000000",
+                    "latitudeE7": 377700000,
+                    "longitudeE7": -1224200000,
+                }
+            ]
+        },
+    )
+
+    _write_json(
+        inner_takeout
+        / "Location History (Timeline)"
+        / "Semantic Location History"
+        / "2024"
+        / "2024_JANUARY.json",
+        {
+            "timelineObjects": [
+                {
+                    "placeVisit": {
+                        "location": {"name": "Coffee Shop", "latitudeE7": 377710000, "longitudeE7": -1224300000},
+                        "duration": {
+                            "startTimestamp": "2024-01-10T10:00:00.000Z",
+                            "endTimestamp": "2024-01-10T11:00:00.000Z",
+                        },
+                    }
+                }
+            ]
+        },
+    )
+
+    _write_json(
+        inner_takeout / "My Activity" / "YouTube and YouTube Music" / "MyActivity.json",
+        [
+            {
+                "header": "YouTube Music",
+                "title": "Listened to Song C",
+                "titleUrl": "https://music.youtube.com/watch?v=42",
+                "time": "2024-01-03T04:05:06.000Z",
+            }
+        ],
+    )
+
+    docs_from_takeout = _load_json_documents(inner_takeout)
+    visits_takeout, _ = _extract_location_rows(docs_from_takeout)
+    music_takeout = _extract_music_rows(docs_from_takeout)
+
+    docs_from_parent = _load_json_documents(tmp_path / "nested")
+    visits_parent, _ = _extract_location_rows(docs_from_parent)
+    music_parent = _extract_music_rows(docs_from_parent)
+
+    assert {row["event_id"] for row in visits_takeout} == {row["event_id"] for row in visits_parent}
+    assert {row["event_id"] for row in music_takeout} == {row["event_id"] for row in music_parent}

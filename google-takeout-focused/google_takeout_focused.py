@@ -45,6 +45,12 @@ def _e7(value: int | None) -> float | None:
     return value / 1e7
 
 
+def _stable_id(prefix: str, payload: Any) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+    return f"{prefix}-{digest}"
+
+
 def _load_json_documents(source: Path) -> list[JsonDocument]:
     docs: list[JsonDocument] = []
     if source.is_dir():
@@ -80,10 +86,10 @@ def _extract_location_rows(docs: Iterable[JsonDocument]) -> tuple[list[dict[str,
         payload = doc.payload
 
         if "Location History" in path and path.endswith("Records.json") and isinstance(payload, dict):
-            for idx, item in enumerate(payload.get("locations", [])):
+            for item in payload.get("locations", []):
                 visits.append(
                     {
-                        "event_id": f"record-{item.get('timestampMs', 'unknown')}-{idx}",
+                        "event_id": _stable_id("record", item),
                         "source_type": "record",
                         "event_ts": _parse_ts_millis(item.get("timestampMs")),
                         "start_ts": None,
@@ -100,14 +106,14 @@ def _extract_location_rows(docs: Iterable[JsonDocument]) -> tuple[list[dict[str,
 
         if "Semantic Location History" in path and isinstance(payload, dict):
             timeline_objects = payload.get("timelineObjects", [])
-            for idx, timeline_object in enumerate(timeline_objects):
+            for timeline_object in timeline_objects:
                 place_visit = timeline_object.get("placeVisit")
                 if place_visit:
                     duration = place_visit.get("duration", {})
                     location = place_visit.get("location", {})
                     visits.append(
                         {
-                            "event_id": f"visit-{duration.get('startTimestamp', 'unknown')}-{idx}",
+                            "event_id": _stable_id("visit", place_visit),
                             "source_type": "place_visit",
                             "event_ts": _parse_iso(duration.get("startTimestamp")),
                             "start_ts": _parse_iso(duration.get("startTimestamp")),
@@ -129,7 +135,7 @@ def _extract_location_rows(docs: Iterable[JsonDocument]) -> tuple[list[dict[str,
                     end_loc = activity_segment.get("endLocation", {})
                     routes.append(
                         {
-                            "route_id": f"route-{duration.get('startTimestamp', 'unknown')}-{idx}",
+                            "route_id": _stable_id("route", activity_segment),
                             "event_ts": _parse_iso(duration.get("startTimestamp")),
                             "start_ts": _parse_iso(duration.get("startTimestamp")),
                             "end_ts": _parse_iso(duration.get("endTimestamp")),
@@ -166,11 +172,11 @@ def _extract_search_rows(docs: Iterable[JsonDocument]) -> list[dict[str, Any]]:
         if not isinstance(payload, list):
             continue
 
-        for idx, item in enumerate(payload):
+        for item in payload:
             title = item.get("title")
             rows.append(
                 {
-                    "search_id": f"search-{item.get('time', 'unknown')}-{idx}",
+                    "search_id": _stable_id("search", item),
                     "event_ts": _parse_iso(item.get("time")),
                     "query": _extract_search_query(title),
                     "title": title,
@@ -211,12 +217,12 @@ def _extract_music_rows(docs: Iterable[JsonDocument]) -> list[dict[str, Any]]:
         if not isinstance(payload, list):
             continue
 
-        for idx, item in enumerate(payload):
+        for item in payload:
             if not isinstance(item, dict) or not _is_youtube_music_event(item):
                 continue
             rows.append(
                 {
-                    "event_id": f"ytm-{item.get('time', 'unknown')}-{idx}",
+                    "event_id": _stable_id("ytm", item),
                     "event_ts": _parse_iso(item.get("time")),
                     "title": item.get("title"),
                     "title_url": item.get("titleUrl"),
