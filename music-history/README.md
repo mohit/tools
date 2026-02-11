@@ -47,6 +47,25 @@ Run the `main.py` script to fetch and process Last.fm scrobbles:
 python main.py
 ```
 
+## Apple Music Privacy Export Freshness Check
+
+If you're ingesting Apple Music privacy export data from:
+`~/datalake.me/raw/apple-music/Apple Music - Track Play History.csv`,
+run the freshness validator before ingestion:
+
+```bash
+python check_apple_music_privacy_export.py
+```
+
+Useful flags:
+
+```bash
+python check_apple_music_privacy_export.py --csv-path "~/datalake.me/raw/apple-music/Apple Music - Track Play History.csv" --max-age-days 45
+```
+
+When stale, the checker exits non-zero and tells you to request a new export from `privacy.apple.com`:
+`Data & Privacy > Get a copy of your data > Apple Media Services information`.
+
 ## Example Query
 
 Once data is processed into Parquet files, you can query it using tools like DuckDB:
