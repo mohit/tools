@@ -1,0 +1,23 @@
+sources:
+  google-calendar:
+    enabled: true
+    kind: raw-json-snapshots
+    cadence: weekly
+    script: scripts/gcal_backup.py
+    raw_root: ~/datalake.me/raw/google-calendar
+    calendars:
+      - name: mohit.ed@gmail.com
+        calendar_id: primary
+        access_role_required: owner_or_writer
+      - name: Burp
+        calendar_id: 59su84rs0gglunof4pp3dlb4p8@group.calendar.google.com
+        access_role_required: owner_or_writer
+      - name: Family
+        calendar_id: family13862746254541864797@group.calendar.google.com
+        access_role_required: owner_or_writer
+      - name: Tarzan
+        calendar_id: bhb2sf2i6f9cdv8bnv46roov60@group.calendar.google.com
+        access_role_required: owner_or_writer
+      - name: Work-ish
+        calendar_id: dqrf1vd22nvspd6jbpdrt0bikg@group.calendar.google.com
+        access_role_required: owner_or_writer
