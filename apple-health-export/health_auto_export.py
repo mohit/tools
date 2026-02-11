@@ -208,6 +208,13 @@ def _merge_parquet(
     return int(total)
 
 
+def _count_parquet_rows(con: duckdb.DuckDBPyConnection, parquet_file: Path) -> int:
+    if not parquet_file.exists():
+        return 0
+    total = con.execute("SELECT COUNT(*) FROM read_parquet(?)", [str(parquet_file)]).fetchone()[0]
+    return int(total)
+
+
 def ingest_payload(payload: Any, raw_root: Path, curated_root: Path) -> Dict[str, Any]:
     raw_root = Path(raw_root)
     curated_root = Path(curated_root)
@@ -243,6 +250,9 @@ def ingest_payload(payload: Any, raw_root: Path, curated_root: Path) -> Dict[str
     workout_count_after_merge = 0
 
     db_path = curated_root / "_health_auto_export.duckdb"
+    records_parquet = curated_root / "health_records.parquet"
+    workouts_parquet = curated_root / "workouts.parquet"
+
     with duckdb.connect(str(db_path)) as con:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -250,7 +260,6 @@ def ingest_payload(payload: Any, raw_root: Path, curated_root: Path) -> Dict[str
             if records:
                 records_ndjson = tmp_path / "records.ndjson"
                 _write_ndjson(records_ndjson, records)
-                records_parquet = curated_root / "health_records.parquet"
                 record_count_after_merge = _merge_parquet(
                     con,
                     records_ndjson,
@@ -279,7 +288,6 @@ def ingest_payload(payload: Any, raw_root: Path, curated_root: Path) -> Dict[str
             if workouts:
                 workouts_ndjson = tmp_path / "workouts.ndjson"
                 _write_ndjson(workouts_ndjson, workouts)
-                workouts_parquet = curated_root / "workouts.parquet"
                 workout_count_after_merge = _merge_parquet(
                     con,
                     workouts_ndjson,
@@ -306,6 +314,11 @@ def ingest_payload(payload: Any, raw_root: Path, curated_root: Path) -> Dict[str
                         FROM read_ndjson_auto(?)
                     """,
                 )
+
+            if not records:
+                record_count_after_merge = _count_parquet_rows(con, records_parquet)
+            if not workouts:
+                workout_count_after_merge = _count_parquet_rows(con, workouts_parquet)
 
     return {
         "batch_id": batch_id,

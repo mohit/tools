@@ -120,6 +120,36 @@ class TestHealthAutoExportIngest(unittest.TestCase):
                 curated_root=self.curated_dir,
             )
 
+    def test_ingest_payload_reports_existing_totals_for_missing_entity_type(self):
+        health_auto_export.ingest_payload(
+            self.sample_payload,
+            raw_root=self.raw_dir,
+            curated_root=self.curated_dir,
+        )
+
+        records_only_payload = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": "3000",
+                    "startDate": "2026-02-11T09:00:00Z",
+                    "endDate": "2026-02-11T09:15:00Z",
+                }
+            ]
+        }
+        result = health_auto_export.ingest_payload(
+            records_only_payload,
+            raw_root=self.raw_dir,
+            curated_root=self.curated_dir,
+        )
+
+        self.assertEqual(result["records_received"], 1)
+        self.assertEqual(result["workouts_received"], 0)
+        self.assertEqual(result["health_records_total"], 2)
+        self.assertEqual(result["workouts_total"], 1)
+
 
 class TestHealthAutoExportAPI(unittest.TestCase):
     """Test Flask API endpoint behavior."""
@@ -170,6 +200,46 @@ class TestHealthAutoExportAPI(unittest.TestCase):
         data = response.get_json()
         self.assertEqual(data["records_received"], 1)
         self.assertEqual(data["workouts_received"], 0)
+
+    def test_ingest_endpoint_accepts_x_api_key(self):
+        payload = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "startDate": "2026-02-10T08:00:00Z",
+                    "endDate": "2026-02-10T08:05:00Z",
+                    "value": "650",
+                    "unit": "count",
+                }
+            ]
+        }
+        response = self.client.post(
+            "/health-auto-export/v1/ingest",
+            data=json.dumps(payload),
+            content_type="application/json",
+            headers={"X-API-Key": "secret-token"},
+        )
+
+        self.assertEqual(response.status_code, 202)
+        data = response.get_json()
+        self.assertEqual(data["records_received"], 1)
+
+    def test_ingest_endpoint_rejects_invalid_json(self):
+        response = self.client.post(
+            "/health-auto-export/v1/ingest",
+            data="not-json",
+            content_type="application/json",
+            headers={"Authorization": "Bearer secret-token"},
+        )
+        self.assertEqual(response.status_code, 400)
+        data = response.get_json()
+        self.assertEqual(data["error"], "Invalid JSON payload")
+
+    def test_healthcheck_endpoint(self):
+        response = self.client.get("/health-auto-export/v1/health")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["status"], "ok")
 
 
 if __name__ == "__main__":

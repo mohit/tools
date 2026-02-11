@@ -2,7 +2,7 @@
 
 ## Test Coverage
 
-The Apple Health Export tool includes comprehensive test coverage with 53 unit tests covering all major functionality.
+The Apple Health Export tool includes comprehensive test coverage with 57 unit tests covering all major functionality.
 
 ## Test Suite Overview
 
@@ -107,13 +107,17 @@ make test-cov      # Run with coverage report
 29. **`test_cli_with_date_filters`** - Test date range filtering
 30. **`test_cli_invalid_xml_file`** - Handle invalid file paths
 
-### health_auto_export.py Tests (5 tests)
+### health_auto_export.py Tests (9 tests)
 
 1. **`test_ingest_payload_writes_raw_and_parquet`** - Raw archive + parquet creation
 2. **`test_ingest_payload_deduplicates_repeated_batches`** - Dedup by deterministic hash
 3. **`test_ingest_payload_rejects_invalid_record`** - Required field validation
-4. **`test_ingest_endpoint_requires_token`** - API auth enforcement
-5. **`test_ingest_endpoint_accepts_bearer_token`** - Authorized ingest via bearer token
+4. **`test_ingest_payload_reports_existing_totals_for_missing_entity_type`** - Preserve totals for absent entity type in partial batches
+5. **`test_ingest_endpoint_requires_token`** - API auth enforcement
+6. **`test_ingest_endpoint_accepts_bearer_token`** - Authorized ingest via bearer token
+7. **`test_ingest_endpoint_accepts_x_api_key`** - Authorized ingest via API key header
+8. **`test_ingest_endpoint_rejects_invalid_json`** - Input validation for malformed JSON payloads
+9. **`test_healthcheck_endpoint`** - Health endpoint contract
 
 ## Test Fixtures
 
@@ -140,7 +144,7 @@ The test suite uses `tests/fixtures/sample_export.xml` which contains:
 ## Test Results
 
 ```
-Ran 53 tests
+Ran 57 tests
 
 OK
 ```

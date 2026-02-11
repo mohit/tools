@@ -33,12 +33,16 @@ This will install the package in development mode with all dependencies.
 ### Option 2: Manual Setup
 
 ```bash
+# Install runtime dependencies
+pip3 install duckdb flask
+
 # Install development dependencies (optional, for testing)
 pip3 install pytest pytest-cov
 
-# The scripts use only Python standard library, so they work without installation
+# Verify commands
 python3 health_export.py --help
 python3 health_parser.py --help
+python3 health_auto_export.py --help
 ```
 
 ### Option 3: Using Make
@@ -72,7 +76,7 @@ pytest --cov
 make test
 ```
 
-All 48 tests should pass on macOS and Linux (though export triggering only works on macOS).
+All tests should pass on macOS and Linux (though export triggering only works on macOS).
 
 ## Quick Start
 
@@ -250,7 +254,8 @@ python3 health_auto_export.py ingest-file sample_payload.json
 apple-health-export/
 ├── README.md                # This file
 ├── health_export.py         # Export and extraction utilities
-└── health_parser.py         # XML parsing and CSV export
+├── health_parser.py         # XML parsing and CSV export
+└── health_auto_export.py    # Health Auto Export REST ingestion + parquet merge
 ```
 
 ## How It Works
