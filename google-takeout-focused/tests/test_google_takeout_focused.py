@@ -8,6 +8,7 @@ from google_takeout_focused import (
     _extract_music_rows,
     _extract_search_rows,
     _load_json_documents,
+    _print_guide,
     _process_one_takeout,
 )
 
@@ -214,3 +215,41 @@ def test_event_ids_are_stable_across_different_input_roots(tmp_path: Path) -> No
 
     assert {row["event_id"] for row in visits_takeout} == {row["event_id"] for row in visits_parent}
     assert {row["event_id"] for row in music_takeout} == {row["event_id"] for row in music_parent}
+
+
+def test_ignores_non_scope_exports(tmp_path: Path) -> None:
+    takeout_root = tmp_path / "Takeout"
+
+    _write_json(
+        takeout_root / "Mail" / "All mail Including Spam and Trash.mbox.json",
+        [{"subject": "hello from gmail"}],
+    )
+    _write_json(
+        takeout_root / "Chrome" / "BrowserHistory.json",
+        [{"title": "Some visited website"}],
+    )
+    _write_json(
+        takeout_root / "Drive" / "metadata.json",
+        [{"name": "document"}],
+    )
+
+    docs = _load_json_documents(takeout_root)
+    location_visits, location_routes = _extract_location_rows(docs)
+    searches = _extract_search_rows(docs)
+    music = _extract_music_rows(docs)
+
+    assert len(location_visits) == 0
+    assert len(location_routes) == 0
+    assert len(searches) == 0
+    assert len(music) == 0
+
+
+def test_guide_mentions_scope_and_exclusions(capsys) -> None:
+    _print_guide()
+    output = capsys.readouterr().out
+
+    assert "Location History (Timeline)" in output
+    assert "Search" in output
+    assert "YouTube and YouTube Music" in output
+    assert "Workspace products disabled" in output
+    assert "Chrome data disabled" in output

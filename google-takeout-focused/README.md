@@ -6,7 +6,11 @@ Focused Google Takeout ingestion for issue #22, scoped to exactly:
 - Search History (`My Activity/Search`)
 - YouTube Music History (`My Activity/YouTube and YouTube Music`, filtered to music activity)
 
-This tool intentionally ignores Workspace and other Google products.
+## Not in scope
+
+- Workspace data (Gmail, Drive, Docs, Photos, Videos)
+- Chrome browsing history
+- Other Google services outside the three datasets above
 
 ## Why this approach
 

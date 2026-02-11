@@ -436,8 +436,9 @@ def _print_guide() -> None:
     print("   - Search")
     print("   - YouTube and YouTube Music")
     print("4. Keep all Workspace products disabled (Gmail, Drive, Docs, Photos, Videos).")
-    print("5. Export as .zip and drop into your ingest folder.")
-    print("6. Run: google-takeout-focused sync --takeout-dir <folder>")
+    print("5. Keep Chrome data disabled (Chrome, Browser History).")
+    print("6. Export as .zip and drop into your ingest folder.")
+    print("7. Run: google-takeout-focused sync --takeout-dir <folder>")
 
 
 def _build_parser() -> argparse.ArgumentParser:
