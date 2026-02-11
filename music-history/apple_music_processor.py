@@ -1,5 +1,6 @@
 import argparse
 import csv
+import os
 import shutil
 import time
 from pathlib import Path
@@ -7,8 +8,20 @@ from pathlib import Path
 import duckdb
 
 
-DEFAULT_RAW_ROOT = Path.home() / "datalake.me" / "raw" / "apple-music"
-DEFAULT_CURATED_ROOT = Path.home() / "datalake.me" / "curated" / "apple-music" / "play-activity"
+DEFAULT_RAW_BASE = Path(
+    os.environ.get(
+        "DATALAKE_RAW_ROOT",
+        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports",
+    )
+)
+DEFAULT_CURATED_BASE = Path(
+    os.environ.get(
+        "DATALAKE_CURATED_ROOT",
+        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated",
+    )
+)
+DEFAULT_RAW_ROOT = DEFAULT_RAW_BASE / "apple-music"
+DEFAULT_CURATED_ROOT = DEFAULT_CURATED_BASE / "apple-music" / "play-activity"
 
 
 TRACK_COLUMNS = [

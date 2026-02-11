@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 import webbrowser
 import zipfile
@@ -6,7 +7,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 
-DEFAULT_RAW_ROOT = Path.home() / "datalake.me" / "raw" / "apple-music"
+DEFAULT_RAW_BASE = Path(
+    os.environ.get(
+        "DATALAKE_RAW_ROOT",
+        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports",
+    )
+)
+DEFAULT_RAW_ROOT = DEFAULT_RAW_BASE / "apple-music"
 DEFAULT_DOWNLOADS = Path.home() / "Downloads"
 PRIVACY_EXPORT_URL = "https://privacy.apple.com/account"
 

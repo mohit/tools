@@ -9,6 +9,8 @@ This tool ingests music listening data (Last.fm + Apple Music), processes it, an
 - `LASTFM_API_KEY`: Last.fm API key.
 - `DATALAKE_RAW_ROOT` (optional): defaults to `/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports`.
 - `DATALAKE_CURATED_ROOT` (optional): defaults to `/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated`.
+- `APPLE_MUSIC_DEVELOPER_TOKEN` (optional): MusicKit developer token for recent-played snapshots.
+- `APPLE_MUSIC_USER_TOKEN` (optional): MusicKit user token for recent-played snapshots.
 
 2. Install dependencies:
 
@@ -27,6 +29,17 @@ python main.py
 MusicKit does not provide full historical listening history. Use the hybrid flow:
 - Quarterly: privacy.apple.com export (full history)
 - Daily/optional: MusicKit recent played snapshot (max ~50 tracks)
+
+### 0. One-command sync (recommended for automation)
+
+```bash
+python apple_music_sync.py --json
+```
+
+Behavior:
+- Processes latest Play Activity CSV into curated parquet when available.
+- Returns freshness exit codes (`0` fresh, `1` warning, `2` critical/missing).
+- Automatically runs MusicKit supplemental sync when token env vars are set.
 
 ### 1. Manual export helper (privacy.apple.com)
 
@@ -73,6 +86,12 @@ Exit codes:
 - `2`: critical (default >= 90 days stale)
 
 ### 4. Optional MusicKit supplement (recent played only)
+
+```bash
+python apple_music_musickit_sync.py
+```
+
+Or pass tokens directly:
 
 ```bash
 python apple_music_musickit_sync.py \

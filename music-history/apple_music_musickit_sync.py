@@ -1,13 +1,26 @@
 import argparse
 import json
+import os
 import time
 from pathlib import Path
 
 import duckdb
 
 
-DEFAULT_RAW_ROOT = Path.home() / "datalake.me" / "raw" / "apple-music" / "musickit"
-DEFAULT_CURATED_ROOT = Path.home() / "datalake.me" / "curated" / "apple-music" / "recent-played"
+DEFAULT_RAW_BASE = Path(
+    os.environ.get(
+        "DATALAKE_RAW_ROOT",
+        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports",
+    )
+)
+DEFAULT_CURATED_BASE = Path(
+    os.environ.get(
+        "DATALAKE_CURATED_ROOT",
+        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated",
+    )
+)
+DEFAULT_RAW_ROOT = DEFAULT_RAW_BASE / "apple-music" / "musickit"
+DEFAULT_CURATED_ROOT = DEFAULT_CURATED_BASE / "apple-music" / "recent-played"
 BASE_URL = "https://api.music.apple.com/v1/me/recent/played/tracks"
 MAX_PAGES = 5
 PAGE_LIMIT = 10
@@ -166,8 +179,8 @@ def parse_args() -> argparse.Namespace:
             "This does not provide full Apple Music listening history."
         )
     )
-    parser.add_argument("--developer-token", required=True)
-    parser.add_argument("--user-token", required=True)
+    parser.add_argument("--developer-token", default=os.environ.get("APPLE_MUSIC_DEVELOPER_TOKEN"))
+    parser.add_argument("--user-token", default=os.environ.get("APPLE_MUSIC_USER_TOKEN"))
     parser.add_argument("--raw-root", type=Path, default=Path(str(DEFAULT_RAW_ROOT)))
     parser.add_argument("--curated-root", type=Path, default=Path(str(DEFAULT_CURATED_ROOT)))
     return parser.parse_args()
@@ -175,6 +188,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if not args.developer_token or not args.user_token:
+        raise SystemExit(
+            "Missing MusicKit tokens. Set --developer-token/--user-token or "
+            "APPLE_MUSIC_DEVELOPER_TOKEN/APPLE_MUSIC_USER_TOKEN."
+        )
 
     payload = fetch_recent_tracks(
         developer_token=args.developer_token,
