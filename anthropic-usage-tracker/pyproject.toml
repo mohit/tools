@@ -1,0 +1,12 @@
+[project]
+name = "anthropic-usage-tracker"
+version = "0.1.0"
+description = "Track Anthropic API token usage and estimated costs into a local datalake"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "duckdb>=1.1.0",
+]
+
+[project.scripts]
+anthropic-usage-track = "anthropic_usage_tracker:main"
