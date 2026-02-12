@@ -418,6 +418,54 @@ def print_summary(snapshot_day: date, usage_rows: list[UsageRow], api_total_cost
         print(f"  - {model}: in={info['input']} out={info['output']} est_usd={est}")
 
 
+def build_model_parquet_rows(snapshot_day: date, usage_rows: list[UsageRow]) -> list[dict[str, Any]]:
+    model_rollup: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {
+            "snapshot_date": snapshot_day.isoformat(),
+            "model": "",
+            "model_family": "other",
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "estimated_cost_usd": Decimal("0"),
+            "api_reported_cost_usd": None,
+            "ingested_at": datetime.now(UTC).isoformat(),
+        }
+    )
+
+    for row in usage_rows:
+        r = model_rollup[row.model]
+        r["model"] = row.model
+        r["model_family"] = row.model_family
+        r["input_tokens"] += row.input_tokens
+        r["output_tokens"] += row.output_tokens
+        r["cache_creation_input_tokens"] += row.cache_creation_input_tokens
+        r["cache_read_input_tokens"] += row.cache_read_input_tokens
+        r["estimated_cost_usd"] = Decimal(r["estimated_cost_usd"]) + row.estimated_cost_usd
+        if row.api_reported_cost_usd is not None:
+            current_api_cost = r["api_reported_cost_usd"]
+            if current_api_cost is None:
+                r["api_reported_cost_usd"] = row.api_reported_cost_usd
+            else:
+                r["api_reported_cost_usd"] = Decimal(current_api_cost) + row.api_reported_cost_usd
+
+    model_parquet_rows = []
+    for info in model_rollup.values():
+        api_reported_cost_usd = info["api_reported_cost_usd"]
+        model_parquet_rows.append(
+            {
+                **info,
+                "estimated_cost_usd": float(Decimal(info["estimated_cost_usd"])),
+                "api_reported_cost_usd": (
+                    float(Decimal(api_reported_cost_usd)) if api_reported_cost_usd is not None else None
+                ),
+            }
+        )
+
+    return model_parquet_rows
+
+
 def main() -> None:
     args = parse_args()
     snapshot_day = parse_snapshot_date(args.date)
@@ -518,42 +566,7 @@ def main() -> None:
         for row in usage_rows
     ]
 
-    model_rollup: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {
-            "snapshot_date": snapshot_day.isoformat(),
-            "model": "",
-            "model_family": "other",
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "cache_read_input_tokens": 0,
-            "estimated_cost_usd": Decimal("0"),
-            "api_reported_cost_usd": Decimal("0"),
-            "ingested_at": datetime.now(UTC).isoformat(),
-        }
-    )
-
-    for row in usage_rows:
-        r = model_rollup[row.model]
-        r["model"] = row.model
-        r["model_family"] = row.model_family
-        r["input_tokens"] += row.input_tokens
-        r["output_tokens"] += row.output_tokens
-        r["cache_creation_input_tokens"] += row.cache_creation_input_tokens
-        r["cache_read_input_tokens"] += row.cache_read_input_tokens
-        r["estimated_cost_usd"] = Decimal(r["estimated_cost_usd"]) + row.estimated_cost_usd
-        if row.api_reported_cost_usd is not None:
-            r["api_reported_cost_usd"] = Decimal(r["api_reported_cost_usd"]) + row.api_reported_cost_usd
-
-    model_parquet_rows = []
-    for info in model_rollup.values():
-        model_parquet_rows.append(
-            {
-                **info,
-                "estimated_cost_usd": float(Decimal(info["estimated_cost_usd"])),
-                "api_reported_cost_usd": float(Decimal(info["api_reported_cost_usd"])),
-            }
-        )
+    model_parquet_rows = build_model_parquet_rows(snapshot_day, usage_rows)
 
     usage_out = (
         datalake_root
