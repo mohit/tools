@@ -3,8 +3,11 @@
 import json
 import sys
 import tempfile
+import threading
+import time
 from pathlib import Path
 import unittest
+from unittest import mock
 
 import duckdb
 
@@ -111,6 +114,29 @@ class TestHealthAutoExportIngest(unittest.TestCase):
         self.assertEqual(records_total, 1)
         self.assertEqual(workouts_total, 1)
 
+    def test_ingest_payload_deduplicates_rows_within_single_payload(self):
+        duplicated_payload = {
+            "records": [
+                self.sample_payload["records"][0],
+                dict(self.sample_payload["records"][0]),
+            ],
+            "workouts": [
+                self.sample_payload["workouts"][0],
+                dict(self.sample_payload["workouts"][0]),
+            ],
+        }
+
+        result = health_auto_export.ingest_payload(
+            duplicated_payload,
+            raw_root=self.raw_dir,
+            curated_root=self.curated_dir,
+        )
+
+        self.assertEqual(result["records_received"], 2)
+        self.assertEqual(result["workouts_received"], 2)
+        self.assertEqual(result["health_records_total"], 1)
+        self.assertEqual(result["workouts_total"], 1)
+
     def test_ingest_payload_rejects_invalid_record(self):
         invalid = {"records": [{"value": "10"}]}
         with self.assertRaises(ValueError):
@@ -149,6 +175,52 @@ class TestHealthAutoExportIngest(unittest.TestCase):
         self.assertEqual(result["workouts_received"], 0)
         self.assertEqual(result["health_records_total"], 2)
         self.assertEqual(result["workouts_total"], 1)
+
+    def test_ingest_payload_serializes_parallel_merges(self):
+        original_merge = health_auto_export._merge_parquet
+        active_merges = 0
+        max_active_merges = 0
+        counter_lock = threading.Lock()
+
+        def wrapped_merge(*args, **kwargs):
+            nonlocal active_merges, max_active_merges
+            with counter_lock:
+                active_merges += 1
+                max_active_merges = max(max_active_merges, active_merges)
+            try:
+                time.sleep(0.05)
+                return original_merge(*args, **kwargs)
+            finally:
+                with counter_lock:
+                    active_merges -= 1
+
+        def ingest_one(index: int):
+            payload = {
+                "records": [
+                    {
+                        "type": "HKQuantityTypeIdentifierStepCount",
+                        "sourceName": "iPhone",
+                        "unit": "count",
+                        "value": str(1000 + index),
+                        "startDate": f"2026-02-10T09:{index:02d}:00Z",
+                        "endDate": f"2026-02-10T09:{index:02d}:30Z",
+                    }
+                ]
+            }
+            health_auto_export.ingest_payload(
+                payload,
+                raw_root=self.raw_dir,
+                curated_root=self.curated_dir,
+            )
+
+        with mock.patch.object(health_auto_export, "_merge_parquet", side_effect=wrapped_merge):
+            threads = [threading.Thread(target=ingest_one, args=(i,)) for i in range(5)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+        self.assertEqual(max_active_merges, 1)
 
 
 class TestHealthAutoExportAPI(unittest.TestCase):

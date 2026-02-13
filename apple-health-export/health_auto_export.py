@@ -2,16 +2,22 @@
 """Health Auto Export ingestion server for Apple Health data."""
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
 import tempfile
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import duckdb
+try:
+    import fcntl
+except ModuleNotFoundError:  # pragma: no cover - non-POSIX fallback
+    fcntl = None  # type: ignore[assignment]
 
 try:
     from flask import Flask, jsonify, request
@@ -48,6 +54,8 @@ WORKOUT_FIELDS = [
     "endDate",
     "creationDate",
 ]
+
+_PARQUET_MERGE_LOCK = threading.Lock()
 
 
 def _as_text(value: Any) -> str:
@@ -178,7 +186,21 @@ def _merge_parquet(
     hash_column: str,
     select_sql: str,
 ) -> int:
-    con.execute(f"CREATE OR REPLACE TEMP TABLE incoming AS {select_sql}", [str(incoming_file)])
+    con.execute(f"CREATE OR REPLACE TEMP TABLE incoming_raw AS {select_sql}", [str(incoming_file)])
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE incoming AS
+        SELECT * EXCLUDE (rn_incoming)
+        FROM (
+            SELECT *, ROW_NUMBER() OVER (
+                PARTITION BY {hash_column}
+                ORDER BY ingested_at DESC
+            ) AS rn_incoming
+            FROM incoming_raw
+        )
+        WHERE rn_incoming = 1
+        """
+    )
 
     if parquet_file.exists():
         con.execute("CREATE OR REPLACE TEMP TABLE existing AS SELECT * FROM read_parquet(?)", [str(parquet_file)])
@@ -203,9 +225,26 @@ def _merge_parquet(
     total = con.execute("SELECT COUNT(*) FROM read_parquet(?)", [str(parquet_file)]).fetchone()[0]
 
     con.execute("DROP TABLE IF EXISTS incoming")
+    con.execute("DROP TABLE IF EXISTS incoming_raw")
     con.execute("DROP TABLE IF EXISTS existing")
     con.execute("DROP TABLE IF EXISTS merged")
     return int(total)
+
+
+@contextmanager
+def _ingest_merge_lock(curated_root: Path):
+    lock_file_path = curated_root / ".health_auto_export.merge.lock"
+
+    with _PARQUET_MERGE_LOCK:
+        lock_file = lock_file_path.open("a", encoding="utf-8")
+        try:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            lock_file.close()
 
 
 def _count_parquet_rows(con: duckdb.DuckDBPyConnection, parquet_file: Path) -> int:
@@ -253,72 +292,73 @@ def ingest_payload(payload: Any, raw_root: Path, curated_root: Path) -> Dict[str
     records_parquet = curated_root / "health_records.parquet"
     workouts_parquet = curated_root / "workouts.parquet"
 
-    with duckdb.connect(str(db_path)) as con:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
+    with _ingest_merge_lock(curated_root):
+        with duckdb.connect(str(db_path)) as con:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = Path(tmp_dir)
 
-            if records:
-                records_ndjson = tmp_path / "records.ndjson"
-                _write_ndjson(records_ndjson, records)
-                record_count_after_merge = _merge_parquet(
-                    con,
-                    records_ndjson,
-                    records_parquet,
-                    hash_column="record_hash",
-                    select_sql="""
-                        SELECT
-                            CAST(record_hash AS VARCHAR) AS record_hash,
-                            CAST(type AS VARCHAR) AS type,
-                            CAST(sourceName AS VARCHAR) AS sourceName,
-                            CAST(sourceVersion AS VARCHAR) AS sourceVersion,
-                            CAST(unit AS VARCHAR) AS unit,
-                            CAST(value AS VARCHAR) AS value,
-                            CAST(startDate AS VARCHAR) AS startDate,
-                            CAST(endDate AS VARCHAR) AS endDate,
-                            CAST(creationDate AS VARCHAR) AS creationDate,
-                            CAST(device AS VARCHAR) AS device,
-                            CAST(metadata_json AS VARCHAR) AS metadata_json,
-                            CAST(batch_id AS VARCHAR) AS batch_id,
-                            CAST(ingested_at AS TIMESTAMPTZ) AS ingested_at,
-                            CAST(raw_payload_path AS VARCHAR) AS raw_payload_path
-                        FROM read_ndjson_auto(?)
-                    """,
-                )
+                if records:
+                    records_ndjson = tmp_path / "records.ndjson"
+                    _write_ndjson(records_ndjson, records)
+                    record_count_after_merge = _merge_parquet(
+                        con,
+                        records_ndjson,
+                        records_parquet,
+                        hash_column="record_hash",
+                        select_sql="""
+                            SELECT
+                                CAST(record_hash AS VARCHAR) AS record_hash,
+                                CAST(type AS VARCHAR) AS type,
+                                CAST(sourceName AS VARCHAR) AS sourceName,
+                                CAST(sourceVersion AS VARCHAR) AS sourceVersion,
+                                CAST(unit AS VARCHAR) AS unit,
+                                CAST(value AS VARCHAR) AS value,
+                                CAST(startDate AS VARCHAR) AS startDate,
+                                CAST(endDate AS VARCHAR) AS endDate,
+                                CAST(creationDate AS VARCHAR) AS creationDate,
+                                CAST(device AS VARCHAR) AS device,
+                                CAST(metadata_json AS VARCHAR) AS metadata_json,
+                                CAST(batch_id AS VARCHAR) AS batch_id,
+                                CAST(ingested_at AS TIMESTAMPTZ) AS ingested_at,
+                                CAST(raw_payload_path AS VARCHAR) AS raw_payload_path
+                            FROM read_ndjson_auto(?)
+                        """,
+                    )
 
-            if workouts:
-                workouts_ndjson = tmp_path / "workouts.ndjson"
-                _write_ndjson(workouts_ndjson, workouts)
-                workout_count_after_merge = _merge_parquet(
-                    con,
-                    workouts_ndjson,
-                    workouts_parquet,
-                    hash_column="workout_hash",
-                    select_sql="""
-                        SELECT
-                            CAST(workout_hash AS VARCHAR) AS workout_hash,
-                            CAST(workoutActivityType AS VARCHAR) AS workoutActivityType,
-                            CAST(duration AS VARCHAR) AS duration,
-                            CAST(durationUnit AS VARCHAR) AS durationUnit,
-                            CAST(totalDistance AS VARCHAR) AS totalDistance,
-                            CAST(totalDistanceUnit AS VARCHAR) AS totalDistanceUnit,
-                            CAST(totalEnergyBurned AS VARCHAR) AS totalEnergyBurned,
-                            CAST(totalEnergyBurnedUnit AS VARCHAR) AS totalEnergyBurnedUnit,
-                            CAST(sourceName AS VARCHAR) AS sourceName,
-                            CAST(startDate AS VARCHAR) AS startDate,
-                            CAST(endDate AS VARCHAR) AS endDate,
-                            CAST(creationDate AS VARCHAR) AS creationDate,
-                            CAST(metadata_json AS VARCHAR) AS metadata_json,
-                            CAST(batch_id AS VARCHAR) AS batch_id,
-                            CAST(ingested_at AS TIMESTAMPTZ) AS ingested_at,
-                            CAST(raw_payload_path AS VARCHAR) AS raw_payload_path
-                        FROM read_ndjson_auto(?)
-                    """,
-                )
+                if workouts:
+                    workouts_ndjson = tmp_path / "workouts.ndjson"
+                    _write_ndjson(workouts_ndjson, workouts)
+                    workout_count_after_merge = _merge_parquet(
+                        con,
+                        workouts_ndjson,
+                        workouts_parquet,
+                        hash_column="workout_hash",
+                        select_sql="""
+                            SELECT
+                                CAST(workout_hash AS VARCHAR) AS workout_hash,
+                                CAST(workoutActivityType AS VARCHAR) AS workoutActivityType,
+                                CAST(duration AS VARCHAR) AS duration,
+                                CAST(durationUnit AS VARCHAR) AS durationUnit,
+                                CAST(totalDistance AS VARCHAR) AS totalDistance,
+                                CAST(totalDistanceUnit AS VARCHAR) AS totalDistanceUnit,
+                                CAST(totalEnergyBurned AS VARCHAR) AS totalEnergyBurned,
+                                CAST(totalEnergyBurnedUnit AS VARCHAR) AS totalEnergyBurnedUnit,
+                                CAST(sourceName AS VARCHAR) AS sourceName,
+                                CAST(startDate AS VARCHAR) AS startDate,
+                                CAST(endDate AS VARCHAR) AS endDate,
+                                CAST(creationDate AS VARCHAR) AS creationDate,
+                                CAST(metadata_json AS VARCHAR) AS metadata_json,
+                                CAST(batch_id AS VARCHAR) AS batch_id,
+                                CAST(ingested_at AS TIMESTAMPTZ) AS ingested_at,
+                                CAST(raw_payload_path AS VARCHAR) AS raw_payload_path
+                            FROM read_ndjson_auto(?)
+                        """,
+                    )
 
-            if not records:
-                record_count_after_merge = _count_parquet_rows(con, records_parquet)
-            if not workouts:
-                workout_count_after_merge = _count_parquet_rows(con, workouts_parquet)
+                if not records:
+                    record_count_after_merge = _count_parquet_rows(con, records_parquet)
+                if not workouts:
+                    workout_count_after_merge = _count_parquet_rows(con, workouts_parquet)
 
     return {
         "batch_id": batch_id,
