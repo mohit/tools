@@ -204,10 +204,42 @@ def write_raw_page(raw_root: Path, run_id: int, page: int, rows: list[dict[str, 
     return raw_path
 
 
+def scrobble_key(row: dict[str, Any]) -> tuple[Any, Any, Any, Any]:
+    return (row.get("uts"), row.get("artist"), row.get("track"), row.get("album"))
+
+
+def dedupe_rows(
+    rows: list[dict[str, Any]],
+    seen_keys: set[tuple[Any, Any, Any, Any]],
+) -> list[dict[str, Any]]:
+    unique_rows: list[dict[str, Any]] = []
+    for row in rows:
+        key = scrobble_key(row)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        unique_rows.append(row)
+    return unique_rows
+
+
+def load_seen_keys_for_run(
+    curated_root: Path,
+    run_id: int,
+) -> set[tuple[Any, Any, Any, Any]]:
+    seen_keys: set[tuple[Any, Any, Any, Any]] = set()
+    pattern = f"scrobbles_{run_id}_p*.parquet"
+    for parquet_file in curated_root.rglob(pattern):
+        table = pq.read_table(parquet_file, columns=["uts", "artist", "track", "album"])
+        frame = table.to_pandas()
+        for row in frame.to_dict("records"):
+            seen_keys.add(scrobble_key(row))
+    return seen_keys
+
+
 def append_parquet_partitions(curated_root: Path, run_id: int, page: int, rows: list[dict[str, Any]]) -> int:
     if not rows:
         return 0
-    df = pd.DataFrame(rows).drop_duplicates(subset=["uts", "artist", "track", "album"])
+    df = pd.DataFrame(rows)
     if df.empty:
         return 0
 
@@ -261,6 +293,9 @@ def main() -> None:
     state_from_uts = load_last_uts()
     checkpoint = None if args.no_resume else load_checkpoint()
     from_uts, page, run_id, max_uts_seen = resolve_start(args, checkpoint, state_from_uts)
+    seen_keys: set[tuple[Any, Any, Any, Any]] = set()
+    if checkpoint and not args.no_resume and page > 1:
+        seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
 
     print(
         f"Starting Last.fm ingest: from_uts={from_uts}, start_page={page}, "
@@ -281,11 +316,12 @@ def main() -> None:
             break
 
         write_raw_page(raw_root=raw_root, run_id=run_id, page=page, rows=rows)
+        unique_rows = dedupe_rows(rows=rows, seen_keys=seen_keys)
         rows_written += append_parquet_partitions(
             curated_root=curated_root,
             run_id=run_id,
             page=page,
-            rows=rows,
+            rows=unique_rows,
         )
         page_max = max(row["uts"] for row in rows)
         max_uts_seen = page_max if max_uts_seen is None else max(max_uts_seen, page_max)
