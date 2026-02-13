@@ -205,7 +205,12 @@ def write_raw_page(raw_root: Path, run_id: int, page: int, rows: list[dict[str, 
 
 
 def scrobble_key(row: dict[str, Any]) -> tuple[Any, Any, Any, Any]:
-    return (row.get("uts"), row.get("artist"), row.get("track"), row.get("album"))
+    return (
+        row.get("uts"),
+        row.get("artist"),
+        row.get("track"),
+        row.get("album"),
+    )
 
 
 def dedupe_rows(
@@ -230,8 +235,7 @@ def load_seen_keys_for_run(
     pattern = f"scrobbles_{run_id}_p*.parquet"
     for parquet_file in curated_root.rglob(pattern):
         table = pq.read_table(parquet_file, columns=["uts", "artist", "track", "album"])
-        frame = table.to_pandas()
-        for row in frame.to_dict("records"):
+        for row in table.to_pylist():
             seen_keys.add(scrobble_key(row))
     return seen_keys
 
@@ -294,7 +298,7 @@ def main() -> None:
     checkpoint = None if args.no_resume else load_checkpoint()
     from_uts, page, run_id, max_uts_seen = resolve_start(args, checkpoint, state_from_uts)
     seen_keys: set[tuple[Any, Any, Any, Any]] = set()
-    if checkpoint and not args.no_resume and page > 1:
+    if checkpoint and not args.no_resume:
         seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
 
     print(
