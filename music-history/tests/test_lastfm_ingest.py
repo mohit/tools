@@ -301,3 +301,62 @@ def test_append_parquet_partitions_resume_loads_seen_keys_from_run_files(tmp_pat
     files = sorted(curated_root.rglob(f"scrobbles_{run_id}_p*.parquet"))
     total_rows = sum(pq.read_table(path).num_rows for path in files)
     assert total_rows == 2
+
+
+def test_append_parquet_partitions_dedupes_when_seen_keys_instance_changes(tmp_path: Path) -> None:
+    curated_root = tmp_path / "curated"
+    run_id = 889
+
+    page_1 = [
+        {
+            "uts": 600,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(600, unit="s", utc=True),
+            "artist": "A",
+            "track": "T1",
+            "album": "AL1",
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+    ]
+    page_2 = [
+        {
+            "uts": 600,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(600, unit="s", utc=True),
+            "artist": "A",
+            "track": "T1",
+            "album": "AL1",
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+        {
+            "uts": 601,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(601, unit="s", utc=True),
+            "artist": "B",
+            "track": "T2",
+            "album": None,
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+    ]
+
+    written_1 = lastfm_ingest.append_parquet_partitions(
+        curated_root,
+        run_id=run_id,
+        page=1,
+        rows=page_1,
+        seen_keys=set(),
+    )
+    written_2 = lastfm_ingest.append_parquet_partitions(
+        curated_root,
+        run_id=run_id,
+        page=2,
+        rows=page_2,
+        seen_keys=set(),
+    )
+
+    assert written_1 == 1
+    assert written_2 == 1
+
+    files = sorted(curated_root.rglob(f"scrobbles_{run_id}_p*.parquet"))
+    total_rows = sum(pq.read_table(path).num_rows for path in files)
+    assert total_rows == 2

@@ -241,6 +241,16 @@ def load_seen_keys_for_run(
     return seen_keys
 
 
+def get_cached_seen_keys(
+    curated_root: Path,
+    run_id: int,
+) -> set[tuple[Any, Any, Any, Any]]:
+    cache_key = (curated_root.resolve(), run_id)
+    if cache_key not in SEEN_KEYS_CACHE:
+        SEEN_KEYS_CACHE[cache_key] = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
+    return SEEN_KEYS_CACHE[cache_key]
+
+
 def append_parquet_partitions(
     curated_root: Path,
     run_id: int,
@@ -251,18 +261,19 @@ def append_parquet_partitions(
     if not rows:
         return 0
 
-    dedupe_keys = seen_keys
-    if dedupe_keys is None:
-        cache_key = (curated_root.resolve(), run_id)
-        if cache_key not in SEEN_KEYS_CACHE:
-            SEEN_KEYS_CACHE[cache_key] = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
-        dedupe_keys = SEEN_KEYS_CACHE[cache_key]
+    dedupe_keys = get_cached_seen_keys(curated_root=curated_root, run_id=run_id)
+    if seen_keys is not None and seen_keys is not dedupe_keys:
+        dedupe_keys.update(seen_keys)
 
     rows = dedupe_rows(rows=rows, seen_keys=dedupe_keys)
     if not rows:
+        if seen_keys is not None and seen_keys is not dedupe_keys:
+            seen_keys.update(dedupe_keys)
         return 0
     df = pd.DataFrame(rows)
     if df.empty:
+        if seen_keys is not None and seen_keys is not dedupe_keys:
+            seen_keys.update(dedupe_keys)
         return 0
 
     df["year"] = df["played_at_utc"].dt.year.astype(int)
@@ -276,6 +287,8 @@ def append_parquet_partitions(
         table = pa.Table.from_pandas(group.drop(columns=["year", "month"]), preserve_index=False)
         pq.write_table(table, out_file)
         written += len(group)
+    if seen_keys is not None and seen_keys is not dedupe_keys:
+        seen_keys.update(dedupe_keys)
     return written
 
 
