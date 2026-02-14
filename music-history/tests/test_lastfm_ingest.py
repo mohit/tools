@@ -67,7 +67,7 @@ def test_load_seen_keys_for_run_handles_null_album_for_resume(tmp_path: Path) ->
     assert unique[0]["uts"] == 201
 
 
-def test_append_parquet_partitions_only_writes_unique_rows(tmp_path: Path) -> None:
+def test_append_parquet_partitions_dedupes_across_pages_with_seen_keys(tmp_path: Path) -> None:
     curated_root = tmp_path / "curated"
     run_id = 555
 
@@ -113,20 +113,19 @@ def test_append_parquet_partitions_only_writes_unique_rows(tmp_path: Path) -> No
         },
     ]
 
-    unique_1 = lastfm_ingest.dedupe_rows(page_1, seen_keys)
-    unique_2 = lastfm_ingest.dedupe_rows(page_2, seen_keys)
-
     written_1 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=1,
-        rows=unique_1,
+        rows=page_1,
+        seen_keys=seen_keys,
     )
     written_2 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=2,
-        rows=unique_2,
+        rows=page_2,
+        seen_keys=seen_keys,
     )
 
     assert written_1 == 2
@@ -139,7 +138,7 @@ def test_append_parquet_partitions_only_writes_unique_rows(tmp_path: Path) -> No
     assert total_rows == 3
 
 
-def test_append_parquet_partitions_does_not_dedupe_rows(tmp_path: Path) -> None:
+def test_append_parquet_partitions_dedupes_within_page_with_seen_keys(tmp_path: Path) -> None:
     curated_root = tmp_path / "curated"
     run_id = 777
 
@@ -178,10 +177,11 @@ def test_append_parquet_partitions_does_not_dedupe_rows(tmp_path: Path) -> None:
         run_id=run_id,
         page=1,
         rows=rows,
+        seen_keys=set(),
     )
 
-    assert written == 3
+    assert written == 2
 
     files = sorted(curated_root.rglob(f"scrobbles_{run_id}_p*.parquet"))
     total_rows = sum(pq.read_table(path).num_rows for path in files)
-    assert total_rows == 3
+    assert total_rows == 2
