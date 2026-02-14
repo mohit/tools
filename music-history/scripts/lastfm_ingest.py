@@ -249,8 +249,11 @@ def append_parquet_partitions(
 ) -> int:
     if not rows:
         return 0
-    if seen_keys is not None:
-        rows = dedupe_rows(rows=rows, seen_keys=seen_keys)
+    if seen_keys is None:
+        # Fallback for callers that do not keep process-level state.
+        # This still prevents duplicates when adjacent pages overlap.
+        seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
+    rows = dedupe_rows(rows=rows, seen_keys=seen_keys)
     if not rows:
         return 0
     df = pd.DataFrame(rows)

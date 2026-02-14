@@ -136,3 +136,69 @@ def test_append_parquet_partitions_only_writes_unique_rows(tmp_path: Path) -> No
 
     total_rows = sum(pq.read_table(path).num_rows for path in files)
     assert total_rows == 3
+
+
+def test_append_parquet_partitions_without_seen_keys_still_dedupes(tmp_path: Path) -> None:
+    curated_root = tmp_path / "curated"
+    run_id = 777
+
+    page_1 = [
+        {
+            "uts": 400,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(400, unit="s", utc=True),
+            "artist": "A",
+            "track": "T1",
+            "album": "AL1",
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+        {
+            "uts": 401,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(401, unit="s", utc=True),
+            "artist": "B",
+            "track": "T2",
+            "album": None,
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+    ]
+    page_2 = [
+        {
+            "uts": 401,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(401, unit="s", utc=True),
+            "artist": "B",
+            "track": "T2",
+            "album": None,
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+        {
+            "uts": 402,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(402, unit="s", utc=True),
+            "artist": "C",
+            "track": "T3",
+            "album": "AL3",
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+    ]
+
+    written_1 = lastfm_ingest.append_parquet_partitions(
+        curated_root,
+        run_id=run_id,
+        page=1,
+        rows=page_1,
+    )
+    written_2 = lastfm_ingest.append_parquet_partitions(
+        curated_root,
+        run_id=run_id,
+        page=2,
+        rows=page_2,
+    )
+
+    assert written_1 == 2
+    assert written_2 == 1
+
+    files = sorted(curated_root.rglob(f"scrobbles_{run_id}_p*.parquet"))
+    total_rows = sum(pq.read_table(path).num_rows for path in files)
+    assert total_rows == 3
