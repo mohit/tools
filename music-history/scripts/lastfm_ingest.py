@@ -251,6 +251,17 @@ def get_cached_seen_keys(
     return SEEN_KEYS_CACHE[cache_key]
 
 
+def resolve_dedupe_keys(
+    curated_root: Path,
+    run_id: int,
+    seen_keys: set[tuple[Any, Any, Any, Any]] | None,
+) -> set[tuple[Any, Any, Any, Any]]:
+    dedupe_keys = get_cached_seen_keys(curated_root=curated_root, run_id=run_id)
+    if seen_keys is not None and seen_keys is not dedupe_keys:
+        dedupe_keys.update(seen_keys)
+    return dedupe_keys
+
+
 def append_parquet_partitions(
     curated_root: Path,
     run_id: int,
@@ -261,9 +272,7 @@ def append_parquet_partitions(
     if not rows:
         return 0
 
-    dedupe_keys = get_cached_seen_keys(curated_root=curated_root, run_id=run_id)
-    if seen_keys is not None and seen_keys is not dedupe_keys:
-        dedupe_keys.update(seen_keys)
+    dedupe_keys = resolve_dedupe_keys(curated_root=curated_root, run_id=run_id, seen_keys=seen_keys)
 
     rows = dedupe_rows(rows=rows, seen_keys=dedupe_keys)
     if not rows:
@@ -328,7 +337,7 @@ def main() -> None:
     state_from_uts = load_last_uts()
     checkpoint = None if args.no_resume else load_checkpoint()
     from_uts, page, run_id, max_uts_seen = resolve_start(args, checkpoint, state_from_uts)
-    seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
+    seen_keys = get_cached_seen_keys(curated_root=curated_root, run_id=run_id)
     print(
         f"Starting Last.fm ingest: from_uts={from_uts}, start_page={page}, "
         f"run_id={run_id}, resume={'yes' if checkpoint and not args.no_resume else 'no'}"
