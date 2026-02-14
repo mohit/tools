@@ -28,6 +28,7 @@ DEFAULT_CURATED_ROOT = Path(
 STATE_DIR = Path.home() / ".local" / "share" / "datalake"
 STATE_FILE = STATE_DIR / "lastfm_last_uts.txt"
 CHECKPOINT_FILE = STATE_DIR / "lastfm_ingest_checkpoint.json"
+SEEN_KEYS_CACHE: dict[tuple[Path, int], set[tuple[Any, Any, Any, Any]]] = {}
 
 
 def parse_date(value: str) -> int:
@@ -249,10 +250,17 @@ def append_parquet_partitions(
 ) -> int:
     if not rows:
         return 0
-    if seen_keys is not None:
-        rows = dedupe_rows(rows=rows, seen_keys=seen_keys)
-        if not rows:
-            return 0
+
+    dedupe_keys = seen_keys
+    if dedupe_keys is None:
+        cache_key = (curated_root.resolve(), run_id)
+        if cache_key not in SEEN_KEYS_CACHE:
+            SEEN_KEYS_CACHE[cache_key] = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
+        dedupe_keys = SEEN_KEYS_CACHE[cache_key]
+
+    rows = dedupe_rows(rows=rows, seen_keys=dedupe_keys)
+    if not rows:
+        return 0
     df = pd.DataFrame(rows)
     if df.empty:
         return 0
@@ -307,10 +315,6 @@ def main() -> None:
     state_from_uts = load_last_uts()
     checkpoint = None if args.no_resume else load_checkpoint()
     from_uts, page, run_id, max_uts_seen = resolve_start(args, checkpoint, state_from_uts)
-    seen_keys: set[tuple[Any, Any, Any, Any]] = set()
-    if checkpoint and not args.no_resume:
-        seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
-
     print(
         f"Starting Last.fm ingest: from_uts={from_uts}, start_page={page}, "
         f"run_id={run_id}, resume={'yes' if checkpoint and not args.no_resume else 'no'}"
@@ -330,14 +334,11 @@ def main() -> None:
             break
 
         write_raw_page(raw_root=raw_root, run_id=run_id, page=page, rows=rows)
-        # Keep de-duplication state for the full ingest run so overlapping pages
-        # do not persist duplicate scrobbles.
         rows_written += append_parquet_partitions(
             curated_root=curated_root,
             run_id=run_id,
             page=page,
             rows=rows,
-            seen_keys=seen_keys,
         )
         page_max = max(row["uts"] for row in rows)
         max_uts_seen = page_max if max_uts_seen is None else max(max_uts_seen, page_max)

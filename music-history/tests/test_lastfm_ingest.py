@@ -67,11 +67,10 @@ def test_load_seen_keys_for_run_handles_null_album_for_resume(tmp_path: Path) ->
     assert unique[0]["uts"] == 201
 
 
-def test_append_parquet_partitions_dedupes_across_pages_with_seen_keys(tmp_path: Path) -> None:
+def test_append_parquet_partitions_dedupes_across_pages_without_seen_keys(tmp_path: Path) -> None:
     curated_root = tmp_path / "curated"
     run_id = 555
 
-    seen_keys: set[tuple[object, object, object, object]] = set()
     page_1 = [
         {
             "uts": 300,
@@ -118,14 +117,12 @@ def test_append_parquet_partitions_dedupes_across_pages_with_seen_keys(tmp_path:
         run_id=run_id,
         page=1,
         rows=page_1,
-        seen_keys=seen_keys,
     )
     written_2 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=2,
         rows=page_2,
-        seen_keys=seen_keys,
     )
 
     assert written_1 == 2
@@ -138,7 +135,7 @@ def test_append_parquet_partitions_dedupes_across_pages_with_seen_keys(tmp_path:
     assert total_rows == 3
 
 
-def test_append_parquet_partitions_dedupes_within_page_with_seen_keys(tmp_path: Path) -> None:
+def test_append_parquet_partitions_dedupes_within_page_without_seen_keys(tmp_path: Path) -> None:
     curated_root = tmp_path / "curated"
     run_id = 777
 
@@ -177,10 +174,68 @@ def test_append_parquet_partitions_dedupes_within_page_with_seen_keys(tmp_path: 
         run_id=run_id,
         page=1,
         rows=rows,
-        seen_keys=set(),
     )
 
     assert written == 2
+
+    files = sorted(curated_root.rglob(f"scrobbles_{run_id}_p*.parquet"))
+    total_rows = sum(pq.read_table(path).num_rows for path in files)
+    assert total_rows == 2
+
+
+def test_append_parquet_partitions_resume_loads_seen_keys_from_run_files(tmp_path: Path) -> None:
+    curated_root = tmp_path / "curated"
+    run_id = 888
+
+    first_page_rows = [
+        {
+            "uts": 500,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(500, unit="s", utc=True),
+            "artist": "A",
+            "track": "T1",
+            "album": "AL1",
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+    ]
+    resumed_page_rows = [
+        {
+            "uts": 500,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(500, unit="s", utc=True),
+            "artist": "A",
+            "track": "T1",
+            "album": "AL1",
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+        {
+            "uts": 501,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(501, unit="s", utc=True),
+            "artist": "B",
+            "track": "T2",
+            "album": None,
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+    ]
+
+    written_1 = lastfm_ingest.append_parquet_partitions(
+        curated_root,
+        run_id=run_id,
+        page=1,
+        rows=first_page_rows,
+    )
+    assert written_1 == 1
+
+    lastfm_ingest.SEEN_KEYS_CACHE.clear()
+
+    written_2 = lastfm_ingest.append_parquet_partitions(
+        curated_root,
+        run_id=run_id,
+        page=2,
+        rows=resumed_page_rows,
+    )
+    assert written_2 == 1
 
     files = sorted(curated_root.rglob(f"scrobbles_{run_id}_p*.parquet"))
     total_rows = sum(pq.read_table(path).num_rows for path in files)
