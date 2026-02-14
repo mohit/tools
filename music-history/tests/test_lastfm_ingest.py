@@ -117,13 +117,15 @@ def test_append_parquet_partitions_only_writes_unique_rows(tmp_path: Path) -> No
         curated_root,
         run_id=run_id,
         page=1,
-        rows=lastfm_ingest.dedupe_rows(page_1, seen_keys),
+        rows=page_1,
+        seen_keys=seen_keys,
     )
     written_2 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=2,
-        rows=lastfm_ingest.dedupe_rows(page_2, seen_keys),
+        rows=page_2,
+        seen_keys=seen_keys,
     )
 
     assert written_1 == 2

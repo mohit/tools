@@ -240,7 +240,17 @@ def load_seen_keys_for_run(
     return seen_keys
 
 
-def append_parquet_partitions(curated_root: Path, run_id: int, page: int, rows: list[dict[str, Any]]) -> int:
+def append_parquet_partitions(
+    curated_root: Path,
+    run_id: int,
+    page: int,
+    rows: list[dict[str, Any]],
+    seen_keys: set[tuple[Any, Any, Any, Any]] | None = None,
+) -> int:
+    if not rows:
+        return 0
+    if seen_keys is not None:
+        rows = dedupe_rows(rows=rows, seen_keys=seen_keys)
     if not rows:
         return 0
     df = pd.DataFrame(rows)
@@ -320,12 +330,12 @@ def main() -> None:
             break
 
         write_raw_page(raw_root=raw_root, run_id=run_id, page=page, rows=rows)
-        unique_rows = dedupe_rows(rows=rows, seen_keys=seen_keys)
         rows_written += append_parquet_partitions(
             curated_root=curated_root,
             run_id=run_id,
             page=page,
-            rows=unique_rows,
+            rows=rows,
+            seen_keys=seen_keys,
         )
         page_max = max(row["uts"] for row in rows)
         max_uts_seen = page_max if max_uts_seen is None else max(max_uts_seen, page_max)
