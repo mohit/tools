@@ -315,6 +315,7 @@ def main() -> None:
     state_from_uts = load_last_uts()
     checkpoint = None if args.no_resume else load_checkpoint()
     from_uts, page, run_id, max_uts_seen = resolve_start(args, checkpoint, state_from_uts)
+    seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
     print(
         f"Starting Last.fm ingest: from_uts={from_uts}, start_page={page}, "
         f"run_id={run_id}, resume={'yes' if checkpoint and not args.no_resume else 'no'}"
@@ -339,6 +340,7 @@ def main() -> None:
             run_id=run_id,
             page=page,
             rows=rows,
+            seen_keys=seen_keys,
         )
         page_max = max(row["uts"] for row in rows)
         max_uts_seen = page_max if max_uts_seen is None else max(max_uts_seen, page_max)
