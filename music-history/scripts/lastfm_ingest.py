@@ -246,17 +246,20 @@ def append_parquet_partitions(
     page: int,
     rows: list[dict[str, Any]],
     seen_keys: set[tuple[Any, Any, Any, Any]] | None = None,
+    rows_are_deduped: bool = False,
 ) -> int:
     if not rows:
         return 0
 
-    active_seen_keys = seen_keys
-    if active_seen_keys is None:
-        active_seen_keys = load_seen_keys_for_run(
-            curated_root=curated_root,
-            run_id=run_id,
-        )
-    deduped_rows = dedupe_rows(rows=rows, seen_keys=active_seen_keys)
+    deduped_rows = rows
+    if not rows_are_deduped:
+        active_seen_keys = seen_keys
+        if active_seen_keys is None:
+            active_seen_keys = load_seen_keys_for_run(
+                curated_root=curated_root,
+                run_id=run_id,
+            )
+        deduped_rows = dedupe_rows(rows=rows, seen_keys=active_seen_keys)
     if not deduped_rows:
         return 0
 
@@ -335,12 +338,14 @@ def main() -> None:
 
         page_rows = rows
         write_raw_page(raw_root=raw_root, run_id=run_id, page=page, rows=page_rows)
+        deduped_page_rows = dedupe_rows(rows=page_rows, seen_keys=seen_keys)
         written_this_page = append_parquet_partitions(
             curated_root=curated_root,
             run_id=run_id,
             page=page,
-            rows=page_rows,
+            rows=deduped_page_rows,
             seen_keys=seen_keys,
+            rows_are_deduped=True,
         )
         rows_written += written_this_page
         page_max = max(row["uts"] for row in page_rows)
