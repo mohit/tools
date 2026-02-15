@@ -38,7 +38,7 @@ python apple_music_sync.py --json
 
 Behavior:
 - Processes latest Play Activity CSV into curated parquet when available.
-- Returns freshness exit codes (`0` fresh, `1` warning, `2` critical/missing).
+- Returns freshness exit codes (`0` fresh, `1` warning, `2` critical, `3` missing CSV).
 - Automatically runs MusicKit supplemental sync when token env vars are set.
 
 ### 1. Manual export helper (privacy.apple.com)
@@ -84,6 +84,7 @@ Exit codes:
 - `0`: fresh
 - `1`: warning (default >= 30 days stale)
 - `2`: critical (default >= 90 days stale)
+- `3`: missing CSV (file absent/renamed)
 
 ### 4. Optional MusicKit supplement (recent played only)
 

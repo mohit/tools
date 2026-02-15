@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest import mock
 
 import apple_music_monitor as monitor
 
@@ -25,6 +26,24 @@ class AppleMusicMonitorTests(unittest.TestCase):
         self.assertEqual(monitor.compute_status(days_stale=5, warn_days=30, critical_days=90), ("fresh", 0))
         self.assertEqual(monitor.compute_status(days_stale=35, warn_days=30, critical_days=90), ("warning", 1))
         self.assertEqual(monitor.compute_status(days_stale=120, warn_days=30, critical_days=90), ("critical", 2))
+
+    def test_main_returns_distinct_code_when_csv_missing(self) -> None:
+        args = mock.Mock(
+            raw_root=Path("/tmp/raw"),
+            csv_file=None,
+            warn_days=30,
+            critical_days=90,
+            json=False,
+        )
+
+        with (
+            mock.patch("apple_music_monitor.parse_args", return_value=args),
+            mock.patch("apple_music_monitor.discover_csv", side_effect=FileNotFoundError("missing csv")),
+        ):
+            with self.assertRaises(SystemExit) as cm:
+                monitor.main()
+
+        self.assertEqual(cm.exception.code, monitor.EXIT_CODE_MISSING_CSV)
 
 
 if __name__ == "__main__":

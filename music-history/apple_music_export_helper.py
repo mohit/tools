@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 import sys
 import webbrowser
 import zipfile
@@ -23,6 +24,13 @@ def _find_latest_zip(downloads_dir: Path) -> Path | None:
     return zips[0] if zips else None
 
 
+def _is_play_activity_csv_name(name: str) -> bool:
+    if not name.lower().endswith(".csv"):
+        return False
+    normalized = re.sub(r"[^a-z0-9]+", " ", Path(name).stem.lower())
+    return bool(re.search(r"\bplay\b.*\bactivity\b", normalized))
+
+
 def _extract_play_activity(zip_path: Path, output_root: Path) -> Path:
     stamp = datetime.now(UTC).strftime("%Y%m%d")
     target_dir = output_root / stamp
@@ -31,7 +39,7 @@ def _extract_play_activity(zip_path: Path, output_root: Path) -> Path:
     extracted = None
     with zipfile.ZipFile(zip_path, "r") as zf:
         for name in zf.namelist():
-            if "Play Activity" in name and name.lower().endswith(".csv"):
+            if _is_play_activity_csv_name(name):
                 filename = Path(name).name
                 out_path = target_dir / filename
                 with zf.open(name) as src, out_path.open("wb") as dst:
@@ -42,7 +50,7 @@ def _extract_play_activity(zip_path: Path, output_root: Path) -> Path:
     if not extracted:
         raise FileNotFoundError(
             "Could not find a Play Activity CSV in the Apple privacy export zip. "
-            "Expected a file with 'Play Activity' in its name."
+            "Expected a file name containing play and activity (space/underscore/hyphen variants supported)."
         )
 
     return extracted

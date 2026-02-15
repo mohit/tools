@@ -2,23 +2,31 @@ import argparse
 import csv
 import json
 import os
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
 
-DEFAULT_RAW_BASE = Path(
-    os.environ.get(
-        "DATALAKE_RAW_ROOT",
-        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports",
-    )
-)
-DEFAULT_RAW_ROOT = DEFAULT_RAW_BASE / "apple-music"
+DEFAULT_RAW_BASE = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Data Exports"
+EXIT_CODE_MISSING_CSV = 3
 PLAYED_AT_COLUMNS = [
     "Event Start Timestamp",
     "Play Date UTC",
     "Last Played Date",
     "Event Start Date",
 ]
+
+
+def _default_raw_root() -> Path:
+    raw_base = Path(os.environ.get("DATALAKE_RAW_ROOT", str(DEFAULT_RAW_BASE)))
+    return raw_base / "apple-music"
+
+
+def _is_play_activity_csv_name(name: str) -> bool:
+    if not name.lower().endswith(".csv"):
+        return False
+    normalized = re.sub(r"[^a-z0-9]+", " ", Path(name).stem.lower())
+    return bool(re.search(r"\bplay\b.*\bactivity\b", normalized))
 
 
 def discover_csv(raw_root: Path, explicit_file: Path | None) -> Path:
@@ -28,14 +36,14 @@ def discover_csv(raw_root: Path, explicit_file: Path | None) -> Path:
         return explicit_file
 
     candidates = sorted(
-        raw_root.rglob("*Play Activity*.csv"),
+        (path for path in raw_root.rglob("*.csv") if _is_play_activity_csv_name(path.name)),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
     if not candidates:
         raise FileNotFoundError(
             f"No Apple Music Play Activity CSV found under {raw_root}. "
-            "Expected file name containing 'Play Activity'."
+            "Expected a file name containing play and activity (space/underscore/hyphen variants supported)."
         )
     return candidates[0]
 
@@ -102,7 +110,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Check Apple Music export freshness and return status code for automation."
     )
-    parser.add_argument("--raw-root", type=Path, default=Path(str(DEFAULT_RAW_ROOT)))
+    parser.add_argument("--raw-root", type=Path, default=Path(str(_default_raw_root())))
     parser.add_argument("--csv-file", type=Path, default=None)
     parser.add_argument("--warn-days", type=int, default=30)
     parser.add_argument("--critical-days", type=int, default=90)
@@ -113,10 +121,24 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    csv_path = discover_csv(
-        raw_root=Path(args.raw_root).expanduser(),
-        explicit_file=Path(args.csv_file).expanduser() if args.csv_file else None,
-    )
+    try:
+        csv_path = discover_csv(
+            raw_root=Path(args.raw_root).expanduser(),
+            explicit_file=Path(args.csv_file).expanduser() if args.csv_file else None,
+        )
+    except FileNotFoundError as exc:
+        payload = {
+            "status": "missing",
+            "reason": str(exc),
+            "csv_file": str(args.csv_file) if args.csv_file else None,
+            "warn_days": args.warn_days,
+            "critical_days": args.critical_days,
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2))
+        else:
+            print(f"status=missing reason={payload['reason']}")
+        raise SystemExit(EXIT_CODE_MISSING_CSV)
 
     latest_played = extract_latest_played_at(csv_path)
     if latest_played is None:
