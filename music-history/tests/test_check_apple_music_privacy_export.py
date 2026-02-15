@@ -93,6 +93,21 @@ def test_main_returns_error_for_directory_csv_path(
     assert "ERROR:" in out.err
 
 
+def test_main_returns_error_for_permission_denied(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def raise_permission_error(_: Path) -> tuple[int, datetime]:
+        raise PermissionError("Permission denied")
+
+    monkeypatch.setattr(checker, "analyze_export", raise_permission_error)
+
+    exit_code = main(["--csv-path", "irrelevant.csv"])
+
+    out = capsys.readouterr()
+    assert exit_code == 1
+    assert "ERROR: Permission denied" in out.err
+
+
 def test_main_uses_full_timedelta_precision_for_staleness(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
