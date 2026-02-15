@@ -4,6 +4,7 @@ import sys
 import tempfile
 import types
 import unittest
+import datetime as dt
 from pathlib import Path
 
 
@@ -86,21 +87,26 @@ class LastfmIngestTests(unittest.TestCase):
         mod = load_module()
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)
+            jan_uts_existing = int(
+                dt.datetime(2024, 1, 1, 0, 0, 20, tzinfo=dt.timezone.utc).timestamp()
+            )
+            jan_uts_new = int(
+                dt.datetime(2024, 1, 1, 0, 0, 10, tzinfo=dt.timezone.utc).timestamp()
+            )
 
             jan_file = output_dir / "year=2024" / "month=01" / "scrobbles.jsonl"
             write_jsonl(
                 jan_file,
                 [
-                    # 2024-01-01 00:00:20 UTC
-                    {"uts": 1704067220, "artist": "A", "track": "Song 2", "album": "Alpha"},
+                    {"uts": jan_uts_existing, "artist": "A", "track": "Song 2", "album": "Alpha"},
                 ],
             )
 
             rows = [
                 # Duplicate of existing row in January 2024 partition.
-                {"uts": 1704067220, "artist": "A", "track": "Song 2", "album": "Alpha"},
+                {"uts": jan_uts_existing, "artist": "A", "track": "Song 2", "album": "Alpha"},
                 # New row in same partition; arrives out of order and should be appended sorted.
-                {"uts": 1704067210, "artist": "A", "track": "Song 1", "album": "Alpha"},
+                {"uts": jan_uts_new, "artist": "A", "track": "Song 1", "album": "Alpha"},
             ]
 
             summary = mod.merge_into_monthly_jsonl(rows, output_dir)
@@ -111,8 +117,8 @@ class LastfmIngestTests(unittest.TestCase):
 
             jan_rows = [json.loads(line) for line in jan_file.read_text().splitlines()]
             self.assertEqual(len(jan_rows), 2)
-            self.assertEqual(jan_rows[0]["uts"], 1704067220)
-            self.assertEqual(jan_rows[1]["uts"], 1704067210)
+            self.assertEqual(jan_rows[0]["uts"], jan_uts_existing)
+            self.assertEqual(jan_rows[1]["uts"], jan_uts_new)
 
 
 if __name__ == "__main__":
