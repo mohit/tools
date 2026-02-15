@@ -236,12 +236,29 @@ def test_stable_id_ignores_input_path_metadata() -> None:
     payload = {
         "title": "Searched for weather sf",
         "time": "2024-01-12T04:05:06.000Z",
-        "context": {"device": "iphone"},
+        "context": {
+            "device": "iphone",
+            "source_path": "/tmp/input-a/Takeout/My Activity/Search/MyActivity.json",
+            "nested": {
+                "relative_path": "Takeout/My Activity/Search/MyActivity.json",
+                "input_root": "/tmp/input-a",
+            },
+        },
     }
     payload_with_rel = {
         **payload,
+        "context": {
+            **payload["context"],
+            "source_path": "/tmp/input-b/Takeout/My Activity/Search/MyActivity.json",
+            "nested": {
+                "relative_path": "nested/Takeout/My Activity/Search/MyActivity.json",
+                "input_root": "/tmp/input-b",
+            },
+        },
         "rel": "Takeout/My Activity/Search/MyActivity.json",
         "source_file": "nested/Takeout/My Activity/Search/MyActivity.json",
+        "source_path": "/tmp/input-b/Takeout/My Activity/Search/MyActivity.json",
+        "input_root": "/tmp/input-b",
     }
 
     assert _stable_id("search", payload) == _stable_id("search", payload_with_rel)
