@@ -51,6 +51,16 @@ def _stable_id(prefix: str, payload: Any) -> str:
     return f"{prefix}-{digest}"
 
 
+def _normalize_logical_path(path: str) -> str:
+    normalized = path.replace("\\", "/")
+    marker = "/Takeout/"
+    if marker in normalized:
+        normalized = normalized.split(marker, 1)[1]
+    elif normalized.startswith("Takeout/"):
+        normalized = normalized[len("Takeout/") :]
+    return normalized.lstrip("./")
+
+
 def _load_json_documents(source: Path) -> list[JsonDocument]:
     docs: list[JsonDocument] = []
     if source.is_dir():
@@ -59,7 +69,7 @@ def _load_json_documents(source: Path) -> list[JsonDocument]:
                 payload = json.loads(path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError):
                 continue
-            docs.append(JsonDocument(logical_path=str(path.relative_to(source)), payload=payload))
+            docs.append(JsonDocument(logical_path=_normalize_logical_path(str(path.relative_to(source))), payload=payload))
         return docs
 
     if source.is_file() and source.suffix.lower() == ".zip":
@@ -71,7 +81,7 @@ def _load_json_documents(source: Path) -> list[JsonDocument]:
                     payload = json.loads(archive.read(member).decode("utf-8"))
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     continue
-                docs.append(JsonDocument(logical_path=member, payload=payload))
+                docs.append(JsonDocument(logical_path=_normalize_logical_path(member), payload=payload))
         return docs
 
     raise ValueError(f"Unsupported source input: {source}")

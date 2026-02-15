@@ -194,6 +194,17 @@ def test_event_ids_are_stable_across_different_input_roots(tmp_path: Path) -> No
     )
 
     _write_json(
+        inner_takeout / "My Activity" / "Search" / "MyActivity.json",
+        [
+            {
+                "title": "Searched for pour over coffee",
+                "time": "2024-01-04T04:05:06.000Z",
+                "products": ["Search"],
+            }
+        ],
+    )
+
+    _write_json(
         inner_takeout / "My Activity" / "YouTube and YouTube Music" / "MyActivity.json",
         [
             {
@@ -207,14 +218,18 @@ def test_event_ids_are_stable_across_different_input_roots(tmp_path: Path) -> No
 
     docs_from_takeout = _load_json_documents(inner_takeout)
     visits_takeout, _ = _extract_location_rows(docs_from_takeout)
+    searches_takeout = _extract_search_rows(docs_from_takeout)
     music_takeout = _extract_music_rows(docs_from_takeout)
 
     docs_from_parent = _load_json_documents(tmp_path / "nested")
     visits_parent, _ = _extract_location_rows(docs_from_parent)
+    searches_parent = _extract_search_rows(docs_from_parent)
     music_parent = _extract_music_rows(docs_from_parent)
 
     assert {row["event_id"] for row in visits_takeout} == {row["event_id"] for row in visits_parent}
+    assert {row["search_id"] for row in searches_takeout} == {row["search_id"] for row in searches_parent}
     assert {row["event_id"] for row in music_takeout} == {row["event_id"] for row in music_parent}
+    assert {row["source_file"] for row in visits_takeout} == {row["source_file"] for row in visits_parent}
 
 
 def test_ignores_non_scope_exports(tmp_path: Path) -> None:
