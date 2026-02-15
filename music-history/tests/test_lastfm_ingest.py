@@ -67,9 +67,10 @@ def test_load_seen_keys_for_run_handles_null_album_for_resume(tmp_path: Path) ->
     assert unique[0]["uts"] == 201
 
 
-def test_append_parquet_partitions_dedupes_across_pages_without_seen_keys(tmp_path: Path) -> None:
+def test_dedupe_rows_before_append_dedupes_across_pages(tmp_path: Path) -> None:
     curated_root = tmp_path / "curated"
     run_id = 555
+    seen_keys: set[tuple[object, object, object, object]] = set()
 
     page_1 = [
         {
@@ -112,17 +113,20 @@ def test_append_parquet_partitions_dedupes_across_pages_without_seen_keys(tmp_pa
         },
     ]
 
+    deduped_1 = lastfm_ingest.dedupe_rows(page_1, seen_keys)
+    deduped_2 = lastfm_ingest.dedupe_rows(page_2, seen_keys)
+
     written_1 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=1,
-        rows=page_1,
+        rows=deduped_1,
     )
     written_2 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=2,
-        rows=page_2,
+        rows=deduped_2,
     )
 
     assert written_1 == 2
@@ -172,19 +176,20 @@ def test_append_parquet_partitions_dedupes_across_pages_with_shared_seen_keys(tm
         },
     ]
 
+    deduped_1 = lastfm_ingest.dedupe_rows(page_1, seen_keys)
+    deduped_2 = lastfm_ingest.dedupe_rows(page_2, seen_keys)
+
     written_1 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=1,
-        rows=page_1,
-        seen_keys=seen_keys,
+        rows=deduped_1,
     )
     written_2 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=2,
-        rows=page_2,
-        seen_keys=seen_keys,
+        rows=deduped_2,
     )
 
     assert written_1 == 1
@@ -196,9 +201,10 @@ def test_append_parquet_partitions_dedupes_across_pages_with_shared_seen_keys(tm
     assert total_rows == 2
 
 
-def test_append_parquet_partitions_dedupes_within_page_without_seen_keys(tmp_path: Path) -> None:
+def test_dedupe_rows_dedupes_within_page(tmp_path: Path) -> None:
     curated_root = tmp_path / "curated"
     run_id = 777
+    seen_keys: set[tuple[object, object, object, object]] = set()
 
     rows = [
         {
@@ -230,11 +236,12 @@ def test_append_parquet_partitions_dedupes_within_page_without_seen_keys(tmp_pat
         },
     ]
 
+    deduped_rows = lastfm_ingest.dedupe_rows(rows, seen_keys)
     written = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=1,
-        rows=rows,
+        rows=deduped_rows,
     )
 
     assert written == 2
@@ -244,7 +251,7 @@ def test_append_parquet_partitions_dedupes_within_page_without_seen_keys(tmp_pat
     assert total_rows == 2
 
 
-def test_append_parquet_partitions_resume_loads_seen_keys_from_run_files(tmp_path: Path) -> None:
+def test_resume_loads_seen_keys_from_run_files(tmp_path: Path) -> None:
     curated_root = tmp_path / "curated"
     run_id = 888
 
@@ -280,21 +287,22 @@ def test_append_parquet_partitions_resume_loads_seen_keys_from_run_files(tmp_pat
         },
     ]
 
+    seen_keys = lastfm_ingest.load_seen_keys_for_run(curated_root, run_id=run_id)
     written_1 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=1,
-        rows=first_page_rows,
+        rows=lastfm_ingest.dedupe_rows(first_page_rows, seen_keys),
     )
     assert written_1 == 1
 
-    lastfm_ingest.SEEN_KEYS_CACHE.clear()
+    reloaded_seen_keys = lastfm_ingest.load_seen_keys_for_run(curated_root, run_id=run_id)
 
     written_2 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=2,
-        rows=resumed_page_rows,
+        rows=lastfm_ingest.dedupe_rows(resumed_page_rows, reloaded_seen_keys),
     )
     assert written_2 == 1
 
@@ -303,7 +311,7 @@ def test_append_parquet_partitions_resume_loads_seen_keys_from_run_files(tmp_pat
     assert total_rows == 2
 
 
-def test_append_parquet_partitions_dedupes_when_seen_keys_instance_changes(tmp_path: Path) -> None:
+def test_dedupe_rows_when_seen_keys_instance_changes(tmp_path: Path) -> None:
     curated_root = tmp_path / "curated"
     run_id = 889
 
@@ -339,19 +347,19 @@ def test_append_parquet_partitions_dedupes_when_seen_keys_instance_changes(tmp_p
         },
     ]
 
+    seen_keys_1: set[tuple[object, object, object, object]] = set()
     written_1 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=1,
-        rows=page_1,
-        seen_keys=set(),
+        rows=lastfm_ingest.dedupe_rows(page_1, seen_keys_1),
     )
+    seen_keys_2 = lastfm_ingest.load_seen_keys_for_run(curated_root, run_id=run_id)
     written_2 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=2,
-        rows=page_2,
-        seen_keys=set(),
+        rows=lastfm_ingest.dedupe_rows(page_2, seen_keys_2),
     )
 
     assert written_1 == 1

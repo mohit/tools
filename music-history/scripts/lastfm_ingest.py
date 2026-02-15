@@ -28,7 +28,6 @@ DEFAULT_CURATED_ROOT = Path(
 STATE_DIR = Path.home() / ".local" / "share" / "datalake"
 STATE_FILE = STATE_DIR / "lastfm_last_uts.txt"
 CHECKPOINT_FILE = STATE_DIR / "lastfm_ingest_checkpoint.json"
-SEEN_KEYS_CACHE: dict[tuple[Path, int], set[tuple[Any, Any, Any, Any]]] = {}
 
 
 def parse_date(value: str) -> int:
@@ -241,48 +240,17 @@ def load_seen_keys_for_run(
     return seen_keys
 
 
-def get_cached_seen_keys(
-    curated_root: Path,
-    run_id: int,
-) -> set[tuple[Any, Any, Any, Any]]:
-    cache_key = (curated_root.resolve(), run_id)
-    if cache_key not in SEEN_KEYS_CACHE:
-        SEEN_KEYS_CACHE[cache_key] = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
-    return SEEN_KEYS_CACHE[cache_key]
-
-
-def resolve_dedupe_keys(
-    curated_root: Path,
-    run_id: int,
-    seen_keys: set[tuple[Any, Any, Any, Any]] | None,
-) -> set[tuple[Any, Any, Any, Any]]:
-    dedupe_keys = get_cached_seen_keys(curated_root=curated_root, run_id=run_id)
-    if seen_keys is not None and seen_keys is not dedupe_keys:
-        dedupe_keys.update(seen_keys)
-    return dedupe_keys
-
-
 def append_parquet_partitions(
     curated_root: Path,
     run_id: int,
     page: int,
     rows: list[dict[str, Any]],
-    seen_keys: set[tuple[Any, Any, Any, Any]] | None = None,
 ) -> int:
     if not rows:
         return 0
 
-    dedupe_keys = resolve_dedupe_keys(curated_root=curated_root, run_id=run_id, seen_keys=seen_keys)
-
-    rows = dedupe_rows(rows=rows, seen_keys=dedupe_keys)
-    if not rows:
-        if seen_keys is not None and seen_keys is not dedupe_keys:
-            seen_keys.update(dedupe_keys)
-        return 0
     df = pd.DataFrame(rows)
     if df.empty:
-        if seen_keys is not None and seen_keys is not dedupe_keys:
-            seen_keys.update(dedupe_keys)
         return 0
 
     df["year"] = df["played_at_utc"].dt.year.astype(int)
@@ -296,8 +264,6 @@ def append_parquet_partitions(
         table = pa.Table.from_pandas(group.drop(columns=["year", "month"]), preserve_index=False)
         pq.write_table(table, out_file)
         written += len(group)
-    if seen_keys is not None and seen_keys is not dedupe_keys:
-        seen_keys.update(dedupe_keys)
     return written
 
 
@@ -337,7 +303,7 @@ def main() -> None:
     state_from_uts = load_last_uts()
     checkpoint = None if args.no_resume else load_checkpoint()
     from_uts, page, run_id, max_uts_seen = resolve_start(args, checkpoint, state_from_uts)
-    seen_keys = get_cached_seen_keys(curated_root=curated_root, run_id=run_id)
+    seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
     print(
         f"Starting Last.fm ingest: from_uts={from_uts}, start_page={page}, "
         f"run_id={run_id}, resume={'yes' if checkpoint and not args.no_resume else 'no'}"
@@ -356,15 +322,16 @@ def main() -> None:
             print(f"No rows on page {page}; finishing.")
             break
 
-        write_raw_page(raw_root=raw_root, run_id=run_id, page=page, rows=rows)
+        page_rows = rows
+        write_raw_page(raw_root=raw_root, run_id=run_id, page=page, rows=page_rows)
+        deduped_rows = dedupe_rows(rows=page_rows, seen_keys=seen_keys)
         rows_written += append_parquet_partitions(
             curated_root=curated_root,
             run_id=run_id,
             page=page,
-            rows=rows,
-            seen_keys=seen_keys,
+            rows=deduped_rows,
         )
-        page_max = max(row["uts"] for row in rows)
+        page_max = max(row["uts"] for row in page_rows)
         max_uts_seen = page_max if max_uts_seen is None else max(max_uts_seen, page_max)
 
         next_page = page + 1
@@ -378,7 +345,10 @@ def main() -> None:
         pages_processed += 1
         attr = recent.get("@attr", {})
         total_pages = int(attr.get("totalPages", "1"))
-        print(f"Processed page {page}/{total_pages}: {len(rows)} rows")
+        print(
+            f"Processed page {page}/{total_pages}: fetched={len(page_rows)} "
+            f"deduped={len(deduped_rows)}"
+        )
 
         if args.max_pages is not None and pages_processed >= args.max_pages:
             print(f"Reached --max-pages={args.max_pages}; stopping early.")
