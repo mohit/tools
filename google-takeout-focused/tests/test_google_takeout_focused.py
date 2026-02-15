@@ -10,6 +10,7 @@ from google_takeout_focused import (
     _load_json_documents,
     _print_guide,
     _process_one_takeout,
+    _stable_id,
 )
 
 
@@ -229,6 +230,21 @@ def test_event_ids_are_stable_across_different_input_roots(tmp_path: Path) -> No
     assert {row["event_id"] for row in visits_takeout} == {row["event_id"] for row in visits_parent}
     assert {row["event_id"] for row in music_takeout} == {row["event_id"] for row in music_parent}
     assert {row["search_id"] for row in search_takeout} == {row["search_id"] for row in search_parent}
+
+
+def test_stable_id_ignores_input_path_metadata() -> None:
+    payload = {
+        "title": "Searched for weather sf",
+        "time": "2024-01-12T04:05:06.000Z",
+        "context": {"device": "iphone"},
+    }
+    payload_with_rel = {
+        **payload,
+        "rel": "Takeout/My Activity/Search/MyActivity.json",
+        "source_file": "nested/Takeout/My Activity/Search/MyActivity.json",
+    }
+
+    assert _stable_id("search", payload) == _stable_id("search", payload_with_rel)
 
 
 def test_ignores_non_scope_exports(tmp_path: Path) -> None:

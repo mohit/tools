@@ -46,9 +46,20 @@ def _e7(value: int | None) -> float | None:
 
 
 def _stable_id(prefix: str, payload: Any) -> str:
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    canonical = json.dumps(_canonical_payload_for_id(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
     return f"{prefix}-{digest}"
+
+
+def _canonical_payload_for_id(payload: Any) -> Any:
+    """Drop transport/path metadata so IDs are stable across input roots."""
+    ignored_keys = {"rel", "source_file", "source_path", "relative_path", "input_root"}
+
+    if isinstance(payload, dict):
+        return {k: _canonical_payload_for_id(v) for k, v in payload.items() if k not in ignored_keys}
+    if isinstance(payload, list):
+        return [_canonical_payload_for_id(v) for v in payload]
+    return payload
 
 
 def _normalize_logical_path(path: str) -> str:
