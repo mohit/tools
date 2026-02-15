@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+import check_apple_music_privacy_export as checker
 from check_apple_music_privacy_export import analyze_export, main
 
 
@@ -77,3 +78,40 @@ def test_analyze_export_errors_when_date_column_missing(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Could not find a play-date column"):
         analyze_export(csv_path)
+
+
+def test_main_returns_error_for_directory_csv_path(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    csv_dir = tmp_path / "not-a-file"
+    csv_dir.mkdir()
+
+    exit_code = main(["--csv-path", str(csv_dir)])
+
+    out = capsys.readouterr()
+    assert exit_code == 1
+    assert "ERROR:" in out.err
+
+
+def test_main_uses_full_timedelta_precision_for_staleness(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    csv_path = tmp_path / "Apple Music - Track Play History.csv"
+    newest_play = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
+    write_csv(
+        csv_path,
+        f"Track Name,Play Date UTC\nSong A,{newest_play.isoformat().replace('+00:00', 'Z')}\n",
+    )
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return datetime(2026, 2, 15, 12, 0, 0, tzinfo=UTC)
+
+    monkeypatch.setattr(checker, "datetime", FixedDateTime)
+
+    exit_code = main(["--csv-path", str(csv_path), "--max-age-days", "45"])
+
+    out = capsys.readouterr()
+    assert exit_code == 2
+    assert "Apple Music play history export is stale." in out.err

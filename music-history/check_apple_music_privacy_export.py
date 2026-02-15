@@ -1,7 +1,7 @@
 import argparse
 import csv
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
@@ -81,19 +81,21 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         row_count, newest_play = analyze_export(csv_path)
-    except (FileNotFoundError, ValueError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
-    age_days = (now_utc - newest_play).days
+    age = now_utc - newest_play
+    max_age = timedelta(days=args.max_age_days)
+    age_days = age.total_seconds() / 86400
     newest_play_iso = newest_play.isoformat().replace("+00:00", "Z")
 
     print(f"CSV: {csv_path}")
     print(f"Rows: {row_count}")
     print(f"Newest play: {newest_play_iso}")
-    print(f"Age (days): {age_days}")
+    print(f"Age (days): {age_days:.2f}")
 
-    if age_days > args.max_age_days:
+    if age > max_age:
         print(
             "ERROR: Apple Music play history export is stale.\n"
             f"Newest play is {newest_play_iso}, older than {args.max_age_days} days.\n"
