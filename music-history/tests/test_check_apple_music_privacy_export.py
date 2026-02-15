@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -65,6 +65,32 @@ def test_main_returns_error_for_missing_file(capsys: pytest.CaptureFixture[str],
     out = capsys.readouterr()
     assert exit_code == 1
     assert "Apple Music export not found" in out.err
+
+
+def test_main_returns_error_for_unreadable_csv_path(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    exit_code = main(["--csv-path", str(tmp_path)])
+
+    out = capsys.readouterr()
+    assert exit_code == 1
+    assert "ERROR:" in out.err
+
+
+def test_main_treats_partial_day_over_limit_as_stale(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    csv_path = tmp_path / "Apple Music - Track Play History.csv"
+    stale_play = datetime.now(UTC) - timedelta(days=45, hours=12)
+    write_csv(
+        csv_path,
+        "Track Name,Play Date UTC\n"
+        f"Song A,{stale_play.isoformat().replace('+00:00', 'Z')}\n",
+    )
+
+    exit_code = main(["--csv-path", str(csv_path), "--max-age-days", "45"])
+
+    out = capsys.readouterr()
+    assert exit_code == 2
+    assert "Apple Music play history export is stale." in out.err
 
 
 def test_analyze_export_errors_when_date_column_missing(tmp_path: Path) -> None:
