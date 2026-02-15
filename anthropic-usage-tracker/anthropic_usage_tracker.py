@@ -429,7 +429,8 @@ def build_model_parquet_rows(snapshot_day: date, usage_rows: list[UsageRow]) -> 
             "cache_creation_input_tokens": 0,
             "cache_read_input_tokens": 0,
             "estimated_cost_usd": Decimal("0"),
-            "api_reported_cost_usd": None,
+            "api_reported_cost_usd_total": Decimal("0"),
+            "has_api_reported_cost_usd": False,
             "ingested_at": datetime.now(UTC).isoformat(),
         }
     )
@@ -444,22 +445,23 @@ def build_model_parquet_rows(snapshot_day: date, usage_rows: list[UsageRow]) -> 
         r["cache_read_input_tokens"] += row.cache_read_input_tokens
         r["estimated_cost_usd"] = Decimal(r["estimated_cost_usd"]) + row.estimated_cost_usd
         if row.api_reported_cost_usd is not None:
-            current_api_cost = r["api_reported_cost_usd"]
-            if current_api_cost is None:
-                r["api_reported_cost_usd"] = row.api_reported_cost_usd
-            else:
-                r["api_reported_cost_usd"] = Decimal(current_api_cost) + row.api_reported_cost_usd
+            r["has_api_reported_cost_usd"] = True
+            r["api_reported_cost_usd_total"] = Decimal(r["api_reported_cost_usd_total"]) + row.api_reported_cost_usd
 
     model_parquet_rows = []
     for info in model_rollup.values():
-        api_reported_cost_usd = info["api_reported_cost_usd"]
+        has_api_reported_cost_usd = bool(info["has_api_reported_cost_usd"])
+        api_reported_cost_usd_total = Decimal(info["api_reported_cost_usd_total"])
+        row_info = {
+            key: value
+            for key, value in info.items()
+            if key not in {"has_api_reported_cost_usd", "api_reported_cost_usd_total"}
+        }
         model_parquet_rows.append(
             {
-                **info,
+                **row_info,
                 "estimated_cost_usd": float(Decimal(info["estimated_cost_usd"])),
-                "api_reported_cost_usd": (
-                    float(Decimal(api_reported_cost_usd)) if api_reported_cost_usd is not None else None
-                ),
+                "api_reported_cost_usd": float(api_reported_cost_usd_total) if has_api_reported_cost_usd else None,
             }
         )
 
