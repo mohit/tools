@@ -222,6 +222,42 @@ class TestHealthAutoExportIngest(unittest.TestCase):
 
         self.assertEqual(max_active_merges, 1)
 
+    def test_ingest_payload_parallel_requests_preserve_unique_rows(self):
+        total_requests = 8
+
+        def ingest_one(index: int):
+            payload = {
+                "records": [
+                    {
+                        "type": "HKQuantityTypeIdentifierStepCount",
+                        "sourceName": "iPhone",
+                        "unit": "count",
+                        "value": str(2000 + index),
+                        "startDate": f"2026-02-12T10:{index:02d}:00Z",
+                        "endDate": f"2026-02-12T10:{index:02d}:30Z",
+                    }
+                ]
+            }
+            health_auto_export.ingest_payload(
+                payload,
+                raw_root=self.raw_dir,
+                curated_root=self.curated_dir,
+            )
+
+        threads = [threading.Thread(target=ingest_one, args=(i,)) for i in range(total_requests)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        with duckdb.connect() as con:
+            records_total = con.execute(
+                "SELECT COUNT(*) FROM read_parquet(?)",
+                [str(self.curated_dir / "health_records.parquet")],
+            ).fetchone()[0]
+
+        self.assertEqual(records_total, total_requests)
+
 
 class TestHealthAutoExportAPI(unittest.TestCase):
     """Test Flask API endpoint behavior."""
