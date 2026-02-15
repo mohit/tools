@@ -8,10 +8,10 @@ from pathlib import Path
 import duckdb
 
 
-DEFAULT_RAW_BASE_FALLBACK = "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports"
-DEFAULT_CURATED_BASE_FALLBACK = (
-    "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated"
+DEFAULT_RAW_BASE_FALLBACK = (
+    Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Data Exports"
 )
+DEFAULT_CURATED_BASE_FALLBACK = DEFAULT_RAW_BASE_FALLBACK / "datalake" / "curated"
 
 
 TRACK_COLUMNS = [
@@ -65,12 +65,12 @@ def _is_play_activity_csv_name(name: str) -> bool:
 
 
 def _default_raw_root() -> Path:
-    raw_base = Path(os.environ.get("DATALAKE_RAW_ROOT", DEFAULT_RAW_BASE_FALLBACK))
+    raw_base = Path(os.environ.get("DATALAKE_RAW_ROOT") or DEFAULT_RAW_BASE_FALLBACK).expanduser()
     return raw_base / "apple-music"
 
 
 def _default_curated_root() -> Path:
-    curated_base = Path(os.environ.get("DATALAKE_CURATED_ROOT", DEFAULT_CURATED_BASE_FALLBACK))
+    curated_base = Path(os.environ.get("DATALAKE_CURATED_ROOT") or DEFAULT_CURATED_BASE_FALLBACK).expanduser()
     return curated_base / "apple-music" / "play-activity"
 
 

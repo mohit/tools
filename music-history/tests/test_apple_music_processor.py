@@ -23,6 +23,26 @@ class AppleMusicProcessorTests(unittest.TestCase):
         self.assertEqual(args.raw_root, Path("/tmp/custom-raw/apple-music"))
         self.assertEqual(args.curated_root, Path("/tmp/custom-curated/apple-music/play-activity"))
 
+    def test_parse_args_empty_env_uses_fallback_roots(self) -> None:
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "DATALAKE_RAW_ROOT": "",
+                "DATALAKE_CURATED_ROOT": "",
+            },
+            clear=False,
+        ):
+            args = processor.parse_args([])
+
+        self.assertEqual(
+            args.raw_root,
+            processor.DEFAULT_RAW_BASE_FALLBACK / "apple-music",
+        )
+        self.assertEqual(
+            args.curated_root,
+            processor.DEFAULT_CURATED_BASE_FALLBACK / "apple-music" / "play-activity",
+        )
+
     def test_process_csv_deduplicates_and_writes_partitioned_parquet(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
