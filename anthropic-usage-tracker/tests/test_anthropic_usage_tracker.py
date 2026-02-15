@@ -88,6 +88,38 @@ def test_extract_cost_map_with_amount_objects() -> None:
     assert cost_map[("claude-sonnet-4-5", "key_sonnet")] == Decimal("3.00")
 
 
+def test_extract_cost_map_skips_unparseable_or_missing_cost_values() -> None:
+    raw_items = [
+        {
+            "starting_at": "2026-02-11T00:00:00Z",
+            "ending_at": "2026-02-11T23:59:59Z",
+            "results": [
+                {
+                    "model": "claude-opus-4-1",
+                    "api_key_id": "key_missing",
+                    "amount": {"currency": "USD"},
+                },
+                {
+                    "model": "claude-opus-4-1",
+                    "api_key_id": "key_invalid",
+                    "amount": {"currency": "USD", "value": "not-a-number"},
+                },
+                {
+                    "model": "claude-opus-4-1",
+                    "api_key_id": "key_valid",
+                    "amount": {"currency": "USD", "value": "0"},
+                },
+            ],
+        }
+    ]
+
+    cost_map = extract_cost_map(raw_items)
+
+    assert ("claude-opus-4-1", "key_missing") not in cost_map
+    assert ("claude-opus-4-1", "key_invalid") not in cost_map
+    assert cost_map[("claude-opus-4-1", "key_valid")] == Decimal("0")
+
+
 def test_build_model_parquet_rows_keeps_api_cost_nullable_without_mapped_costs() -> None:
     rows = [
         UsageRow(

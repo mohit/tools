@@ -222,6 +222,17 @@ def decimal_from_any(value: Any, default: Decimal = Decimal("0")) -> Decimal:
         return default
 
 
+def optional_decimal_from_any(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return value
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+
+
 def model_family(model: str) -> str:
     low = (model or "").lower()
     if "opus" in low:
@@ -313,7 +324,7 @@ def flatten_cost_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def extract_cost_map(raw_items: list[dict[str, Any]]) -> dict[tuple[str, str | None], Decimal]:
-    out: dict[tuple[str, str | None], Decimal] = defaultdict(lambda: Decimal("0"))
+    out: dict[tuple[str, str | None], Decimal] = {}
 
     for raw in flatten_cost_items(raw_items):
         model = str(raw.get("model") or "unknown")
@@ -324,11 +335,15 @@ def extract_cost_map(raw_items: list[dict[str, Any]]) -> dict[tuple[str, str | N
         amount_obj = raw.get("amount") if isinstance(raw.get("amount"), dict) else None
         value: Decimal | None = None
         if amount_obj is not None:
-            value = decimal_from_any(amount_obj.get("value"), Decimal("0"))
-        else:
-            value = decimal_from_any(raw.get("cost_usd"), Decimal("0"))
+            value = optional_decimal_from_any(amount_obj.get("value"))
+        elif "cost_usd" in raw:
+            value = optional_decimal_from_any(raw.get("cost_usd"))
 
-        out[(model, api_key_id)] += value
+        if value is None:
+            continue
+
+        key = (model, api_key_id)
+        out[key] = out.get(key, Decimal("0")) + value
 
     return out
 
