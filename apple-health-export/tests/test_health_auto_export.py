@@ -137,6 +137,34 @@ class TestHealthAutoExportIngest(unittest.TestCase):
         self.assertEqual(result["health_records_total"], 1)
         self.assertEqual(result["workouts_total"], 1)
 
+    def test_ingest_payload_keeps_last_duplicate_in_single_batch(self):
+        base_record = dict(self.sample_payload["records"][0])
+        newer_duplicate = dict(base_record)
+        newer_duplicate["sourceVersion"] = "2.0"
+
+        payload = {"records": [base_record, newer_duplicate]}
+        health_auto_export.ingest_payload(
+            payload,
+            raw_root=self.raw_dir,
+            curated_root=self.curated_dir,
+        )
+
+        with duckdb.connect() as con:
+            row = con.execute(
+                """
+                SELECT sourceVersion
+                FROM read_parquet(?)
+                WHERE record_hash = ?
+                """,
+                [
+                    str(self.curated_dir / "health_records.parquet"),
+                    health_auto_export._record_hash(base_record),
+                ],
+            ).fetchone()
+
+        self.assertIsNotNone(row)
+        self.assertEqual(row[0], "2.0")
+
     def test_ingest_payload_rejects_invalid_record(self):
         invalid = {"records": [{"value": "10"}]}
         with self.assertRaises(ValueError):

@@ -186,7 +186,16 @@ def _merge_parquet(
     hash_column: str,
     select_sql: str,
 ) -> int:
-    con.execute(f"CREATE OR REPLACE TEMP TABLE incoming_raw AS {select_sql}", [str(incoming_file)])
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE incoming_raw AS
+        SELECT
+            *,
+            ROW_NUMBER() OVER () AS incoming_seq
+        FROM ({select_sql}) AS source_rows
+        """,
+        [str(incoming_file)],
+    )
     con.execute(
         f"""
         CREATE OR REPLACE TEMP TABLE incoming AS
@@ -194,7 +203,7 @@ def _merge_parquet(
         FROM (
             SELECT *, ROW_NUMBER() OVER (
                 PARTITION BY {hash_column}
-                ORDER BY ingested_at DESC
+                ORDER BY ingested_at DESC, incoming_seq DESC
             ) AS rn_incoming
             FROM incoming_raw
         )
@@ -204,17 +213,24 @@ def _merge_parquet(
 
     if parquet_file.exists():
         con.execute("CREATE OR REPLACE TEMP TABLE existing AS SELECT * FROM read_parquet(?)", [str(parquet_file)])
-        con.execute("CREATE OR REPLACE TEMP TABLE merged AS SELECT * FROM existing UNION ALL SELECT * FROM incoming")
+        con.execute(
+            """
+            CREATE OR REPLACE TEMP TABLE merged AS
+            SELECT *, CAST(NULL AS BIGINT) AS incoming_seq FROM existing
+            UNION ALL
+            SELECT * FROM incoming
+            """
+        )
     else:
         con.execute("CREATE OR REPLACE TEMP TABLE merged AS SELECT * FROM incoming")
 
     copy_sql = f"""
         COPY (
-            SELECT * EXCLUDE (rn)
+            SELECT * EXCLUDE (rn, incoming_seq)
             FROM (
                 SELECT *, ROW_NUMBER() OVER (
                     PARTITION BY {hash_column}
-                    ORDER BY ingested_at DESC
+                    ORDER BY ingested_at DESC, incoming_seq DESC
                 ) AS rn
                 FROM merged
             )
