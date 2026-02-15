@@ -113,20 +113,19 @@ def test_dedupe_rows_before_append_dedupes_across_pages(tmp_path: Path) -> None:
         },
     ]
 
-    deduped_1 = lastfm_ingest.dedupe_rows(page_1, seen_keys)
-    deduped_2 = lastfm_ingest.dedupe_rows(page_2, seen_keys)
-
     written_1 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=1,
-        rows=deduped_1,
+        rows=page_1,
+        seen_keys=seen_keys,
     )
     written_2 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=2,
-        rows=deduped_2,
+        rows=page_2,
+        seen_keys=seen_keys,
     )
 
     assert written_1 == 2
@@ -176,20 +175,19 @@ def test_append_parquet_partitions_dedupes_across_pages_with_shared_seen_keys(tm
         },
     ]
 
-    deduped_1 = lastfm_ingest.dedupe_rows(page_1, seen_keys)
-    deduped_2 = lastfm_ingest.dedupe_rows(page_2, seen_keys)
-
     written_1 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=1,
-        rows=deduped_1,
+        rows=page_1,
+        seen_keys=seen_keys,
     )
     written_2 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=2,
-        rows=deduped_2,
+        rows=page_2,
+        seen_keys=seen_keys,
     )
 
     assert written_1 == 1
@@ -201,7 +199,7 @@ def test_append_parquet_partitions_dedupes_across_pages_with_shared_seen_keys(tm
     assert total_rows == 2
 
 
-def test_dedupe_rows_dedupes_within_page(tmp_path: Path) -> None:
+def test_append_parquet_partitions_dedupes_within_page(tmp_path: Path) -> None:
     curated_root = tmp_path / "curated"
     run_id = 777
     seen_keys: set[tuple[object, object, object, object]] = set()
@@ -236,12 +234,12 @@ def test_dedupe_rows_dedupes_within_page(tmp_path: Path) -> None:
         },
     ]
 
-    deduped_rows = lastfm_ingest.dedupe_rows(rows, seen_keys)
     written = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=1,
-        rows=deduped_rows,
+        rows=rows,
+        seen_keys=seen_keys,
     )
 
     assert written == 2
@@ -292,7 +290,8 @@ def test_resume_loads_seen_keys_from_run_files(tmp_path: Path) -> None:
         curated_root,
         run_id=run_id,
         page=1,
-        rows=lastfm_ingest.dedupe_rows(first_page_rows, seen_keys),
+        rows=first_page_rows,
+        seen_keys=seen_keys,
     )
     assert written_1 == 1
 
@@ -302,7 +301,8 @@ def test_resume_loads_seen_keys_from_run_files(tmp_path: Path) -> None:
         curated_root,
         run_id=run_id,
         page=2,
-        rows=lastfm_ingest.dedupe_rows(resumed_page_rows, reloaded_seen_keys),
+        rows=resumed_page_rows,
+        seen_keys=reloaded_seen_keys,
     )
     assert written_2 == 1
 
@@ -352,14 +352,73 @@ def test_dedupe_rows_when_seen_keys_instance_changes(tmp_path: Path) -> None:
         curated_root,
         run_id=run_id,
         page=1,
-        rows=lastfm_ingest.dedupe_rows(page_1, seen_keys_1),
+        rows=page_1,
+        seen_keys=seen_keys_1,
     )
     seen_keys_2 = lastfm_ingest.load_seen_keys_for_run(curated_root, run_id=run_id)
     written_2 = lastfm_ingest.append_parquet_partitions(
         curated_root,
         run_id=run_id,
         page=2,
-        rows=lastfm_ingest.dedupe_rows(page_2, seen_keys_2),
+        rows=page_2,
+        seen_keys=seen_keys_2,
+    )
+
+    assert written_1 == 1
+    assert written_2 == 1
+
+    files = sorted(curated_root.rglob(f"scrobbles_{run_id}_p*.parquet"))
+    total_rows = sum(pq.read_table(path).num_rows for path in files)
+    assert total_rows == 2
+
+
+def test_append_parquet_partitions_loads_seen_keys_when_not_provided(tmp_path: Path) -> None:
+    curated_root = tmp_path / "curated"
+    run_id = 890
+
+    page_1 = [
+        {
+            "uts": 700,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(700, unit="s", utc=True),
+            "artist": "A",
+            "track": "T1",
+            "album": "AL1",
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+    ]
+    page_2 = [
+        {
+            "uts": 700,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(700, unit="s", utc=True),
+            "artist": "A",
+            "track": "T1",
+            "album": "AL1",
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+        {
+            "uts": 701,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(701, unit="s", utc=True),
+            "artist": "B",
+            "track": "T2",
+            "album": None,
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+    ]
+
+    written_1 = lastfm_ingest.append_parquet_partitions(
+        curated_root,
+        run_id=run_id,
+        page=1,
+        rows=page_1,
+    )
+    written_2 = lastfm_ingest.append_parquet_partitions(
+        curated_root,
+        run_id=run_id,
+        page=2,
+        rows=page_2,
     )
 
     assert written_1 == 1

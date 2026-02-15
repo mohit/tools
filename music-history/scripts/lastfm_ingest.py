@@ -245,11 +245,22 @@ def append_parquet_partitions(
     run_id: int,
     page: int,
     rows: list[dict[str, Any]],
+    seen_keys: set[tuple[Any, Any, Any, Any]] | None = None,
 ) -> int:
     if not rows:
         return 0
 
-    df = pd.DataFrame(rows)
+    active_seen_keys = seen_keys
+    if active_seen_keys is None:
+        active_seen_keys = load_seen_keys_for_run(
+            curated_root=curated_root,
+            run_id=run_id,
+        )
+    deduped_rows = dedupe_rows(rows=rows, seen_keys=active_seen_keys)
+    if not deduped_rows:
+        return 0
+
+    df = pd.DataFrame(deduped_rows)
     if df.empty:
         return 0
 
@@ -324,13 +335,14 @@ def main() -> None:
 
         page_rows = rows
         write_raw_page(raw_root=raw_root, run_id=run_id, page=page, rows=page_rows)
-        deduped_rows = dedupe_rows(rows=page_rows, seen_keys=seen_keys)
-        rows_written += append_parquet_partitions(
+        written_this_page = append_parquet_partitions(
             curated_root=curated_root,
             run_id=run_id,
             page=page,
-            rows=deduped_rows,
+            rows=page_rows,
+            seen_keys=seen_keys,
         )
+        rows_written += written_this_page
         page_max = max(row["uts"] for row in page_rows)
         max_uts_seen = page_max if max_uts_seen is None else max(max_uts_seen, page_max)
 
@@ -347,7 +359,7 @@ def main() -> None:
         total_pages = int(attr.get("totalPages", "1"))
         print(
             f"Processed page {page}/{total_pages}: fetched={len(page_rows)} "
-            f"deduped={len(deduped_rows)}"
+            f"deduped={written_this_page}"
         )
 
         if args.max_pages is not None and pages_processed >= args.max_pages:
