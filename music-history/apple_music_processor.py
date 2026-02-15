@@ -8,20 +8,10 @@ from pathlib import Path
 import duckdb
 
 
-DEFAULT_RAW_BASE = Path(
-    os.environ.get(
-        "DATALAKE_RAW_ROOT",
-        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports",
-    )
+DEFAULT_RAW_BASE_FALLBACK = "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports"
+DEFAULT_CURATED_BASE_FALLBACK = (
+    "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated"
 )
-DEFAULT_CURATED_BASE = Path(
-    os.environ.get(
-        "DATALAKE_CURATED_ROOT",
-        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated",
-    )
-)
-DEFAULT_RAW_ROOT = DEFAULT_RAW_BASE / "apple-music"
-DEFAULT_CURATED_ROOT = DEFAULT_CURATED_BASE / "apple-music" / "play-activity"
 
 
 TRACK_COLUMNS = [
@@ -57,16 +47,31 @@ def discover_csv(raw_root: Path, explicit_file: Path | None) -> Path:
         return explicit_file
 
     candidates = sorted(
-        raw_root.rglob("*Play Activity*.csv"),
+        (path for path in raw_root.rglob("*.csv") if _is_play_activity_csv_name(path.name)),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
     if not candidates:
         raise FileNotFoundError(
             f"No Apple Music Play Activity CSV found under {raw_root}. "
-            "Expected file name containing 'Play Activity'."
+            "Expected file name containing 'Play Activity' (spaces/underscores/hyphens accepted)."
         )
     return candidates[0]
+
+
+def _is_play_activity_csv_name(name: str) -> bool:
+    normalized = name.casefold().replace("_", " ").replace("-", " ")
+    return normalized.endswith(".csv") and "play activity" in normalized
+
+
+def _default_raw_root() -> Path:
+    raw_base = Path(os.environ.get("DATALAKE_RAW_ROOT", DEFAULT_RAW_BASE_FALLBACK))
+    return raw_base / "apple-music"
+
+
+def _default_curated_root() -> Path:
+    curated_base = Path(os.environ.get("DATALAKE_CURATED_ROOT", DEFAULT_CURATED_BASE_FALLBACK))
+    return curated_base / "apple-music" / "play-activity"
 
 
 def _quote_ident(name: str) -> str:
@@ -255,16 +260,14 @@ TO '{str(tmp_output).replace("'", "''")}'
         con.close()
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Process Apple Music Play Activity CSV into deduplicated partitioned parquet."
     )
     parser.add_argument(
         "--raw-root",
         type=Path,
-        default=Path(
-            str(DEFAULT_RAW_ROOT)
-        ),
+        default=Path(str(_default_raw_root())),
         help="Root folder containing Apple Music raw exports.",
     )
     parser.add_argument(
@@ -276,14 +279,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--curated-root",
         type=Path,
-        default=Path(str(DEFAULT_CURATED_ROOT)),
+        default=Path(str(_default_curated_root())),
         help="Output curated parquet root for play activity.",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main() -> None:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
 
     raw_root = Path(args.raw_root).expanduser()
     csv_file = Path(args.csv_file).expanduser() if args.csv_file else None

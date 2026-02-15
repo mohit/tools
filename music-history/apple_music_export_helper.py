@@ -31,7 +31,7 @@ def _extract_play_activity(zip_path: Path, output_root: Path) -> Path:
     extracted = None
     with zipfile.ZipFile(zip_path, "r") as zf:
         for name in zf.namelist():
-            if "Play Activity" in name and name.lower().endswith(".csv"):
+            if _is_play_activity_csv_name(Path(name).name):
                 filename = Path(name).name
                 out_path = target_dir / filename
                 with zf.open(name) as src, out_path.open("wb") as dst:
@@ -42,10 +42,15 @@ def _extract_play_activity(zip_path: Path, output_root: Path) -> Path:
     if not extracted:
         raise FileNotFoundError(
             "Could not find a Play Activity CSV in the Apple privacy export zip. "
-            "Expected a file with 'Play Activity' in its name."
+            "Expected a file with 'Play Activity' in its name (spaces/underscores/hyphens accepted)."
         )
 
     return extracted
+
+
+def _is_play_activity_csv_name(name: str) -> bool:
+    normalized = name.casefold().replace("_", " ").replace("-", " ")
+    return normalized.endswith(".csv") and "play activity" in normalized
 
 
 def _open_privacy_portal(use_selenium: bool) -> None:

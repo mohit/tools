@@ -28,16 +28,21 @@ def discover_csv(raw_root: Path, explicit_file: Path | None) -> Path:
         return explicit_file
 
     candidates = sorted(
-        raw_root.rglob("*Play Activity*.csv"),
+        (path for path in raw_root.rglob("*.csv") if _is_play_activity_csv_name(path.name)),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
     if not candidates:
         raise FileNotFoundError(
             f"No Apple Music Play Activity CSV found under {raw_root}. "
-            "Expected file name containing 'Play Activity'."
+            "Expected file name containing 'Play Activity' (spaces/underscores/hyphens accepted)."
         )
     return candidates[0]
+
+
+def _is_play_activity_csv_name(name: str) -> bool:
+    normalized = name.casefold().replace("_", " ").replace("-", " ")
+    return normalized.endswith(".csv") and "play activity" in normalized
 
 
 def _parse_dt(value: str) -> datetime | None:
@@ -98,7 +103,7 @@ def compute_status(days_stale: int, warn_days: int, critical_days: int) -> tuple
     return "fresh", 0
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Check Apple Music export freshness and return status code for automation."
     )
@@ -107,16 +112,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warn-days", type=int, default=30)
     parser.add_argument("--critical-days", type=int, default=90)
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output")
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main() -> None:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
 
-    csv_path = discover_csv(
-        raw_root=Path(args.raw_root).expanduser(),
-        explicit_file=Path(args.csv_file).expanduser() if args.csv_file else None,
-    )
+    raw_root = Path(args.raw_root).expanduser()
+    explicit_csv = Path(args.csv_file).expanduser() if args.csv_file else None
+    try:
+        csv_path = discover_csv(raw_root=raw_root, explicit_file=explicit_csv)
+    except FileNotFoundError as exc:
+        payload = {
+            "status": "missing",
+            "csv_file": None,
+            "warn_days": args.warn_days,
+            "critical_days": args.critical_days,
+            "reason": str(exc),
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2))
+        else:
+            print(str(exc))
+        raise SystemExit(3)
 
     latest_played = extract_latest_played_at(csv_path)
     if latest_played is None:

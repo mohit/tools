@@ -84,6 +84,7 @@ Exit codes:
 - `0`: fresh
 - `1`: warning (default >= 30 days stale)
 - `2`: critical (default >= 90 days stale)
+- `3`: missing/unreadable Play Activity CSV (pipeline failure)
 
 ### 4. Optional MusicKit supplement (recent played only)
 

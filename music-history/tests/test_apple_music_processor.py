@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import duckdb
@@ -8,6 +9,20 @@ import apple_music_processor as processor
 
 
 class AppleMusicProcessorTests(unittest.TestCase):
+    def test_parse_args_uses_datalake_env_roots(self) -> None:
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "DATALAKE_RAW_ROOT": "/tmp/custom-raw",
+                "DATALAKE_CURATED_ROOT": "/tmp/custom-curated",
+            },
+            clear=False,
+        ):
+            args = processor.parse_args([])
+
+        self.assertEqual(args.raw_root, Path("/tmp/custom-raw/apple-music"))
+        self.assertEqual(args.curated_root, Path("/tmp/custom-curated/apple-music/play-activity"))
+
     def test_process_csv_deduplicates_and_writes_partitioned_parquet(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -52,6 +67,15 @@ ORDER BY played_at_utc
 
             selected = processor.discover_csv(raw_root=tmp_path, explicit_file=None)
             self.assertEqual(selected, new_file)
+
+    def test_discover_csv_matches_underscore_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            csv_path = tmp_path / "Apple_Music_Play_Activity.csv"
+            csv_path.write_text("Event Start Timestamp\n2024-01-01T00:00:00Z\n", encoding="utf-8")
+
+            selected = processor.discover_csv(raw_root=tmp_path, explicit_file=None)
+            self.assertEqual(selected, csv_path)
 
 
 if __name__ == "__main__":
