@@ -124,3 +124,54 @@ def test_build_model_parquet_rows_keeps_api_cost_nullable_without_mapped_costs()
     assert model_rows[0]["model"] == "claude-sonnet-4-5"
     assert model_rows[0]["estimated_cost_usd"] == 4.0
     assert model_rows[0]["api_reported_cost_usd"] is None
+
+
+def test_build_model_parquet_rows_sets_api_cost_when_any_row_has_mapped_cost() -> None:
+    rows = [
+        UsageRow(
+            snapshot_date="2026-02-11",
+            model="claude-sonnet-4-5",
+            model_family="sonnet",
+            api_key_id="key_1",
+            agent="agent-a",
+            input_tokens=100,
+            output_tokens=50,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+            estimated_cost_usd=Decimal("1.00"),
+            api_reported_cost_usd=None,
+        ),
+        UsageRow(
+            snapshot_date="2026-02-11",
+            model="claude-sonnet-4-5",
+            model_family="sonnet",
+            api_key_id="key_2",
+            agent="agent-b",
+            input_tokens=120,
+            output_tokens=60,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+            estimated_cost_usd=Decimal("1.50"),
+            api_reported_cost_usd=Decimal("2.25"),
+        ),
+        UsageRow(
+            snapshot_date="2026-02-11",
+            model="claude-sonnet-4-5",
+            model_family="sonnet",
+            api_key_id="key_3",
+            agent="agent-c",
+            input_tokens=80,
+            output_tokens=40,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+            estimated_cost_usd=Decimal("0.75"),
+            api_reported_cost_usd=Decimal("0.75"),
+        ),
+    ]
+
+    model_rows = build_model_parquet_rows(date(2026, 2, 11), rows)
+
+    assert len(model_rows) == 1
+    assert model_rows[0]["model"] == "claude-sonnet-4-5"
+    assert model_rows[0]["estimated_cost_usd"] == 3.25
+    assert model_rows[0]["api_reported_cost_usd"] == 3.0
