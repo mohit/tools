@@ -87,20 +87,20 @@ class LastfmIngestTests(unittest.TestCase):
         mod = load_module()
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)
-            jan_first_track_uts = int(
+            jan_later_track_uts = int(
                 dt.datetime(2024, 1, 1, 0, 0, 20, tzinfo=dt.timezone.utc).timestamp()
             )
-            jan_second_track_uts = int(
+            jan_earlier_track_uts = int(
                 dt.datetime(2024, 1, 1, 0, 0, 10, tzinfo=dt.timezone.utc).timestamp()
             )
 
-            jan_file = output_dir / "year=2024" / "month=01" / "scrobbles.jsonl"
+            jan_file = mod.month_partition_path(output_dir, jan_later_track_uts)
             write_jsonl(
                 jan_file,
                 [
                     # 2024-01-01 00:00:20 UTC
                     {
-                        "uts": jan_first_track_uts,
+                        "uts": jan_later_track_uts,
                         "artist": "A",
                         "track": "Song 2",
                         "album": "Alpha",
@@ -111,14 +111,14 @@ class LastfmIngestTests(unittest.TestCase):
             rows = [
                 # Duplicate of existing row in January 2024 partition.
                 {
-                    "uts": jan_first_track_uts,
+                    "uts": jan_later_track_uts,
                     "artist": "A",
                     "track": "Song 2",
                     "album": "Alpha",
                 },
                 # New row in same partition; arrives out of order and should be appended sorted.
                 {
-                    "uts": jan_second_track_uts,
+                    "uts": jan_earlier_track_uts,
                     "artist": "A",
                     "track": "Song 1",
                     "album": "Alpha",
@@ -133,8 +133,8 @@ class LastfmIngestTests(unittest.TestCase):
 
             jan_rows = [json.loads(line) for line in jan_file.read_text().splitlines()]
             self.assertEqual(len(jan_rows), 2)
-            self.assertEqual(jan_rows[0]["uts"], jan_first_track_uts)
-            self.assertEqual(jan_rows[1]["uts"], jan_second_track_uts)
+            self.assertEqual(jan_rows[0]["uts"], jan_later_track_uts)
+            self.assertEqual(jan_rows[1]["uts"], jan_earlier_track_uts)
 
 
 if __name__ == "__main__":
