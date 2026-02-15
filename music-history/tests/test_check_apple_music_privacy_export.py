@@ -75,6 +75,28 @@ def test_main_returns_error_for_unreadable_csv_path(capsys: pytest.CaptureFixtur
     assert "ERROR:" in out.err
 
 
+def test_main_returns_error_for_permission_denied_csv(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    csv_path = tmp_path / "Apple Music - Track Play History.csv"
+    write_csv(
+        csv_path,
+        "Track Name,Play Date UTC\n"
+        "Song A,2026-02-10T22:00:00Z\n",
+    )
+
+    def deny_open(self: Path, *args: object, **kwargs: object) -> None:
+        raise PermissionError("permission denied")
+
+    monkeypatch.setattr(Path, "open", deny_open)
+
+    exit_code = main(["--csv-path", str(csv_path)])
+
+    out = capsys.readouterr()
+    assert exit_code == 1
+    assert "permission denied" in out.err
+
+
 def test_main_treats_partial_day_over_limit_as_stale(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
