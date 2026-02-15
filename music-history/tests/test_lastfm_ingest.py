@@ -88,10 +88,10 @@ class LastfmIngestTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)
             # Use real Jan 2024 epoch seconds so rows partition into year=2024/month=01.
-            jan_uts_new = int(
+            jan_uts_existing = int(
                 dt.datetime(2024, 1, 15, 12, 0, 10, tzinfo=dt.timezone.utc).timestamp()
             )
-            jan_uts_existing = int(
+            jan_uts_new = int(
                 dt.datetime(2024, 1, 15, 12, 0, 20, tzinfo=dt.timezone.utc).timestamp()
             )
 
