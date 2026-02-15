@@ -87,14 +87,17 @@ class LastfmIngestTests(unittest.TestCase):
         mod = load_module()
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)
-            jan_uts_existing = int(
-                dt.datetime(2024, 1, 1, 0, 0, 20, tzinfo=dt.timezone.utc).timestamp()
-            )
+            # Use real Jan 2024 epoch seconds so rows partition into year=2024/month=01.
             jan_uts_new = int(
-                dt.datetime(2024, 1, 1, 0, 0, 10, tzinfo=dt.timezone.utc).timestamp()
+                dt.datetime(2024, 1, 15, 12, 0, 10, tzinfo=dt.timezone.utc).timestamp()
+            )
+            jan_uts_existing = int(
+                dt.datetime(2024, 1, 15, 12, 0, 20, tzinfo=dt.timezone.utc).timestamp()
             )
 
             jan_file = output_dir / "year=2024" / "month=01" / "scrobbles.jsonl"
+            self.assertEqual(mod.month_partition_path(output_dir, jan_uts_new), jan_file)
+            self.assertEqual(mod.month_partition_path(output_dir, jan_uts_existing), jan_file)
             write_jsonl(
                 jan_file,
                 [
