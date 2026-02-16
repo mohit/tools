@@ -21,12 +21,38 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-5. Set environment variables (or add them to a `.env` and export them in your shell):
+5. Configure credentials for automated runs.
+
+Recommended: create `strava-data-puller/.env` (auto-discovered by `strava_pull.py`):
+
+```bash
+cat > .env <<'EOF'
+STRAVA_CLIENT_ID="YOUR_CLIENT_ID"
+STRAVA_CLIENT_SECRET="YOUR_CLIENT_SECRET"
+STRAVA_REFRESH_TOKEN="YOUR_REFRESH_TOKEN"
+EOF
+```
+
+Alternative: export in shell environment:
 
 ```bash
 export STRAVA_CLIENT_ID="YOUR_CLIENT_ID"
 export STRAVA_CLIENT_SECRET="YOUR_CLIENT_SECRET"
 export STRAVA_REFRESH_TOKEN="YOUR_REFRESH_TOKEN"
+```
+
+Alternative (macOS Keychain):
+
+```bash
+security add-generic-password -U -s strava-data-puller -a STRAVA_CLIENT_ID -w "YOUR_CLIENT_ID"
+security add-generic-password -U -s strava-data-puller -a STRAVA_CLIENT_SECRET -w "YOUR_CLIENT_SECRET"
+security add-generic-password -U -s strava-data-puller -a STRAVA_REFRESH_TOKEN -w "YOUR_REFRESH_TOKEN"
+```
+
+6. Verify credential discovery before scheduling:
+
+```bash
+python strava_pull.py --check-credentials
 ```
 
 ## Usage
@@ -84,8 +110,13 @@ ORDER BY total_activities DESC;
 - The script stores data locally only.
 
 ## Testing
-No automated tests are included.
+Credential resolution tests:
+
+```bash
+python3 -m unittest discover -s tests -q
+```
 
 ## Troubleshooting
+- **Missing credentials**: The script checks this order: environment vars -> `.env` files (`strava-data-puller/.env`, current working directory `.env`, `~/code/tools/strava-data-puller/.env`, or `STRAVA_ENV_FILE`) -> macOS keychain.
 - **Unauthorized**: Confirm your refresh token is valid and your app has the correct scopes.
 - **Rate limit exceeded**: The script prints rate-limit headers. Re-run after the cooldown or lower your `--max-pages` and skip streams.
