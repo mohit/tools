@@ -12,7 +12,7 @@ ICLOUD_ROOT = Path("/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Da
 JSONL_PATH = Path("apple_music_history.jsonl").absolute()
 CURATED_ROOT = ICLOUD_ROOT / "curated/apple_music/library"
 CATALOG_DB = ICLOUD_ROOT / "catalog/datalake.duckdb"
-EXPORT_METADATA_PATH = Path("apple_music_export_metadata.json").absolute()
+EXPORT_METADATA_PATH = Path(__file__).resolve().with_name("apple_music_export_metadata.json")
 MAX_STALENESS_DAYS = int(os.environ.get("APPLE_MUSIC_MAX_STALENESS_DAYS", "365"))
 
 def ingest():
