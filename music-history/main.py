@@ -41,11 +41,16 @@ def get_credentials() -> tuple[str, str]:
 
 
 def row_key(row: dict) -> tuple:
+    def _normalize_text(value) -> str:
+        if isinstance(value, dict):
+            value = value.get("#text")
+        return value or ""
+
     return (
         int(row["uts"]),
-        row.get("artist") or "",
-        row.get("track") or "",
-        row.get("album") or "",
+        _normalize_text(row.get("artist")),
+        _normalize_text(row.get("track") or row.get("name")),
+        _normalize_text(row.get("album")),
     )
 
 
@@ -191,14 +196,9 @@ def merge_raw_monthly_jsonl(rows: list[dict], raw_dir: Path = RAW) -> None:
                 existing_uts = extract_uts(existing)
                 if existing_uts is None:
                     continue
-                # Keep a canonical key shape for older rows that may lack fields.
-                existing_key = (
-                    existing_uts,
-                    existing.get("artist") or "",
-                    existing.get("track") or "",
-                    existing.get("album") or "",
-                )
-                merged[existing_key] = existing
+                existing_for_key = dict(existing)
+                existing_for_key["uts"] = existing_uts
+                merged[row_key(existing_for_key)] = existing
 
         for row in month_rows:
             merged[row_key(row)] = row
