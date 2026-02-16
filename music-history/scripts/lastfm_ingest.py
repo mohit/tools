@@ -245,12 +245,18 @@ def append_parquet_partitions(
     run_id: int,
     page: int,
     rows: list[dict[str, Any]],
-    seen_keys: set[tuple[Any, Any, Any, Any]],
+    seen_keys: set[tuple[Any, Any, Any, Any]] | None = None,
 ) -> int:
     if not rows:
         return 0
 
-    deduped_rows = dedupe_rows(rows=rows, seen_keys=seen_keys)
+    # Fallback ensures cross-page dedupe still works for callers that do not
+    # carry an in-memory seen_keys set across page writes.
+    effective_seen_keys = seen_keys
+    if effective_seen_keys is None:
+        effective_seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
+
+    deduped_rows = dedupe_rows(rows=rows, seen_keys=effective_seen_keys)
     if not deduped_rows:
         return 0
 
