@@ -48,25 +48,28 @@ def parse_dotenv(path: Path) -> dict[str, str]:
     if not path.exists():
         return values
 
-    with path.open("r", encoding="utf-8") as handle:
-        for raw_line in handle:
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if line.startswith("export "):
-                line = line[len("export ") :].strip()
-            if "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            key = key.strip()
-            value = value.strip()
-            if not key:
-                continue
-            if (value.startswith('"') and value.endswith('"')) or (
-                value.startswith("'") and value.endswith("'")
-            ):
-                value = value[1:-1]
-            values[key] = value
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            for raw_line in handle:
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("export "):
+                    line = line[len("export ") :].strip()
+                if "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip()
+                if not key:
+                    continue
+                if (value.startswith('"') and value.endswith('"')) or (
+                    value.startswith("'") and value.endswith("'")
+                ):
+                    value = value[1:-1]
+                values[key] = value
+    except OSError:
+        return {}
     return values
 
 
@@ -131,7 +134,9 @@ def resolve_strava_credentials() -> tuple[dict[str, str], dict[str, str], list[P
 
     env_files = discover_env_files()
     for env_file in env_files:
-        if not env_file.exists():
+        if all(var_name in values for var_name in REQUIRED_STRAVA_VARS):
+            break
+        if not env_file.exists() or not env_file.is_file() or not os.access(env_file, os.R_OK):
             continue
         env_values = parse_dotenv(env_file)
         for var_name in REQUIRED_STRAVA_VARS:
