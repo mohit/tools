@@ -35,6 +35,10 @@ REQUIRED_STRAVA_VARS = (
 )
 
 
+def is_readable_file(path: Path) -> bool:
+    return path.exists() and path.is_file() and os.access(path, os.R_OK)
+
+
 def parse_date(value: str) -> int:
     try:
         parsed = dt.datetime.strptime(value, "%Y-%m-%d")
@@ -45,7 +49,7 @@ def parse_date(value: str) -> int:
 
 def parse_dotenv(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
-    if not path.exists():
+    if not is_readable_file(path):
         return values
 
     try:
@@ -136,7 +140,7 @@ def resolve_strava_credentials() -> tuple[dict[str, str], dict[str, str], list[P
     for env_file in env_files:
         if all(var_name in values for var_name in REQUIRED_STRAVA_VARS):
             break
-        if not env_file.exists() or not env_file.is_file() or not os.access(env_file, os.R_OK):
+        if not is_readable_file(env_file):
             continue
         env_values = parse_dotenv(env_file)
         for var_name in REQUIRED_STRAVA_VARS:
