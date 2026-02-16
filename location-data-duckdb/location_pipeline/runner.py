@@ -78,7 +78,7 @@ def run_with_audit(conn: duckdb.DuckDBPyConnection, source_name: str, source_cfg
         )
         _refresh_place_dim(conn)
         return raw_count, visit_count, saved_count, review_count
-    except Exception as exc:
+    except (ValueError, OSError, duckdb.Error) as exc:
         conn.execute(
             """
             update ingestion_runs

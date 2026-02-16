@@ -8,13 +8,10 @@ from apple_music_export_guard import (
 )
 
 # Config
-ICLOUD_ROOT = Path(os.environ.get("DATALAKE_ROOT", str(Path.home() / "datalake.me")))
+from config import CURATED_ROOT as _CURATED_BASE, CATALOG_DB, EXPORT_METADATA_PATH, MAX_STALENESS_DAYS
+
 JSONL_PATH = Path("apple_music_history.jsonl").absolute()
-CURATED_ROOT = ICLOUD_ROOT / "curated/apple_music/library"
-CATALOG_DB = ICLOUD_ROOT / "catalog/datalake.duckdb"
-SCRIPT_DIR = Path(__file__).resolve().parent
-EXPORT_METADATA_PATH = SCRIPT_DIR / "apple_music_export_metadata.json"
-MAX_STALENESS_DAYS = int(os.environ.get("APPLE_MUSIC_MAX_STALENESS_DAYS", "365"))
+CURATED_ROOT = _CURATED_BASE / "apple_music/library"
 
 def ingest():
     try:

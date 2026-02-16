@@ -1,0 +1,13 @@
+target-version = "py311"
+line-length = 120
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]  # line length handled by formatter
+
+[lint.per-file-ignores]
+"tests/**" = ["B", "SIM"]
+"**/test_*.py" = ["B", "SIM"]
+
+[format]
+quote-style = "double"

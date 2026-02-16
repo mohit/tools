@@ -161,7 +161,7 @@ class ReflectionDB:
             self.con.execute("CREATE INDEX IF NOT EXISTS idx_workouts_type ON workouts(workout_type)")
             self.con.execute("CREATE INDEX IF NOT EXISTS idx_strava_date ON strava_activities(start_date_local)")
             self.con.execute("CREATE INDEX IF NOT EXISTS idx_insights_category ON insights(category)")
-        except Exception:
+        except duckdb.CatalogException:
             # Indexes may already exist
             pass
 

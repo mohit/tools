@@ -32,7 +32,7 @@ class HealthDataParser:
             self.root = self.tree.getroot()
             print("Parsing complete!")
             return True
-        except Exception as e:
+        except (ET.ParseError, OSError) as e:
             print(f"Error parsing XML: {e}", file=sys.stderr)
             return False
 

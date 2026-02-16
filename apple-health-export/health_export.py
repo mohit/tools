@@ -92,7 +92,7 @@ def extract_export(zip_path, output_dir=None):
             zip_ref.extractall(output_dir)
         print(f"Extraction complete: {output_dir}")
         return output_dir
-    except Exception as e:
+    except (OSError, zipfile.BadZipFile) as e:
         print(f"Error extracting file: {e}", file=sys.stderr)
         return None
 

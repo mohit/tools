@@ -11,3 +11,6 @@ dependencies = [
 
 [project.scripts]
 strava-pull = "strava_pull:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]

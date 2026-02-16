@@ -217,5 +217,5 @@ class StravaImporter:
                     json.dumps(activity)
                 ])
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError) as e:
             print(f"Error importing activity {activity.get('id')}: {e}")

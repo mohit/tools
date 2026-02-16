@@ -3,10 +3,10 @@ import os
 from pathlib import Path
 
 # Config
-ICLOUD_ROOT = Path(os.environ.get("DATALAKE_ROOT", str(Path.home() / "datalake.me")))
-CSV_PATH = ICLOUD_ROOT / "scrobbles-clakesnapster-1699153095.csv"
-CURATED_ROOT = ICLOUD_ROOT / "curated/lastfm/scrobbles"
-CATALOG_DB = ICLOUD_ROOT / "catalog/datalake.duckdb"
+from config import DATALAKE_ROOT, CURATED_ROOT as _CURATED_BASE, CATALOG_DB
+
+CSV_PATH = DATALAKE_ROOT / "scrobbles-clakesnapster-1699153095.csv"
+CURATED_ROOT = _CURATED_BASE / "lastfm/scrobbles"
 
 def ingest():
     print(f"Ingesting {CSV_PATH}...")

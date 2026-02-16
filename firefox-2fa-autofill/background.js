@@ -7,6 +7,19 @@ let recentCodes = []; // { code, timestamp, source }
 const MAX_CODES = 10;
 const CODE_EXPIRY = 15 * 60 * 1000; // 15 minutes
 
+// Restore codes from session storage (survives MV3 service worker restarts)
+if (typeof browserAPI.storage?.session !== "undefined") {
+  browserAPI.storage.session.get("recentCodes").then(result => {
+    if (result?.recentCodes) recentCodes = result.recentCodes;
+  }).catch(() => {});
+}
+
+function persistCodes() {
+  if (typeof browserAPI.storage?.session !== "undefined") {
+    browserAPI.storage.session.set({ recentCodes }).catch(() => {});
+  }
+}
+
 let pendingTabs = new Set();
 
 // Listen for messages from content scripts
