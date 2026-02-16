@@ -1,13 +1,19 @@
 # Tools for Mohit
 
-A public collection of small productivity and quality-of-life tools. Each tool lives in its own folder with a focused README and any tool-specific docs.
+A collection of personal data and productivity tools. Each tool lives in its own folder with a focused README.
 
 ## Tools
 
-- `firefox-2fa-autofill/` — Firefox extension that auto-fills 2FA codes from Google Voice SMS. See `firefox-2fa-autofill/README.md`.
-- `apple-health-export/` — Python tool to export and analyze Apple Health and Fitness data on macOS. See `apple-health-export/README.md`.
-- `anthropic-usage-tracker/` — Track Anthropic API token usage and estimated cost into daily raw + curated datalake snapshots. See `anthropic-usage-tracker/README.md`.
-- `google-takeout-focused/` — Focused Google Takeout ingestion for location timeline, search history, and YouTube Music history. See `google-takeout-focused/README.md`.
+- `anthropic-usage-tracker/` — Track Anthropic API token usage and estimated cost into daily datalake snapshots
+- `apple-health-export/` — Export and analyze Apple Health and Fitness data on macOS
+- `firefox-2fa-autofill/` — Browser extension that auto-fills 2FA codes from Google Voice SMS
+- `google-takeout-focused/` — Focused Google Takeout ingestion for location, search, and YouTube Music history
+- `location-data-duckdb/` — Unify personal location history (Google, Foursquare, manual) into DuckDB
+- `music-history/` — Last.fm + Apple Music ingestion into partitioned Parquet
+- `personal-assistant-ios/` — iOS app with Apple Health, CloudKit sync, and Google services integration
+- `personal-data-reflection/` — Health and fitness data dashboard (Flask + DuckDB)
+- `strava-data-puller/` — Pull Strava activities into DuckDB and Parquet
+- `scripts/gcal_backup.py` — Weekly Google Calendar backup via gog CLI
 
 ## Repository Layout
 

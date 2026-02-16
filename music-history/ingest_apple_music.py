@@ -8,7 +8,7 @@ from apple_music_export_guard import (
 )
 
 # Config
-ICLOUD_ROOT = Path("/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake")
+ICLOUD_ROOT = Path(os.environ.get("DATALAKE_ROOT", str(Path.home() / "datalake.me")))
 JSONL_PATH = Path("apple_music_history.jsonl").absolute()
 CURATED_ROOT = ICLOUD_ROOT / "curated/apple_music/library"
 CATALOG_DB = ICLOUD_ROOT / "catalog/datalake.duckdb"

@@ -39,3 +39,7 @@ strava-data-puller/data/
 # Tool: Apple Health Export
 apple-health-export/export.zip
 apple-health-export/apple_health_export/
+
+# Personal data - do not track
+catalog.yaml
+music-history/apple_music_history.jsonl

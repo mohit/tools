@@ -20,10 +20,10 @@ MAX_RETRIES = 5
 BASE_DELAY_SECONDS = 5
 
 DEFAULT_RAW_ROOT = Path(
-    "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports"
+    os.environ.get("DATALAKE_RAW_ROOT", str(Path.home() / "datalake.me/raw"))
 )
 DEFAULT_CURATED_ROOT = Path(
-    "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated"
+    os.environ.get("DATALAKE_CURATED_ROOT", str(Path.home() / "datalake.me/curated"))
 )
 STATE_DIR = Path.home() / ".local" / "share" / "datalake"
 STATE_FILE = STATE_DIR / "lastfm_last_uts.txt"
