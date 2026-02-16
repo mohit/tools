@@ -2,17 +2,13 @@
 Tests for health_parser.py
 """
 
-import os
-import sys
 import csv
 import tempfile
-from pathlib import Path
-from datetime import datetime
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 # Add parent directory to path to import the module
-
 import health_parser
 
 
@@ -132,7 +128,7 @@ class TestHealthDataParser(unittest.TestCase):
         self.assertTrue(output_file.exists())
 
         # Read and verify CSV
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             reader = csv.DictReader(f)
             rows = list(reader)
 
@@ -157,7 +153,7 @@ class TestHealthDataParser(unittest.TestCase):
         self.assertTrue(result)
 
         # Read and verify CSV
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             reader = csv.DictReader(f)
             rows = list(reader)
 
@@ -184,7 +180,7 @@ class TestHealthDataParser(unittest.TestCase):
         self.assertTrue(result)
 
         # Read and verify CSV
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             reader = csv.DictReader(f)
             rows = list(reader)
 
@@ -208,7 +204,7 @@ class TestHealthDataParser(unittest.TestCase):
         self.assertTrue(result)
 
         # Read and verify CSV
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             reader = csv.DictReader(f)
             rows = list(reader)
 
@@ -258,7 +254,7 @@ class TestHealthDataParser(unittest.TestCase):
         self.assertTrue(output_file.exists())
 
         # Read and verify CSV
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             reader = csv.DictReader(f)
             rows = list(reader)
 
@@ -285,7 +281,7 @@ class TestHealthDataParser(unittest.TestCase):
         self.assertTrue(result)
 
         # Read and verify CSV
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             reader = csv.DictReader(f)
             rows = list(reader)
 
@@ -308,7 +304,7 @@ class TestHealthDataParser(unittest.TestCase):
         self.assertTrue(result)
 
         # Read and verify CSV
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             reader = csv.DictReader(f)
             rows = list(reader)
 
@@ -333,9 +329,9 @@ class TestHealthDataParser(unittest.TestCase):
         self.assertTrue(result)
 
         # Read and verify CSV
-        with open(output_file, 'r') as f:
+        with open(output_file) as f:
             reader = csv.DictReader(f)
-            rows = list(reader)
+            rows = list(reader)  # noqa: F841
 
             # Should have metadata columns
             fieldnames = reader.fieldnames

@@ -1,15 +1,16 @@
-import duckdb
 import random
 from datetime import datetime, timedelta
-import os
 from pathlib import Path
+
+import duckdb
+
 
 def generate_sample_data(db_path="./data/reflection.duckdb"):
     db_dir = Path(db_path).parent
     db_dir.mkdir(parents=True, exist_ok=True)
-    
+
     con = duckdb.connect(db_path)
-    
+
     con.execute("""
         CREATE TABLE IF NOT EXISTS health_metrics (
             date DATE PRIMARY KEY,
@@ -28,7 +29,7 @@ def generate_sample_data(db_path="./data/reflection.duckdb"):
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
+
     con.execute("""
         CREATE TABLE IF NOT EXISTS workouts (
             id VARCHAR PRIMARY KEY,
@@ -52,35 +53,35 @@ def generate_sample_data(db_path="./data/reflection.duckdb"):
 
     # Generate 60 days of data
     end_date = datetime.now().date()
-    
-    print(f"Generating sample data for 60 days...")
-    
+
+    print("Generating sample data for 60 days...")
+
     for i in range(60):
         d = end_date - timedelta(days=i)
         date_str = d.strftime('%Y-%m-%d')
-        
+
         # Health Metrics
         steps = random.randint(2000, 15000)
         sleep = random.uniform(5.5, 9.0)
         rhr = random.uniform(55, 75)
         hrv = random.uniform(30, 80)
-        
+
         con.execute("""
-            INSERT OR REPLACE INTO health_metrics 
-            (date, steps, distance_km, active_energy_kcal, resting_energy_kcal, exercise_minutes, 
+            INSERT OR REPLACE INTO health_metrics
+            (date, steps, distance_km, active_energy_kcal, resting_energy_kcal, exercise_minutes,
              resting_heart_rate, hrv_sdnn, sleep_hours, sleep_quality)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [
-            date_str, steps, steps * 0.0008, steps * 0.04, 1800, 
-            random.randint(0, 60), rhr, hrv, sleep, 
+            date_str, steps, steps * 0.0008, steps * 0.04, 1800,
+            random.randint(0, 60), rhr, hrv, sleep,
             'good' if sleep > 7 else 'fair'
         ])
-        
+
         # Workouts (occasional)
         if random.random() > 0.6:
             workout_id = f"sample_{date_str}"
             con.execute("""
-                INSERT OR REPLACE INTO workouts 
+                INSERT OR REPLACE INTO workouts
                 (id, source, workout_type, start_time, duration_minutes, distance_km, calories)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, [
@@ -123,7 +124,7 @@ def generate_sample_data(db_path="./data/reflection.duckdb"):
             GROUP BY CAST(start_time AS DATE)
         ) w ON hm.date = w.workout_date
     """)
-    
+
     con.close()
     print("Sample data generated successfully!")
 

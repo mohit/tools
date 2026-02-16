@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from location_pipeline.database import init_db
 from location_pipeline.runner import run_with_audit
@@ -13,7 +13,7 @@ def test_multiple_sources_share_single_db(duckdb_conn, monkeypatch) -> None:
             VisitRecord(
                 visit_id="manual-1",
                 source_name="manual_csv",
-                started_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                started_at=datetime(2024, 1, 1, tzinfo=UTC),
                 ended_at=None,
                 lat=37.78,
                 lon=-122.41,
@@ -30,7 +30,7 @@ def test_multiple_sources_share_single_db(duckdb_conn, monkeypatch) -> None:
             VisitRecord(
                 visit_id="fs-1",
                 source_name="foursquare_export",
-                started_at=datetime(2024, 2, 1, tzinfo=timezone.utc),
+                started_at=datetime(2024, 2, 1, tzinfo=UTC),
                 ended_at=None,
                 lat=40.71,
                 lon=-74.0,

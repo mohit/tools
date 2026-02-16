@@ -3,14 +3,14 @@
 
 import argparse
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
+from reflector.analysis import CorrelationAnalyzer
+from reflector.dashboard import create_app
 from reflector.database import ReflectionDB
 from reflector.importers import HealthImporter, StravaImporter
-from reflector.analysis import CorrelationAnalyzer, InsightGenerator
 from reflector.reports import MonthlyReportGenerator
-from reflector.dashboard import create_app
 
 
 def import_health_data(args):
@@ -47,7 +47,7 @@ def import_health_data(args):
                     print("Error: No CSV or JSON files found")
                     return 1
 
-            print(f"\nImport complete:")
+            print("\nImport complete:")
             print(f"  Health metrics: {counts['health_metrics']} days")
             print(f"  Workouts: {counts['workouts']}")
 
@@ -81,7 +81,7 @@ def import_strava_data(args):
         try:
             counts = importer.import_from_directory(data_path)
 
-            print(f"\nImport complete:")
+            print("\nImport complete:")
             print(f"  Activities: {counts['activities']}")
             print(f"  Workouts: {counts['workouts']}")
 
@@ -248,7 +248,7 @@ Examples:
     )
 
     # Analyze
-    analyze_parser = subparsers.add_parser(
+    subparsers.add_parser(
         'analyze',
         help='Run correlation analysis'
     )

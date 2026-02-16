@@ -1,14 +1,15 @@
-import duckdb
-import os
-from pathlib import Path
 import time
+from pathlib import Path
+
+import duckdb
 from apple_music_export_guard import (
     AppleMusicExportGuardError,
     enforce_fresh_export_or_raise,
 )
+from config import CATALOG_DB, EXPORT_METADATA_PATH, MAX_STALENESS_DAYS
 
 # Config
-from config import CURATED_ROOT as _CURATED_BASE, CATALOG_DB, EXPORT_METADATA_PATH, MAX_STALENESS_DAYS
+from config import CURATED_ROOT as _CURATED_BASE
 
 JSONL_PATH = Path("apple_music_history.jsonl").absolute()
 CURATED_ROOT = _CURATED_BASE / "apple_music/library"
@@ -20,7 +21,7 @@ def ingest():
         )
     except AppleMusicExportGuardError as exc:
         print(f"ERROR: {exc}")
-        raise SystemExit(2)
+        raise SystemExit(2) from exc
 
     print(
         "Apple Music export freshness check passed: "
@@ -30,56 +31,56 @@ def ingest():
     )
 
     print(f"Ingesting {JSONL_PATH}...")
-    
+
     # Ensure target directory exists
     CURATED_ROOT.mkdir(parents=True, exist_ok=True)
-    
+
     con = duckdb.connect(str(CATALOG_DB))
-    
+
     # 1. Read JSONL and Transform
     # We parse the ISO timestamp.
     # We handle null played_at by defaulting to epoch 0 or staying null (and partitioning accordingly).
-    
+
     query = f"""
-    SELECT 
+    SELECT
         name as track,
         artist,
         album,
         play_count,
         TRY_CAST(played_at AS TIMESTAMP) as played_at_utc,
         source,
-        CASE 
-            WHEN played_at IS NOT NULL THEN strftime(TRY_CAST(played_at AS TIMESTAMP), '%Y') 
-            ELSE 'unknown' 
+        CASE
+            WHEN played_at IS NOT NULL THEN strftime(TRY_CAST(played_at AS TIMESTAMP), '%Y')
+            ELSE 'unknown'
         END as year,
-        CASE 
-            WHEN played_at IS NOT NULL THEN strftime(TRY_CAST(played_at AS TIMESTAMP), '%m') 
-            ELSE 'unknown' 
+        CASE
+            WHEN played_at IS NOT NULL THEN strftime(TRY_CAST(played_at AS TIMESTAMP), '%m')
+            ELSE 'unknown'
         END as month,
         CAST({int(time.time())} AS BIGINT) as ingested_at
     FROM read_json_auto('{JSONL_PATH}')
     """
-    
+
     # 2. Write to Parquet (Partitioned)
     print(f"Writing partitioned parquet to {CURATED_ROOT}...")
     con.sql(f"""
-        COPY ({query}) 
-        TO '{CURATED_ROOT}' 
+        COPY ({query})
+        TO '{CURATED_ROOT}'
         (FORMAT PARQUET, PARTITION_BY (year, month), OVERWRITE_OR_IGNORE TRUE)
     """)
-    
+
     # 3. Create a View in the Catalog
     print("Updating Catalog View...")
     con.sql(f"""
-        CREATE OR REPLACE VIEW apple_music_library AS 
+        CREATE OR REPLACE VIEW apple_music_library AS
         SELECT * EXCLUDE (year, month)
         FROM read_parquet('{CURATED_ROOT}/year=*/month=*/*.parquet', hive_partitioning=true)
     """)
-    
+
     # Verify count
     count = con.sql("SELECT COUNT(*) FROM apple_music_library").fetchone()[0]
     print(f"Total tracks in Apple Music catalog: {count}")
-    
+
     con.close()
     print("Done.")
 

@@ -2,9 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import duckdb
-
 import apple_music_musickit_sync as musickit
+import duckdb
 
 
 class AppleMusicMusicKitSyncTests(unittest.TestCase):

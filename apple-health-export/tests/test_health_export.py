@@ -3,16 +3,13 @@ Tests for health_export.py
 """
 
 import os
-import sys
 import tempfile
+import unittest
 import zipfile
 from pathlib import Path
-from datetime import datetime
-import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import the module
-
 import health_export
 
 

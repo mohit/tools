@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +13,7 @@ def _parse_ts_millis(value: str | int | None) -> datetime | None:
     if value is None:
         return None
     millis = int(value)
-    return datetime.fromtimestamp(millis / 1000, tz=timezone.utc).replace(tzinfo=None)
+    return datetime.fromtimestamp(millis / 1000, tz=UTC).replace(tzinfo=None)
 
 
 def _e7_to_float(value: int | None) -> float | None:
@@ -84,5 +84,5 @@ def _parse_iso(value: str | None) -> datetime | None:
     normalized = value.replace("Z", "+00:00")
     dt = datetime.fromisoformat(normalized)
     if dt.tzinfo:
-        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        dt = dt.astimezone(UTC).replace(tzinfo=None)
     return dt

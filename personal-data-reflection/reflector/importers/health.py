@@ -2,9 +2,9 @@
 
 import csv
 import json
+from datetime import date, datetime
 from pathlib import Path
-from datetime import datetime, date
-from typing import Dict, List
+
 import duckdb
 
 
@@ -30,7 +30,7 @@ class HealthImporter:
         """Initialize importer with database connection."""
         self.con = db_connection
 
-    def import_from_csv(self, csv_path: Path) -> Dict[str, int]:
+    def import_from_csv(self, csv_path: Path) -> dict[str, int]:
         """Import Apple Health data from CSV file.
 
         Returns dict with counts of imported records.
@@ -40,10 +40,10 @@ class HealthImporter:
             raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
         # Aggregate daily metrics
-        daily_metrics: Dict[date, Dict] = {}
+        daily_metrics: dict[date, dict] = {}
         workout_count = 0
 
-        with open(csv_path, 'r', encoding='utf-8') as f:
+        with open(csv_path, encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 record_type = row.get('type', '')
@@ -62,7 +62,7 @@ class HealthImporter:
             "workouts": workout_count
         }
 
-    def import_from_json(self, json_path: Path) -> Dict[str, int]:
+    def import_from_json(self, json_path: Path) -> dict[str, int]:
         """Import Apple Health data from JSON file.
 
         Returns dict with counts of imported records.
@@ -71,10 +71,10 @@ class HealthImporter:
         if not json_path.exists():
             raise FileNotFoundError(f"JSON file not found: {json_path}")
 
-        with open(json_path, 'r', encoding='utf-8') as f:
+        with open(json_path, encoding='utf-8') as f:
             data = json.load(f)
 
-        daily_metrics: Dict[date, Dict] = {}
+        daily_metrics: dict[date, dict] = {}
         workout_count = 0
 
         # Process records
@@ -96,7 +96,7 @@ class HealthImporter:
             "workouts": workout_count
         }
 
-    def _process_health_record(self, row: Dict, daily_metrics: Dict):
+    def _process_health_record(self, row: dict, daily_metrics: dict):
         """Process a health record from CSV."""
         try:
             record_type = row['type']
@@ -111,7 +111,7 @@ class HealthImporter:
 
             # Parse ISO datetime
             record_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00')).date()
-            
+
             # Handle value based on metric type
             value = 0.0
             if metric_name == 'sleep':
@@ -136,21 +136,15 @@ class HealthImporter:
                 # Convert meters to km
                 if row.get('unit') == 'm':
                     value = value / 1000
-            elif metric_name == 'exercise_minutes':
-                # Convert minutes
-                if row.get('unit') == 'min':
-                    pass  # Already in minutes
+            elif metric_name == 'exercise_minutes' and row.get('unit') == 'min':
+                pass  # Already in minutes
 
             # Initialize daily metrics dict if needed
             if record_date not in daily_metrics:
                 daily_metrics[record_date] = {}
 
             # Aggregate based on metric type
-            if metric_name in ['steps', 'flights_climbed']:
-                # Sum these metrics
-                daily_metrics[record_date][metric_name] = \
-                    daily_metrics[record_date].get(metric_name, 0) + value
-            elif metric_name in ['distance', 'active_energy', 'resting_energy', 'exercise_minutes']:
+            if metric_name in ['steps', 'flights_climbed'] or metric_name in ['distance', 'active_energy', 'resting_energy', 'exercise_minutes']:
                 # Sum these metrics
                 daily_metrics[record_date][metric_name] = \
                     daily_metrics[record_date].get(metric_name, 0) + value
@@ -162,11 +156,11 @@ class HealthImporter:
                 # For heart rate, HRV, body mass - use latest value
                 daily_metrics[record_date][metric_name] = value
 
-        except (ValueError, KeyError) as e:
+        except (ValueError, KeyError):
             # Skip invalid records
             pass
 
-    def _process_health_record_json(self, record: Dict, daily_metrics: Dict):
+    def _process_health_record_json(self, record: dict, daily_metrics: dict):
         """Process a health record from JSON."""
         try:
             record_type = record.get('type', '')
@@ -179,7 +173,7 @@ class HealthImporter:
                 return
 
             record_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00')).date()
-            
+
             # Handle value based on metric type
             value = 0.0
             if metric_name == 'sleep':
@@ -216,7 +210,7 @@ class HealthImporter:
         except (ValueError, KeyError):
             pass
 
-    def _calculate_sleep_hours(self, row: Dict) -> float:
+    def _calculate_sleep_hours(self, row: dict) -> float:
         """Calculate sleep hours from a sleep record."""
         try:
             start = datetime.fromisoformat(row['startDate'].replace('Z', '+00:00'))
@@ -226,7 +220,7 @@ class HealthImporter:
         except (ValueError, KeyError):
             return 0.0
 
-    def _process_workout(self, row: Dict):
+    def _process_workout(self, row: dict):
         """Process a workout record from CSV."""
         try:
             workout_type = row.get('workoutActivityType', 'Unknown')
@@ -263,7 +257,7 @@ class HealthImporter:
         except (ValueError, KeyError):
             pass
 
-    def _process_workout_json(self, workout: Dict):
+    def _process_workout_json(self, workout: dict):
         """Process a workout record from JSON."""
         try:
             workout_type = workout.get('workoutActivityType', 'Unknown')
@@ -296,7 +290,7 @@ class HealthImporter:
         except (ValueError, KeyError):
             pass
 
-    def _insert_daily_metrics(self, daily_metrics: Dict[date, Dict]):
+    def _insert_daily_metrics(self, daily_metrics: dict[date, dict]):
         """Insert aggregated daily metrics into the database."""
         for record_date, metrics in daily_metrics.items():
             # Determine sleep quality

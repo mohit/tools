@@ -7,7 +7,6 @@ import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-
 DEFAULT_RAW_BASE = Path(
     os.environ.get(
         "DATALAKE_RAW_ROOT",
@@ -148,4 +147,4 @@ if __name__ == "__main__":
         main()
     except (OSError, zipfile.BadZipFile, KeyError) as exc:
         print(str(exc), file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc

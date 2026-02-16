@@ -1,9 +1,8 @@
 """Correlation analysis between metrics."""
 
-import duckdb
 import math
-from typing import List, Dict, Tuple
-from datetime import datetime, timedelta
+
+import duckdb
 
 
 class CorrelationAnalyzer:
@@ -28,8 +27,8 @@ class CorrelationAnalyzer:
         self,
         start_date: str,
         end_date: str,
-        metric_pairs: List[Tuple[str, str]] = None
-    ) -> List[Dict]:
+        metric_pairs: list[tuple[str, str]] = None
+    ) -> list[dict]:
         """Compute correlations for specified metric pairs.
 
         Args:
@@ -59,7 +58,7 @@ class CorrelationAnalyzer:
         metric_b: str,
         start_date: str,
         end_date: str
-    ) -> Dict:
+    ) -> dict:
         """Compute correlation between two metrics."""
         try:
             # Query to get correlation using DuckDB's CORR function
@@ -93,7 +92,7 @@ class CorrelationAnalyzer:
 
             # Generate user-friendly, actionable description
             strength = self._describe_correlation_strength(corr)
-            
+
             # Use plain language instead of "positive/negative correlation"
             description = self._generate_plain_language_description(
                 metric_a, metric_b, corr, avg_a, avg_b, strength
@@ -130,7 +129,7 @@ class CorrelationAnalyzer:
         else:
             return "very weak"
 
-    def _save_correlation(self, correlation: Dict):
+    def _save_correlation(self, correlation: dict):
         """Save correlation result to database."""
         try:
             self.con.execute("""
@@ -161,7 +160,7 @@ class CorrelationAnalyzer:
         strength: str
     ) -> str:
         """Generate a user-friendly description of the correlation.
-        
+
         Instead of 'positive correlation', explain what it means in practice.
         E.g., 'More sleep → More steps' or 'Better HRV → Lower resting HR'
         """
@@ -176,34 +175,29 @@ class CorrelationAnalyzer:
             'distance_km': 'distance',
             'walking_hr': 'walking heart rate'
         }
-        
+
         name_a = names.get(metric_a, metric_a.replace('_', ' '))
         name_b = names.get(metric_b, metric_b.replace('_', ' '))
-        
+
         # Direction indicators
-        if corr > 0:
-            arrow = "→ More"
-            relationship = "more"
-        else:
-            arrow = "→ Less"
-            relationship = "less"
-        
+        arrow = "→ More" if corr > 0 else "→ Less"
+
         # Build the plain language pattern
         description = f"More {name_a} {arrow} {name_b}"
-        
+
         # Add specific context for common pairs
         context_map = {
             ('sleep_hours', 'steps'): f" (avg {avg_b:.0f} steps on well-rested days)",
             ('steps', 'active_energy_kcal'): f" (avg {avg_b:.0f} cal burned)",
             ('sleep_hours', 'resting_heart_rate'): f" (avg {avg_b:.0f} bpm)",
             ('exercise_minutes', 'sleep_hours'): f" (avg {avg_b:.1f}h sleep after active days)",
-            ('hrv_sdnn', 'sleep_hours'): f" (better recovery → better rest)",
+            ('hrv_sdnn', 'sleep_hours'): " (better recovery → better rest)",
         }
-        
+
         key = (metric_a, metric_b)
         if key in context_map:
             description += context_map[key]
-        
+
         return description
 
     def get_lagged_correlation(
@@ -213,7 +207,7 @@ class CorrelationAnalyzer:
         lag_days: int,
         start_date: str,
         end_date: str
-    ) -> Dict:
+    ) -> dict:
         """Compute correlation with a time lag.
 
         Example: Does sleep today correlate with steps tomorrow?
@@ -266,7 +260,7 @@ class CorrelationAnalyzer:
         end_date: str,
         min_correlation: float = 0.3,
         limit: int = 10
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Find the strongest correlations in the data.
 
         Args:

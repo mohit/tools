@@ -6,7 +6,6 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "lastfm_ingest.py"
 SPEC = importlib.util.spec_from_file_location("lastfm_ingest", MODULE_PATH)
 assert SPEC and SPEC.loader

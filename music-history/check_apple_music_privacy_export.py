@@ -4,7 +4,6 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-
 DEFAULT_CSV_PATH = Path.home() / "datalake.me/raw/apple-music/Apple Music - Track Play History.csv"
 PLAY_DATE_COLUMNS = ("Play Date UTC", "Play Date")
 

@@ -6,14 +6,14 @@
 #   "duckdb",
 # ]
 # ///
-import os
-import sys
-import subprocess
-from pathlib import Path
-import yaml
-import json
 import argparse
 import importlib.util
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 
 def load_module_from_path(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -34,11 +34,11 @@ def clean_path(path_str):
         return ""
     # Remove outer quotes
     path_str = path_str.strip().strip("'").strip('"')
-    
+
     # Handle common shell escapes: replace \ followed by space or ~ or other chars
     import re
     path_str = re.sub(r'\\(.)', r'\1', path_str)
-    
+
     # Expand home directory ~
     return os.path.expanduser(path_str)
 
@@ -51,7 +51,7 @@ def get_input(prompt, default=None):
 def run_cmd(cmd, cwd=None, env=None):
     # Standard uv run within project context
     uv_cmd = ["uv", "run"] + cmd
-    
+
     print(f"Running: {' '.join(uv_cmd)}")
     result = subprocess.run(uv_cmd, cwd=cwd, env=env)
     return result.returncode == 0
@@ -66,7 +66,7 @@ def main():
 
     clear_screen()
     print_header("Personal Data Reflection Setup")
-    
+
     # Define Directories
     root_dir = Path(__file__).parent.parent.absolute()
     reflection_dir = root_dir / "personal-data-reflection"
@@ -77,7 +77,7 @@ def main():
     config_file = reflection_dir / ".setup_config.json"
     setup_config = {}
     if config_file.exists():
-        with open(config_file, "r") as f:
+        with open(config_file) as f:
             setup_config = json.load(f)
 
 
@@ -87,28 +87,28 @@ def main():
         if not db_path_val:
             print("Error: No database configured. Run setup first.")
             sys.exit(1)
-        
+
         db_path = Path(db_path_val).absolute()
         if not db_path.exists():
             print(f"Error: Database not found at {db_path}")
             sys.exit(1)
-        
+
         import duckdb
         con = duckdb.connect(str(db_path))
-        
+
         if args.reset_strava:
             print("Clearing Strava data...")
             con.execute("DELETE FROM strava_activities")
             con.execute("DELETE FROM workouts WHERE source = 'strava'")
             print("Strava data cleared.")
-        
+
         if args.reset_health:
             print("Clearing Apple Health data...")
             con.execute("DELETE FROM health_metrics")
             con.execute("DELETE FROM workouts WHERE source = 'apple_health'")
             con.execute("DELETE FROM daily_summary")
             print("Apple Health data cleared.")
-        
+
         con.close()
         print("\nDone! You can now re-import data.")
         return
@@ -116,25 +116,25 @@ def main():
     # Demo Mode
     if args.demo:
         print_header("Running in Demo Mode")
-        
+
         # Use a demo specific database to valid interfering with real setup
         demo_db = reflection_dir / "data" / "demo_reflection.duckdb"
         print(f"Using demo database: {demo_db}")
-        
+
         # dynamic import of generate_sample_data
         gen_script = reflection_dir / "generate_sample_data.py"
         if not gen_script.exists():
              print("Error: generate_sample_data.py not found.")
              sys.exit(1)
-             
+
         print("Generating sample data...")
         # Imported programmatically to avoid top-level import errors if file missing
         gen_module = load_module_from_path("generate_sample_data", gen_script)
         gen_module.generate_sample_data(str(demo_db))
-        
+
         print("\nStarting Dashboard with Sample Data...")
         try:
-            run_cmd(["python3", "reflect.py", "--database", str(demo_db), "serve", "--port", "5001", "--debug"], 
+            run_cmd(["python3", "reflect.py", "--database", str(demo_db), "serve", "--port", "5001", "--debug"],
                     cwd=reflection_dir)
         except KeyboardInterrupt:
             print("\nShutting down.")
@@ -145,7 +145,7 @@ def main():
         db_path = Path(db_path_val).absolute()
         print(f"Launching dashboard with database: {db_path}")
         try:
-            run_cmd(["python3", "reflect.py", "--database", str(db_path), "serve", "--port", "5001", "--debug"], 
+            run_cmd(["python3", "reflect.py", "--database", str(db_path), "serve", "--port", "5001", "--debug"],
                     cwd=reflection_dir)
         except KeyboardInterrupt:
             print("\nShutting down.")
@@ -153,11 +153,11 @@ def main():
 
     db_path = get_input("Enter path for DuckDB database", setup_config.get("db_path", str(reflection_dir / "data" / "reflection.duckdb")))
     db_path = Path(db_path).absolute()
-    
+
     # If user provided a directory, append the filename
     if db_path.is_dir():
         db_path = db_path / "reflection.duckdb"
-    
+
     try:
         db_path.parent.mkdir(parents=True, exist_ok=True)
     except PermissionError:
@@ -165,7 +165,7 @@ def main():
         if not db_path.parent.exists():
             print(f"Error: No permission to create directory {db_path.parent}")
             sys.exit(1)
-    
+
     # Save current DB path to config
     setup_config["db_path"] = str(db_path)
     with open(config_file, "w") as f:
@@ -174,30 +174,30 @@ def main():
     # 2. Strava Secrets
     print_header("Strava API Configuration")
     print("Get these from https://www.strava.com/settings/api")
-    
+
     # Load existing secrets if they exist
     env_file = strava_dir / ".env"
     existing_secrets = {}
     if env_file.exists():
-        with open(env_file, "r") as f:
+        with open(env_file) as f:
             for line in f:
                 if "=" in line:
                     key, val = line.strip().split("=", 1)
                     existing_secrets[key] = val
-                    
+
     use_strava = get_input("Setup Strava import? (y/n)", "y").lower() == 'y'
-    
+
     st_env = os.environ.copy()
     if use_strava:
         st_client_id = get_input("STRAVA_CLIENT_ID", existing_secrets.get("STRAVA_CLIENT_ID"))
         st_client_secret = get_input("STRAVA_CLIENT_SECRET", existing_secrets.get("STRAVA_CLIENT_SECRET"))
-        
+
         print("\nTo get a refresh token with proper permissions:")
         print(f"1. Visit: https://www.strava.com/oauth/authorize?client_id={st_client_id}&response_type=code&redirect_uri=http://localhost:5000/exchange_token&approval_prompt=force&scope=read,activity:read,activity:read_all")
         print("2. Authorize and copy the 'code' from the resulting URL (e.g., ?code=abcdef123...)")
-        
+
         auth_code = get_input("Enter the 'code' from the URL (leave blank to use existing refresh token)")
-        
+
         if auth_code:
             print("Exchanging code for a new refresh token...")
             import requests
@@ -210,17 +210,17 @@ def main():
             if resp.status_code == 200:
                 data = resp.json()
                 st_refresh_token = data.get("refresh_token")
-                print(f"Success! New refresh token obtained.")
+                print("Success! New refresh token obtained.")
             else:
                 print(f"Failed to exchange code: {resp.status_code} - {resp.text}")
                 st_refresh_token = get_input("STRAVA_REFRESH_TOKEN", existing_secrets.get("STRAVA_REFRESH_TOKEN"))
         else:
             st_refresh_token = get_input("STRAVA_REFRESH_TOKEN", existing_secrets.get("STRAVA_REFRESH_TOKEN"))
-        
+
         st_env["STRAVA_CLIENT_ID"] = st_client_id
         st_env["STRAVA_CLIENT_SECRET"] = st_client_secret
         st_env["STRAVA_REFRESH_TOKEN"] = st_refresh_token
-        
+
         # Save to .env for persistence
         with open(env_file, "w") as f:
             f.write(f"STRAVA_CLIENT_ID={st_client_id}\n")
@@ -231,7 +231,7 @@ def main():
     print_header("Apple Health Data Import")
     print("Please ensure you have exported 'export.zip' from your iPhone.")
     health_zip = get_input("Path to export.zip (e.g. ~/Downloads/export.zip)", setup_config.get("health_zip"))
-    
+
     if not health_zip:
         print("Skipping Health import (no path provided).")
         do_health = False
@@ -249,7 +249,7 @@ def main():
 
     # 4. Processing
     print_header("Processing Data...")
-    
+
     # Check for existing data
     has_health = False
     import duckdb
@@ -257,7 +257,7 @@ def main():
         try:
             res = conn.execute("SELECT COUNT(*) FROM health_metrics").fetchone()
             has_health = res[0] > 0
-        except:
+        except Exception:
             pass
 
     # Extract & Parse Health
@@ -266,7 +266,7 @@ def main():
         health_out = reflection_dir / "data" / "health_records.csv"
         # Extract first
         run_cmd(["python3", "health_export.py", "extract", "--file", str(health_zip)], cwd=health_dir)
-        
+
         # Robustly find export.xml
         xml_path = None
         # Try a few common locations relative to the zip
@@ -276,14 +276,15 @@ def main():
                 if "apple_health_export" in str(path) or "apple-health-export" in str(path):
                     xml_path = path
                     break
-            if xml_path: break
-            
+            if xml_path:
+                break
+
         if xml_path:
             print(f"Found XML at {xml_path}")
             # Target records we care about
             run_cmd(["python3", "health_parser.py", str(xml_path), "export-records", "--output", str(health_out)], cwd=health_dir)
             # Import into reflection
-            run_cmd(["python3", "reflect.py", "--database", str(db_path), "import-health", str(health_out)], 
+            run_cmd(["python3", "reflect.py", "--database", str(db_path), "import-health", str(health_out)],
                     cwd=reflection_dir)
         else:
             print("Could not locate export.xml after extraction.")
@@ -296,23 +297,23 @@ def main():
         print("Note: If you get a 401 error, you may need to re-authorize with correct scopes.")
         print(f"Go to: https://www.strava.com/oauth/authorize?client_id={st_client_id}&response_type=code&redirect_uri=http://localhost:5000/exchange_token&approval_prompt=force&scope=read,activity:read,activity:read_all")
         print("After authorizing, use the 'refresh_token' from the response.")
-        
+
         print("\n--- Pulling Strava Data ---")
         st_export_dir = strava_dir / "strava-export"
-        run_cmd(["python3", "strava_pull.py", "--out-dir", str(st_export_dir)], 
+        run_cmd(["python3", "strava_pull.py", "--out-dir", str(st_export_dir)],
                 cwd=strava_dir, env=st_env)
-        run_cmd(["python3", "reflect.py", "--database", str(db_path), "import-strava", str(st_export_dir)], 
+        run_cmd(["python3", "reflect.py", "--database", str(db_path), "import-strava", str(st_export_dir)],
                 cwd=reflection_dir)
 
     # 5. Launch
     print_header("Setup Complete!")
     print("Running initial analysis...")
-    run_cmd(["python3", "reflect.py", "--database", str(db_path), "analyze"], 
+    run_cmd(["python3", "reflect.py", "--database", str(db_path), "analyze"],
             cwd=reflection_dir)
-    
+
     print("\nStarting the Reflection UI now on port 5001...")
     try:
-        run_cmd(["python3", "reflect.py", "--database", str(db_path), "serve", "--port", "5001", "--debug"], 
+        run_cmd(["python3", "reflect.py", "--database", str(db_path), "serve", "--port", "5001", "--debug"],
                 cwd=reflection_dir)
     except KeyboardInterrupt:
         print("\nShutting down. Your data is saved in DuckDB.")

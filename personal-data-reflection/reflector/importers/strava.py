@@ -1,9 +1,9 @@
 """Strava data importer."""
 
 import json
-from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Dict
+from pathlib import Path
+
 import duckdb
 
 
@@ -14,7 +14,7 @@ class StravaImporter:
         """Initialize importer with database connection."""
         self.con = db_connection
 
-    def import_from_directory(self, strava_dir: Path) -> Dict[str, int]:
+    def import_from_directory(self, strava_dir: Path) -> dict[str, int]:
         """Import Strava data from export directory.
 
         Expects directory structure from strava-data-puller tool.
@@ -122,18 +122,15 @@ class StravaImporter:
 
         # Try to parse as NDJSON first
         if json_path.suffix == '.ndjson':
-            with open(json_path, 'r') as f:
+            with open(json_path) as f:
                 for line in f:
                     if line.strip():
                         activities.append(json.loads(line))
         else:
             # Parse as regular JSON
-            with open(json_path, 'r') as f:
+            with open(json_path) as f:
                 data = json.load(f)
-                if isinstance(data, list):
-                    activities = data
-                else:
-                    activities = [data]
+                activities = data if isinstance(data, list) else [data]
 
         # Insert each activity
         for activity in activities:
@@ -141,7 +138,7 @@ class StravaImporter:
 
         return len(activities)
 
-    def _insert_activity(self, activity: Dict):
+    def _insert_activity(self, activity: dict):
         """Insert a single Strava activity."""
         try:
             # Insert into strava_activities

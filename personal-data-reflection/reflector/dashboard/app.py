@@ -1,13 +1,12 @@
 """Flask web application for personal data reflection dashboard."""
 
-from flask import Flask, render_template, jsonify, request
-from pathlib import Path
-from datetime import datetime, timedelta
-import json
 import math
+from datetime import datetime, timedelta
 
+from flask import Flask, jsonify, render_template, request
+
+from reflector.analysis import CorrelationAnalyzer, InsightGenerator, PatternDetector
 from reflector.database import ReflectionDB
-from reflector.analysis import CorrelationAnalyzer, PatternDetector, InsightGenerator
 
 
 def create_app(db_path: str = "./data/reflection.duckdb"):
@@ -189,7 +188,7 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
         """Get aggregated summary for a specific period."""
         period = request.args.get('period', 'month')
         ref_date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
-        
+
         try:
             ref_date = datetime.strptime(ref_date_str, '%Y-%m-%d')
         except ValueError:
@@ -203,7 +202,7 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
             # Previous week
             prev_start = start_date - timedelta(days=7)
             prev_end = end_date - timedelta(days=7)
-            
+
         elif period == 'month':
             # Start of month
             start_date = ref_date.replace(day=1)
@@ -212,7 +211,7 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
                 end_date = start_date.replace(year=start_date.year + 1, month=1, day=1) - timedelta(days=1)
             else:
                 end_date = start_date.replace(month=start_date.month + 1, day=1) - timedelta(days=1)
-            
+
             # Previous month
             prev_end = start_date - timedelta(days=1)
             prev_start = prev_end.replace(day=1)
@@ -222,13 +221,13 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
             quarter = (ref_date.month - 1) // 3 + 1
             start_month = (quarter - 1) * 3 + 1
             start_date = ref_date.replace(month=start_month, day=1)
-            
+
             # End of quarter
             if start_month + 3 > 12:
                 end_date = ref_date.replace(year=ref_date.year + 1, month=1, day=1) - timedelta(days=1)
             else:
                 end_date = ref_date.replace(month=start_month + 3, day=1) - timedelta(days=1)
-                
+
             # Previous quarter
             prev_end = start_date - timedelta(days=1)
             # Calculate start of previous quarter
@@ -239,10 +238,10 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
         elif period == 'year':
             start_date = ref_date.replace(month=1, day=1)
             end_date = ref_date.replace(month=12, day=31)
-            
+
             prev_start = start_date.replace(year=start_date.year - 1)
             prev_end = end_date.replace(year=end_date.year - 1)
-        
+
         else:
             return jsonify({'error': 'Invalid period'}), 400
 
@@ -254,7 +253,7 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
         if start_date.date() <= today <= end_date.date():
             # Current period is active. We should compare "to-date"
             days_elapsed = (today - start_date.date()).days
-            
+
             current_query_end = today
             # Clamp previous end to same duration, but do not exceed the previous period end
             prev_query_end = min(
@@ -331,7 +330,7 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
                     'message': 'Target must be a number'
                 }
             }), 400
-            
+
         db = get_db()
         db.update_goal(data['metric'], target_value, data.get('period', 'daily'))
         goals = db.get_goals()
