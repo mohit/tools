@@ -1,9 +1,9 @@
 """Monthly reflection report generator."""
 
-import duckdb
-from datetime import datetime, date
+from datetime import date, datetime
 from pathlib import Path
-from typing import Dict
+
+import duckdb
 
 from reflector.analysis import InsightGenerator
 
@@ -62,7 +62,7 @@ class MonthlyReportGenerator:
 
         return output_path
 
-    def _get_monthly_stats(self, year: int, month: int) -> Dict:
+    def _get_monthly_stats(self, year: int, month: int) -> dict:
         """Get monthly statistics."""
         result = self.con.execute("""
             SELECT
@@ -127,8 +127,8 @@ class MonthlyReportGenerator:
         self,
         year: int,
         month: int,
-        stats: Dict,
-        insights: Dict
+        stats: dict,
+        insights: dict
     ) -> str:
         """Generate report in Markdown format."""
         month_name = date(year, month, 1).strftime('%B %Y')
@@ -201,8 +201,8 @@ class MonthlyReportGenerator:
         self,
         year: int,
         month: int,
-        stats: Dict,
-        insights: Dict
+        stats: dict,
+        insights: dict
     ) -> str:
         """Generate report in plain text format."""
         month_name = date(year, month, 1).strftime('%B %Y')

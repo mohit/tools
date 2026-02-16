@@ -8,7 +8,6 @@ from pathlib import Path
 
 import duckdb
 
-
 DEFAULT_RAW_BASE = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Data Exports"
 
 
@@ -240,8 +239,9 @@ TO '{str(tmp_output).replace("'", "''")}'
 """
         )
 
+        parquet_glob = str(tmp_output / "year=*" / "month=*" / "*.parquet").replace("'", "''")
         total_rows = con.sql(
-            f"SELECT COUNT(*) FROM read_parquet('{str(tmp_output / 'year=*' / 'month=*' / '*.parquet').replace("'", "''")}', hive_partitioning=TRUE)"
+            f"SELECT COUNT(*) FROM read_parquet('{parquet_glob}', hive_partitioning=TRUE)"
         ).fetchone()[0]
 
         if curated_root.exists():

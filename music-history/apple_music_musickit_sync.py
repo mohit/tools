@@ -6,7 +6,6 @@ from pathlib import Path
 
 import duckdb
 
-
 DEFAULT_RAW_BASE = Path(
     os.environ.get(
         "DATALAKE_RAW_ROOT",
@@ -157,8 +156,9 @@ TO '{str(tmp_root).replace("'", "''")}'
 """
         )
 
+        parquet_glob = str(tmp_root / "year=*" / "month=*" / "*.parquet").replace("'", "''")
         row_count = con.sql(
-            f"SELECT COUNT(*) FROM read_parquet('{str(tmp_root / 'year=*' / 'month=*' / '*.parquet').replace("'", "''")}', hive_partitioning=TRUE)"
+            f"SELECT COUNT(*) FROM read_parquet('{parquet_glob}', hive_partitioning=TRUE)"
         ).fetchone()[0]
 
         import shutil

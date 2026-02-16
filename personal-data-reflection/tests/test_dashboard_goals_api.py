@@ -13,6 +13,7 @@ class DashboardGoalsApiTest(unittest.TestCase):
     def setUp(self):
         fd, self.db_path = tempfile.mkstemp(suffix=".duckdb")
         os.close(fd)
+        os.remove(self.db_path)  # DuckDB needs to create the file itself
         self.app = create_app(self.db_path)
         self.client = self.app.test_client()
 

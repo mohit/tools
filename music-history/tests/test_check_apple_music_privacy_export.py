@@ -1,9 +1,8 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-
 import check_apple_music_privacy_export as checker
+import pytest
 from check_apple_music_privacy_export import analyze_export, main
 
 

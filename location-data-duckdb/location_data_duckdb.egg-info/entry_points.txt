@@ -1,0 +1,2 @@
+[console_scripts]
+location-pipeline = location_pipeline.cli:main

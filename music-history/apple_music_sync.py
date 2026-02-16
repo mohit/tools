@@ -8,7 +8,6 @@ import apple_music_monitor as monitor
 import apple_music_musickit_sync as musickit
 import apple_music_processor as processor
 
-
 DEFAULT_RAW_BASE = Path(
     os.environ.get(
         "DATALAKE_RAW_ROOT",

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import duckdb
 
-
 DDL = """
 create table if not exists ingestion_runs (
     run_id varchar,

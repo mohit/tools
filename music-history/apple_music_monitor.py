@@ -6,7 +6,6 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
-
 DEFAULT_RAW_BASE = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Data Exports"
 EXIT_CODE_MISSING_CSV = 3
 PLAYED_AT_COLUMNS = [
@@ -138,7 +137,7 @@ def main() -> None:
             print(json.dumps(payload, indent=2))
         else:
             print(f"status=missing reason={payload['reason']}")
-        raise SystemExit(EXIT_CODE_MISSING_CSV)
+        raise SystemExit(EXIT_CODE_MISSING_CSV) from None
 
     latest_played = extract_latest_played_at(csv_path)
     if latest_played is None:

@@ -4,9 +4,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import duckdb
-
 import apple_music_processor as processor
+import duckdb
 
 
 class AppleMusicProcessorTests(unittest.TestCase):

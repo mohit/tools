@@ -1,9 +1,9 @@
 """DuckDB database schema and operations for personal data reflection."""
 
-import duckdb
-from pathlib import Path
-from typing import Optional
 from datetime import datetime
+from pathlib import Path
+
+import duckdb
 
 
 class ReflectionDB:
@@ -165,7 +165,7 @@ class ReflectionDB:
             # Indexes may already exist
             pass
 
-    def get_date_range(self) -> tuple[Optional[datetime], Optional[datetime]]:
+    def get_date_range(self) -> tuple[datetime | None, datetime | None]:
         """Get the min and max dates in the database."""
         result = self.con.execute("""
             SELECT MIN(date) as min_date, MAX(date) as max_date
@@ -357,7 +357,7 @@ class ReflectionDB:
     def get_goals(self) -> dict:
         """Get current user goals."""
         rows = self.con.execute("SELECT metric, target_value, period FROM goals").fetchall()
-        
+
         # Default goals if none exist
         defaults = {
             "steps": {"target": 10000, "period": "daily"},
@@ -366,16 +366,16 @@ class ReflectionDB:
             "resting_hr": {"target": 60, "period": "daily"},
             "hrv": {"target": 50, "period": "daily"}
         }
-        
+
         goals = {}
         for row in rows:
             goals[row[0]] = {"target": row[1], "period": row[2]}
-            
+
         # Merge with defaults
         for k, v in defaults.items():
             if k not in goals:
                 goals[k] = v
-                
+
         return goals
 
     def update_goal(self, metric: str, target: float, period: str = "daily"):

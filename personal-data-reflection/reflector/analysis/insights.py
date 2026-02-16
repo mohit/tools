@@ -1,8 +1,9 @@
 """Generate insights from patterns and correlations."""
 
+from datetime import timedelta
+
 import duckdb
-from typing import List, Dict
-from datetime import datetime, timedelta
+
 from .correlations import CorrelationAnalyzer
 from .patterns import PatternDetector
 
@@ -20,7 +21,7 @@ class InsightGenerator:
         self,
         year: int,
         month: int
-    ) -> Dict[str, List[Dict]]:
+    ) -> dict[str, list[dict]]:
         """Generate comprehensive insights for a month.
 
         Returns insights categorized as:
@@ -66,7 +67,7 @@ class InsightGenerator:
 
         return insights
 
-    def _generate_highlights(self, start_date: str, end_date: str) -> List[Dict]:
+    def _generate_highlights(self, start_date: str, end_date: str) -> list[dict]:
         """Generate positive highlights."""
         highlights = []
 
@@ -109,11 +110,11 @@ class InsightGenerator:
         if result and result[2] > 0:
             # Get date of max steps
             max_date_res = self.con.execute("""
-                SELECT date FROM health_metrics 
+                SELECT date FROM health_metrics
                 WHERE date BETWEEN ? AND ? AND steps = ?
                 LIMIT 1
             """, [start_date, end_date, result[0]]).fetchone()
-            
+
             date_str = ""
             if max_date_res:
                 d = max_date_res[0]
@@ -145,7 +146,7 @@ class InsightGenerator:
 
         return highlights
 
-    def _generate_lowlights(self, start_date: str, end_date: str) -> List[Dict]:
+    def _generate_lowlights(self, start_date: str, end_date: str) -> list[dict]:
         """Generate areas needing improvement."""
         lowlights = []
 
@@ -225,7 +226,7 @@ class InsightGenerator:
 
         return lowlights
 
-    def _generate_pattern_insights(self, start_date: str, end_date: str) -> List[Dict]:
+    def _generate_pattern_insights(self, start_date: str, end_date: str) -> list[dict]:
         """Generate insights about behavioral patterns."""
         insights = []
 
@@ -292,8 +293,8 @@ class InsightGenerator:
         self,
         start_date: str,
         end_date: str,
-        insights: Dict
-    ) -> List[Dict]:
+        insights: dict
+    ) -> list[dict]:
         """Generate actionable recommendations."""
         recommendations = []
 
@@ -372,7 +373,7 @@ class InsightGenerator:
     def _save_insight(
         self,
         category: str,
-        insight: Dict,
+        insight: dict,
         start_date: str,
         end_date: str
     ):

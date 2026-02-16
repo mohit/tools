@@ -4,12 +4,12 @@ import argparse
 import hashlib
 import json
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 from zipfile import ZipFile
-
 
 DEFAULT_RAW_ROOT = Path(os.getenv("DATALAKE_RAW_ROOT", "~/datalake.me/raw")).expanduser()
 DEFAULT_CURATED_ROOT = Path(os.getenv("DATALAKE_CURATED_ROOT", "~/datalake.me/curated")).expanduser()
@@ -29,14 +29,14 @@ def _parse_iso(value: str | None) -> datetime | None:
     dt = datetime.fromisoformat(normalized)
     if dt.tzinfo is None:
         return dt
-    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.astimezone(UTC).replace(tzinfo=None)
 
 
 def _parse_ts_millis(value: str | int | None) -> datetime | None:
     if value is None:
         return None
     millis = int(value)
-    return datetime.fromtimestamp(millis / 1000, tz=timezone.utc).replace(tzinfo=None)
+    return datetime.fromtimestamp(millis / 1000, tz=UTC).replace(tzinfo=None)
 
 
 def _e7(value: int | None) -> float | None:
@@ -297,7 +297,7 @@ def _write_partitioned_parquet(
 
 def _stable_source_token(path: Path) -> str:
     stat = path.stat()
-    digest = hashlib.sha256(f"{path.name}:{int(stat.st_mtime)}:{stat.st_size}".encode("utf-8")).hexdigest()[:12]
+    digest = hashlib.sha256(f"{path.name}:{int(stat.st_mtime)}:{stat.st_size}".encode()).hexdigest()[:12]
     base = path.stem.replace(" ", "_").replace(".", "_")
     return f"{base}_{digest}"
 
@@ -430,9 +430,7 @@ def _copy_raw_archive(source: Path, raw_root: Path) -> Path:
 def _iter_takeout_sources(input_dir: Path) -> list[Path]:
     candidates: list[Path] = []
     for path in sorted(input_dir.iterdir()):
-        if path.is_file() and path.suffix.lower() == ".zip":
-            candidates.append(path)
-        elif path.is_dir() and "takeout" in path.name.lower():
+        if path.is_file() and path.suffix.lower() == ".zip" or path.is_dir() and "takeout" in path.name.lower():
             candidates.append(path)
     return candidates
 

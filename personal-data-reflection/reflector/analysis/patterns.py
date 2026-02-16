@@ -1,9 +1,8 @@
 """Pattern detection in personal health data."""
 
-import duckdb
 import math
-from typing import List, Dict
-from datetime import datetime, timedelta
+
+import duckdb
 
 
 class PatternDetector:
@@ -13,7 +12,7 @@ class PatternDetector:
         """Initialize pattern detector with database connection."""
         self.con = db_connection
 
-    def get_default_criteria(self) -> Dict:
+    def get_default_criteria(self) -> dict:
         """Get the default criteria for a 'good day'."""
         return {
             'min_steps': 8000,
@@ -25,8 +24,8 @@ class PatternDetector:
         self,
         start_date: str,
         end_date: str,
-        criteria: Dict = None
-    ) -> List[Dict]:
+        criteria: dict = None
+    ) -> list[dict]:
         """Find days that meet 'good day' criteria.
 
         Default criteria:
@@ -79,8 +78,8 @@ class PatternDetector:
         self,
         start_date: str,
         end_date: str,
-        criteria: Dict = None
-    ) -> List[Dict]:
+        criteria: dict = None
+    ) -> list[dict]:
         """Find days that meet 'bad day' criteria.
 
         Default criteria:
@@ -132,7 +131,7 @@ class PatternDetector:
             for row in result
         ]
 
-    def _identify_issues(self, row, criteria: Dict) -> List[str]:
+    def _identify_issues(self, row, criteria: dict) -> list[str]:
         """Identify what made a day 'bad'."""
         issues = []
         if row[1] and row[1] < criteria['max_steps']:
@@ -150,7 +149,7 @@ class PatternDetector:
         metric: str,
         threshold: float,
         operator: str = '>='
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Detect consecutive day streaks meeting a criteria.
 
         Args:
@@ -216,7 +215,7 @@ class PatternDetector:
         self,
         start_date: str,
         end_date: str
-    ) -> Dict:
+    ) -> dict:
         """Analyze patterns by day of week.
 
         Returns average metrics for each day of week.
@@ -254,7 +253,7 @@ class PatternDetector:
         self,
         start_date: str,
         end_date: str
-    ) -> Dict:
+    ) -> dict:
         """Analyze workout patterns.
 
         Returns:
@@ -332,7 +331,7 @@ class PatternDetector:
         end_date: str,
         metric: str,
         std_threshold: float = 2.0
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Detect anomalies using standard deviation method.
 
         Flags values that are more than std_threshold standard deviations

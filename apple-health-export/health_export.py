@@ -6,11 +6,10 @@ This script helps export health data from Apple Health on macOS.
 It can trigger exports via AppleScript and parse the resulting XML data.
 """
 
-import os
 import subprocess
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 
 def trigger_health_export(output_dir=None):
@@ -126,7 +125,7 @@ def get_export_info(export_dir):
         'export_dir': export_dir
     }
 
-    print(f"\nExport Information:")
+    print("\nExport Information:")
     print(f"  Location: {xml_file}")
     print(f"  Size: {file_size_mb:.2f} MB")
 

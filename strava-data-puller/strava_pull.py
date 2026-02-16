@@ -6,12 +6,11 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import duckdb
 import requests
-
-import time
 
 STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
 STRAVA_API_BASE = "https://www.strava.com/api/v3"
@@ -44,7 +43,7 @@ def parse_date(value: str) -> int:
         parsed = dt.datetime.strptime(value, "%Y-%m-%d")
     except ValueError as exc:
         raise argparse.ArgumentTypeError("Dates must be YYYY-MM-DD") from exc
-    return int(parsed.replace(tzinfo=dt.timezone.utc).timestamp())
+    return int(parsed.replace(tzinfo=dt.UTC).timestamp())
 
 
 def parse_dotenv(path: Path) -> dict[str, str]:
@@ -195,7 +194,7 @@ def get_access_token(client_id: str, client_secret: str, refresh_token: str) -> 
 
 def request_json(endpoint: str, token: str, params: dict | None = None) -> dict:
     url = f"{STRAVA_API_BASE}{endpoint}"
-    
+
     for attempt in range(MAX_RETRIES):
         response = requests.get(
             url,
@@ -203,23 +202,23 @@ def request_json(endpoint: str, token: str, params: dict | None = None) -> dict:
             params=params,
             timeout=30,
         )
-        
+
         if response.status_code == 429:
             # Rate limited - wait and retry
             delay = BASE_DELAY * (2 ** attempt)
             print(f"Rate limited. Waiting {delay}s before retry ({attempt + 1}/{MAX_RETRIES})...")
             time.sleep(delay)
             continue
-        
+
         if response.status_code >= 400:
             print(
                 f"Request failed ({response.status_code}) for {url}: {response.text}",
                 file=sys.stderr,
             )
             response.raise_for_status()
-        
+
         return response.json()
-    
+
     # Exhausted retries
     raise SystemExit(f"Rate limit exceeded after {MAX_RETRIES} retries. Try again later.")
 
@@ -247,17 +246,17 @@ def append_ndjson(path: Path, payload: dict) -> None:
 
 def load_existing_activities(out_dir: Path) -> tuple[list[dict], int | None]:
     """Load existing activities and find the most recent activity timestamp.
-    
+
     Returns:
         Tuple of (list of activity dicts, most recent start_date as Unix timestamp or None)
     """
     ndjson_path = out_dir / "activities.ndjson"
     existing_activities: list[dict] = []
     latest_timestamp: int | None = None
-    
+
     if not ndjson_path.exists():
         return existing_activities, latest_timestamp
-    
+
     with ndjson_path.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -266,7 +265,7 @@ def load_existing_activities(out_dir: Path) -> tuple[list[dict], int | None]:
             try:
                 activity = json.loads(line)
                 existing_activities.append(activity)
-                
+
                 # Parse start_date to find the latest
                 start_date_str = activity.get("start_date")
                 if start_date_str:
@@ -277,7 +276,7 @@ def load_existing_activities(out_dir: Path) -> tuple[list[dict], int | None]:
                         latest_timestamp = ts
             except (json.JSONDecodeError, ValueError):
                 continue
-    
+
     return existing_activities, latest_timestamp
 
 
@@ -438,17 +437,17 @@ def main() -> None:
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Load existing activities for incremental sync
     existing_activities: list[dict] = []
     auto_after: int | None = None
-    
+
     if not args.force:
         existing_activities, auto_after = load_existing_activities(out_dir)
         if existing_activities:
             print(f"Found {len(existing_activities)} existing activities.")
             print("Use --force to re-fetch all activities.")
-    
+
     # Use auto_after with 7-day buffer if no explicit --after was provided
     after_param = args.after
     if after_param is None and auto_after is not None and not args.force:
@@ -456,7 +455,7 @@ def main() -> None:
         buffer_seconds = 7 * 24 * 60 * 60
         after_param = auto_after - buffer_seconds
         print(f"Auto-setting --after to {after_param} (latest - 7 days) to catch late uploads/edits.")
-    
+
     # Only clear detail files if forcing full refresh
     if args.force:
         for ndjson_file in ("activity_details.ndjson", "activity_streams.ndjson"):
@@ -477,12 +476,12 @@ def main() -> None:
         args.per_page,
         args.max_pages,
     )
-    
+
     # Merge strategy:
     # 1. Create a dict of all activities by ID (existing + fetched)
     #    Since we process existing first, then fetched, updates from fetched will overwrite existing
     activity_map = {a["id"]: a for a in existing_activities}
-    
+
     # 2. Update/Add new fetched activities
     new_activity_ids = set()
     for activity in fetched_activities:
@@ -490,23 +489,23 @@ def main() -> None:
         if activity["id"] not in activity_map:
             new_activity_ids.add(activity["id"])
         activity_map[activity["id"]] = activity
-        
+
     # 3. Convert back to list and sort by start_date
     final_activities = list(activity_map.values())
     final_activities.sort(key=lambda x: x.get("start_date", ""), reverse=True)
-    
+
     # 4. Write merged list to files
     write_json(out_dir / "activities.json", final_activities)
     write_ndjson(out_dir / "activities.ndjson", final_activities)
 
     fetched_count = len(fetched_activities)
     new_count = len(new_activity_ids)
-    
+
     print(f"Fetched {fetched_count} records (overlapping). Found {new_count} truly new activities.")
 
     # Only fetch details for the TRULY new activities
     for activity_id in new_activity_ids:
-        # Note: We can't easily get the 'activity' dict here without iterating map, 
+        # Note: We can't easily get the 'activity' dict here without iterating map,
         # but fetch_activity_details needs ID anyway.
         fetch_activity_details(access_token, out_dir, activity_id)
         if args.include_streams:

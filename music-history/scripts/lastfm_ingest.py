@@ -35,7 +35,7 @@ def parse_date(value: str) -> int:
         parsed = dt.datetime.strptime(value, "%Y-%m-%d")
     except ValueError as exc:
         raise argparse.ArgumentTypeError("Dates must be YYYY-MM-DD") from exc
-    return int(parsed.replace(tzinfo=dt.timezone.utc).timestamp())
+    return int(parsed.replace(tzinfo=dt.UTC).timestamp())
 
 
 def parse_args() -> argparse.Namespace:

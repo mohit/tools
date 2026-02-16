@@ -5,13 +5,11 @@ Apple Health Data Parser
 Parse exported Apple Health XML data and convert to useful formats (CSV, JSON).
 """
 
-import xml.etree.ElementTree as ET
 import csv
-import json
 import sys
+import xml.etree.ElementTree as ET
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime
-from collections import defaultdict
 
 
 class HealthDataParser:
@@ -91,13 +89,12 @@ class HealthDataParser:
                     try:
                         record_date = datetime.fromisoformat(record_date_str.replace('Z', '+00:00'))
                         # Convert the filter dates to offset-aware by adding UTC timezone
-                        from datetime import timezone
                         if start_date:
-                            start_dt = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
+                            start_dt = datetime.fromisoformat(start_date).replace(tzinfo=UTC)
                             if record_date < start_dt:
                                 continue
                         if end_date:
-                            end_dt = datetime.fromisoformat(end_date + 'T23:59:59').replace(tzinfo=timezone.utc)
+                            end_dt = datetime.fromisoformat(end_date + 'T23:59:59').replace(tzinfo=UTC)
                             if record_date > end_dt:
                                 continue
                     except ValueError:
