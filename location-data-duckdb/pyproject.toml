@@ -19,3 +19,6 @@ location-pipeline = "location_pipeline.cli:main"
 
 [tool.setuptools]
 packages = ["location_pipeline", "location_pipeline.sources", "location_pipeline.enrich"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]

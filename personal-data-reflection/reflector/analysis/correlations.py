@@ -114,7 +114,7 @@ class CorrelationAnalyzer:
                 "avg_b": round(avg_b, 2) if avg_b else None,
             }
 
-        except Exception as e:
+        except (ValueError, TypeError, ArithmeticError) as e:
             print(f"Error computing correlation for {metric_a} vs {metric_b}: {e}")
             return None
 
@@ -148,7 +148,7 @@ class CorrelationAnalyzer:
                 correlation['sample_size'],
                 correlation['description']
             ])
-        except Exception as e:
+        except (ValueError, TypeError, ArithmeticError) as e:
             print(f"Error saving correlation: {e}")
 
     def _generate_plain_language_description(
@@ -256,7 +256,7 @@ class CorrelationAnalyzer:
                 "description": f"{strength.capitalize()} correlation between {metric_a} and {metric_b} {lag_days} day(s) later"
             }
 
-        except Exception as e:
+        except (ValueError, TypeError, ArithmeticError) as e:
             print(f"Error computing lagged correlation: {e}")
             return None
 

@@ -146,6 +146,6 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except Exception as exc:
+    except (OSError, zipfile.BadZipFile, KeyError) as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1)

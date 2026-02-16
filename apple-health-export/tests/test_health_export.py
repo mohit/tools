@@ -12,7 +12,6 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 # Add parent directory to path to import the module
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import health_export
 

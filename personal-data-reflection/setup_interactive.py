@@ -22,7 +22,7 @@ def load_module_from_path(name, path):
     return module
 
 def clear_screen():
-    os.system('cls' if os.name == 'nt' else 'clear')
+    subprocess.run(['clear'] if os.name != 'nt' else ['cls'], check=False)
 
 def print_header(text):
     print("\n" + "="*60)

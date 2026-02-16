@@ -10,3 +10,6 @@ dependencies = [
 
 [project.scripts]
 anthropic-usage-track = "anthropic_usage_tracker:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]

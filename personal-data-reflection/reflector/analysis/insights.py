@@ -393,5 +393,5 @@ class InsightGenerator:
                 start_date,
                 end_date
             ])
-        except Exception as e:
+        except (ValueError, TypeError, ArithmeticError) as e:
             print(f"Error saving insight: {e}")

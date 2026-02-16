@@ -311,3 +311,11 @@ Built with:
 ---
 
 **Note**: This app is for personal use and development purposes. Always review and comply with Apple's App Store Review Guidelines and Google's API Terms of Service before publishing.
+
+## Configuration
+
+Before building, replace placeholder values:
+
+1. **Google OAuth** — In `PersonalAssistant/Services/GoogleAuthService.swift`, replace `YOUR-GOOGLE-CLIENT-ID` with your actual Google OAuth client ID
+2. **iCloud Container** — In `PersonalAssistant/PersonalAssistant.entitlements`, replace `iCloud.com.yourcompany.PersonalAssistant` with your actual iCloud container identifier
+3. **App Group** — Update the app group identifier in entitlements to match your team/bundle ID

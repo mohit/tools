@@ -1,5 +1,5 @@
 [project]
-name = "datalake-me"
+name = "music-history"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -10,3 +10,6 @@ dependencies = [
     "pyarrow>=22.0.0",
     "requests>=2.32.5",
 ]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]

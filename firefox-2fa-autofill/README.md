@@ -120,3 +120,11 @@ cp manifest_chrome.json manifest.json
 ## License
 
 MIT License - see [LICENSE](LICENSE)
+
+## Manifest Files
+
+- `manifest.json` — Default Firefox MV2 manifest (used for development)
+- `manifest_firefox.json` — Firefox-specific MV2 manifest
+- `manifest_chrome.json` — Chrome MV3 manifest (service worker)
+
+To build for Chrome, copy `manifest_chrome.json` to `manifest.json` before packaging.

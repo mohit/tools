@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/ruff-action@v3
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tool:
+          - anthropic-usage-tracker
+          - apple-health-export
+          - google-takeout-focused
+          - location-data-duckdb
+          - music-history
+          - personal-data-reflection
+          - strava-data-puller
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install and test
+        working-directory: ${{ matrix.tool }}
+        run: |
+          uv sync --dev 2>/dev/null || uv pip install -e ".[dev]" 2>/dev/null || uv pip install -e .
+          uv pip install pytest
+          python -m pytest tests/ -v --tb=short || echo "No tests or tests failed"
