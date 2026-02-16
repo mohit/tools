@@ -94,6 +94,11 @@ python scripts/lastfm_ingest.py --since 1738713600
 python scripts/lastfm_ingest.py
 ```
 
+Incremental behavior:
+- On each run, the script reads existing `*.jsonl` files under `.../raw/lastfm/` and finds the latest `uts`.
+- It calls `user.getRecentTracks` with `from=<latest_uts+1>` so only new scrobbles are fetched.
+- If no prior raw data exists, it performs a full-history backfill.
+- Raw data is merged into monthly files: `scrobbles_YYYY-MM.jsonl` (deduped/upserted by `uts+artist+track+album`).
 ## Apple Music Privacy Export Freshness Check
 
 If you're ingesting Apple Music privacy export data from:
