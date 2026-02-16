@@ -47,6 +47,22 @@ Run the `main.py` script to fetch and process Last.fm scrobbles:
 python main.py
 ```
 
+## Apple Music Export Freshness Guard
+
+Apple Music ingestion now checks `apple_music_export_metadata.json` before loading data.
+
+Run the check manually:
+```bash
+python check_apple_music_export.py
+```
+
+Current tracked state (issue #36):
+- `latest_play_date`: `2023-11-09`
+- `last_export_date`: `2023-11-10`
+- detected stale on `2026-02-14`
+
+If the check fails, request a new Apple Music export from `privacy.apple.com`, replace the raw data file, then update `apple_music_export_metadata.json` with the new `last_export_date` and `latest_play_date`.
+
 ## Example Query
 
 Once data is processed into Parquet files, you can query it using tools like DuckDB:

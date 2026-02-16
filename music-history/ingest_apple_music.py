@@ -2,14 +2,35 @@ import duckdb
 import os
 from pathlib import Path
 import time
+from apple_music_export_guard import (
+    AppleMusicExportGuardError,
+    enforce_fresh_export_or_raise,
+)
 
 # Config
 ICLOUD_ROOT = Path("/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake")
 JSONL_PATH = Path("apple_music_history.jsonl").absolute()
 CURATED_ROOT = ICLOUD_ROOT / "curated/apple_music/library"
 CATALOG_DB = ICLOUD_ROOT / "catalog/datalake.duckdb"
+EXPORT_METADATA_PATH = Path("apple_music_export_metadata.json").absolute()
+MAX_STALENESS_DAYS = int(os.environ.get("APPLE_MUSIC_MAX_STALENESS_DAYS", "365"))
 
 def ingest():
+    try:
+        metadata, age_days = enforce_fresh_export_or_raise(
+            EXPORT_METADATA_PATH, max_staleness_days=MAX_STALENESS_DAYS
+        )
+    except AppleMusicExportGuardError as exc:
+        print(f"ERROR: {exc}")
+        raise SystemExit(2)
+
+    print(
+        "Apple Music export freshness check passed: "
+        f"latest_play_date={metadata.latest_play_date.isoformat()} "
+        f"last_export_date={metadata.last_export_date.isoformat()} "
+        f"age_days={age_days}"
+    )
+
     print(f"Ingesting {JSONL_PATH}...")
     
     # Ensure target directory exists
