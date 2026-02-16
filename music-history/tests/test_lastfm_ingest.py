@@ -4,6 +4,7 @@ import sys
 import tempfile
 import types
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -86,9 +87,9 @@ class LastfmIngestTests(unittest.TestCase):
         mod = load_module()
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)
-            # Real Jan 2024 epoch seconds so rows partition into year=2024/month=01.
-            jan_uts_existing = 1705320010
-            jan_uts_new = 1705320020
+            # Use UTC Jan 2024 timestamps so merge partitioning targets year=2024/month=01.
+            jan_uts_existing = int(datetime(2024, 1, 15, 12, 0, 10, tzinfo=timezone.utc).timestamp())
+            jan_uts_new = int(datetime(2024, 1, 15, 12, 0, 20, tzinfo=timezone.utc).timestamp())
 
             jan_file = output_dir / "year=2024" / "month=01" / "scrobbles.jsonl"
             self.assertEqual(mod.month_partition_path(output_dir, jan_uts_new), jan_file)
