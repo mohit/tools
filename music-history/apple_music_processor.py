@@ -10,7 +10,6 @@ import duckdb
 
 
 DEFAULT_RAW_BASE = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Data Exports"
-DEFAULT_CURATED_BASE = DEFAULT_RAW_BASE / "datalake/curated"
 
 
 TRACK_COLUMNS = [
@@ -41,7 +40,8 @@ PLAY_COUNT_COLUMNS = [
 
 def _default_roots() -> tuple[Path, Path]:
     raw_base = Path(os.environ.get("DATALAKE_RAW_ROOT", str(DEFAULT_RAW_BASE)))
-    curated_base = Path(os.environ.get("DATALAKE_CURATED_ROOT", str(DEFAULT_CURATED_BASE)))
+    curated_root_env = os.environ.get("DATALAKE_CURATED_ROOT")
+    curated_base = Path(curated_root_env) if curated_root_env else raw_base / "datalake/curated"
     return raw_base / "apple-music", curated_base / "apple-music" / "play-activity"
 
 

@@ -58,7 +58,8 @@ python apple_music_export_helper.py --extract --zip-file ~/Downloads/privacy-exp
 ```
 
 Default raw destination:
-- `~/datalake.me/raw/apple-music/<YYYYMMDD>/...Play Activity...csv`
+- `$DATALAKE_RAW_ROOT/apple-music/<YYYYMMDD>/...Play Activity...csv`
+- If `DATALAKE_RAW_ROOT` is unset, defaults to `/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/apple-music/...`
 
 ### 2. Process CSV to curated parquet
 
@@ -70,8 +71,8 @@ Optional explicit paths:
 
 ```bash
 python apple_music_processor.py \
-  --csv-file ~/datalake.me/raw/apple-music/20260210/Apple_Music_Play_Activity.csv \
-  --curated-root ~/datalake.me/curated/apple-music/play-activity
+  --csv-file "$DATALAKE_RAW_ROOT/apple-music/20260210/Apple_Music_Play_Activity.csv" \
+  --curated-root "$DATALAKE_CURATED_ROOT/apple-music/play-activity"
 ```
 
 ### 3. Freshness monitoring
@@ -101,8 +102,8 @@ python apple_music_musickit_sync.py \
 ```
 
 This stores a raw JSON snapshot plus curated parquet at:
-- `~/datalake.me/raw/apple-music/musickit/`
-- `~/datalake.me/curated/apple-music/recent-played/`
+- `$DATALAKE_RAW_ROOT/apple-music/musickit/`
+- `$DATALAKE_CURATED_ROOT/apple-music/recent-played/`
 
 ## Example query
 

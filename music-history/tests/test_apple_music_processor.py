@@ -78,6 +78,19 @@ ORDER BY played_at_utc
         self.assertEqual(raw_root, Path("/tmp/custom-raw/apple-music"))
         self.assertEqual(curated_root, Path("/tmp/custom-curated/apple-music/play-activity"))
 
+    def test_default_roots_use_raw_root_for_curated_when_curated_env_missing(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "DATALAKE_RAW_ROOT": "/tmp/custom-raw",
+            },
+            clear=True,
+        ):
+            raw_root, curated_root = processor._default_roots()
+
+        self.assertEqual(raw_root, Path("/tmp/custom-raw/apple-music"))
+        self.assertEqual(curated_root, Path("/tmp/custom-raw/datalake/curated/apple-music/play-activity"))
+
 
 if __name__ == "__main__":
     unittest.main()
