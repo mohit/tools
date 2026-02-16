@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 # Config
-ICLOUD_ROOT = Path("/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake")
+ICLOUD_ROOT = Path(os.environ.get("DATALAKE_ROOT", str(Path.home() / "datalake.me")))
 CSV_PATH = ICLOUD_ROOT / "scrobbles-clakesnapster-1699153095.csv"
 CURATED_ROOT = ICLOUD_ROOT / "curated/lastfm/scrobbles"
 CATALOG_DB = ICLOUD_ROOT / "catalog/datalake.duckdb"

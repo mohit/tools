@@ -5,12 +5,15 @@ Personal data tools — ingest, transform, and reflect on health/fitness/music/l
 
 ## Repo structure
 ```
+anthropic-usage-tracker/ # Anthropic API usage tracking → parquet (Python, DuckDB)
 apple-health-export/     # Apple Health XML → parquet (Python, DuckDB)
 firefox-2fa-autofill/    # Browser extension (JS, WebExtension manifest)
+google-takeout-focused/  # Google Takeout → location/search/music parquet (Python, DuckDB)
 location-data-duckdb/    # Location/checkin data → DuckDB pipeline (Python)
 music-history/           # Last.fm + Apple Music ingestion (Python, parquet)
 personal-assistant-ios/  # iOS app (Swift)
 personal-data-reflection/ # Health dashboard — Flask API + DuckDB (Python, uv)
+scripts/                 # Standalone utility scripts (gcal_backup.py)
 strava-data-puller/      # Strava API → raw JSON + curated parquet (Python, DuckDB)
 ```
 
@@ -22,8 +25,8 @@ strava-data-puller/      # Strava API → raw JSON + curated parquet (Python, Du
 - **No monorepo build system** — each tool is independent
 
 ## Datalake conventions
-- **Raw data:** `~/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/<source>/`
-- **Curated data:** `.../datalake/curated/<source>/` (parquet)
+- **Raw data:** `~/datalake.me/raw/<source>/`
+- **Curated data:** `~/datalake.me/curated/<source>/` (parquet)
 - **State files:** `~/.local/share/datalake/` (last sync timestamps, etc.)
 - Raw = immutable API dumps. Curated = cleaned, typed, deduplicated parquet.
 
