@@ -1,82 +1,124 @@
-from pathlib import Path
 import importlib.util
-
-import pyarrow as pa
-import pyarrow.parquet as pq
-
-
-MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "lastfm_ingest.py"
-spec = importlib.util.spec_from_file_location("lastfm_ingest", MODULE_PATH)
-lastfm_ingest = importlib.util.module_from_spec(spec)
-assert spec is not None and spec.loader is not None
-spec.loader.exec_module(lastfm_ingest)
+import json
+import sys
+import tempfile
+import types
+import unittest
+from datetime import datetime, timezone
+from pathlib import Path
 
 
-def test_resolve_from_uts_uses_latest_state_or_curated_plus_one(tmp_path):
-    state_file = tmp_path / "state" / "lastfm_last_uts.txt"
-    state_file.parent.mkdir(parents=True, exist_ok=True)
-    state_file.write_text("100")
+def load_module():
+    # Tests exercise file/merge helpers only; provide a tiny requests stub for import.
+    if "requests" not in sys.modules:
+        stub = types.ModuleType("requests")
+        def _missing(*_args, **_kwargs):
+            raise RuntimeError("requests.get stub called unexpectedly")
+        stub.get = _missing
+        sys.modules["requests"] = stub
 
-    curated_dir = tmp_path / "curated"
-    partition = curated_dir / "year=2026" / "month=02"
-    partition.mkdir(parents=True, exist_ok=True)
-    table = pa.table({"uts": [90, 150, 120]})
-    pq.write_table(table, partition / "scrobbles_1.parquet")
-
-    from_uts = lastfm_ingest.resolve_from_uts(
-        cli_from_uts=None,
-        cli_since=None,
-        full_refetch=False,
-        state_file=state_file,
-        curated_root=curated_dir,
-    )
-
-    assert from_uts == 151
+    module_path = Path(__file__).resolve().parents[1] / "scripts" / "lastfm_ingest.py"
+    spec = importlib.util.spec_from_file_location("lastfm_ingest", module_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
 
 
-def test_resolve_from_uts_cli_precedence(tmp_path):
-    state_file = tmp_path / "state.txt"
-    curated_dir = tmp_path / "curated"
-
-    assert lastfm_ingest.resolve_from_uts(10, None, False, state_file, curated_dir) == 11
-    assert lastfm_ingest.resolve_from_uts(None, "1970-01-01T00:00:20Z", False, state_file, curated_dir) == 20
-    assert lastfm_ingest.resolve_from_uts(10, "1970-01-01T00:00:20Z", True, state_file, curated_dir) == 0
+def write_jsonl(path: Path, rows: list[dict]):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        for row in rows:
+            fh.write(json.dumps(row) + "\n")
 
 
-def test_fetch_page_with_retries_retries_then_succeeds(monkeypatch):
-    class FakeResponse:
-        def raise_for_status(self):
-            return None
+class LastfmIngestTests(unittest.TestCase):
+    def test_find_latest_uts_in_jsonl_reads_mixed_shapes(self):
+        mod = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_jsonl(
+                root / "year=2024" / "month=01" / "scrobbles.jsonl",
+                [
+                    {"uts": 1705000000, "artist": "A", "track": "T1", "album": None},
+                    {"date": {"uts": "1706000000"}, "artist": {"#text": "B"}, "name": "T2"},
+                    {"bad": "row"},
+                ],
+            )
 
-        def json(self):
-            return {"recenttracks": {"track": []}}
+            write_jsonl(
+                root / "year=2024" / "month=02" / "scrobbles.jsonl",
+                [{"uts": 1707000000, "artist": "C", "track": "T3", "album": "X"}],
+            )
 
-    class FakeSession:
-        def __init__(self):
-            self.calls = 0
+            self.assertEqual(mod.find_latest_uts_in_jsonl(root), 1707000000)
 
-        def get(self, *args, **kwargs):
-            self.calls += 1
-            if self.calls < 3:
-                raise lastfm_ingest.requests.Timeout("timeout")
-            return FakeResponse()
+    def test_merge_into_monthly_jsonl_appends_only_new_rows(self):
+        mod = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
 
-    sleeps = []
-    monkeypatch.setattr(lastfm_ingest.time, "sleep", lambda v: sleeps.append(v))
-    monkeypatch.setattr(lastfm_ingest.random, "uniform", lambda a, b: 0.0)
+            existing_file = output_dir / "year=2024" / "month=03" / "scrobbles.jsonl"
+            write_jsonl(
+                existing_file,
+                [
+                    {"uts": 1710100000, "artist": "A", "track": "Song", "album": "Alpha"},
+                ],
+            )
 
-    payload = lastfm_ingest.fetch_page_with_retries(
-        session=FakeSession(),
-        user="u",
-        api_key="k",
-        from_uts=0,
-        page=1,
-        limit=200,
-        connect_timeout=1,
-        read_timeout=1,
-        max_retries=4,
-        backoff_base=1,
-    )
+            rows = [
+                {"uts": 1710100000, "artist": "A", "track": "Song", "album": "Alpha"},
+                {"uts": 1710200000, "artist": "A", "track": "Song 2", "album": "Alpha"},
+                {"uts": 1712800000, "artist": "B", "track": "Song 3", "album": None},
+            ]
 
-    assert payload == {"recenttracks": {"track": []}}
-    assert sleeps == [1, 2]
+            summary = mod.merge_into_monthly_jsonl(rows, output_dir)
+            self.assertEqual(summary["inserted"], 2)
+            self.assertEqual(summary["deduped"], 1)
+
+            march_rows = [json.loads(line) for line in existing_file.read_text().splitlines()]
+            self.assertEqual(len(march_rows), 2)
+
+            april_file = output_dir / "year=2024" / "month=04" / "scrobbles.jsonl"
+            april_rows = [json.loads(line) for line in april_file.read_text().splitlines()]
+            self.assertEqual(len(april_rows), 1)
+
+    def test_merge_rows_dedupes_and_sorts(self):
+        mod = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            # Use UTC Jan 2024 timestamps so merge partitioning targets year=2024/month=01.
+            jan_uts_existing = int(datetime(2024, 1, 15, 12, 0, 10, tzinfo=timezone.utc).timestamp())
+            jan_uts_new = int(datetime(2024, 1, 15, 12, 0, 20, tzinfo=timezone.utc).timestamp())
+
+            jan_file = output_dir / "year=2024" / "month=01" / "scrobbles.jsonl"
+            self.assertEqual(mod.month_partition_path(output_dir, jan_uts_new), jan_file)
+            self.assertEqual(mod.month_partition_path(output_dir, jan_uts_existing), jan_file)
+            write_jsonl(
+                jan_file,
+                [
+                    {"uts": jan_uts_existing, "artist": "A", "track": "Song 2", "album": "Alpha"},
+                ],
+            )
+
+            rows = [
+                # Duplicate of existing row in January 2024 partition.
+                {"uts": jan_uts_existing, "artist": "A", "track": "Song 2", "album": "Alpha"},
+                # New row in same partition; arrives out of order and should be appended sorted.
+                {"uts": jan_uts_new, "artist": "A", "track": "Song 1", "album": "Alpha"},
+            ]
+
+            summary = mod.merge_into_monthly_jsonl(rows, output_dir)
+            added_rows = summary["inserted"]
+            deduped_rows = summary["deduped"]
+            self.assertEqual(added_rows, 1)
+            self.assertEqual(deduped_rows, 1)
+
+            jan_rows = [json.loads(line) for line in jan_file.read_text().splitlines()]
+            self.assertEqual(len(jan_rows), 2)
+            self.assertEqual(jan_rows[0]["uts"], jan_uts_existing)
+            self.assertEqual(jan_rows[1]["uts"], jan_uts_new)
+
+
+if __name__ == "__main__":
+    unittest.main()
