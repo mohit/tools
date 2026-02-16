@@ -137,3 +137,40 @@ def test_merge_raw_monthly_jsonl_handles_legacy_api_shaped_rows(tmp_path):
     assert jan_rows[0]["uts"] == 1704067200
     assert jan_rows[0]["track"] == "Song"
     assert jan_rows[0]["mbid_track"] == "new"
+
+
+def test_merge_raw_monthly_jsonl_normalizes_dict_fields_in_existing_rows(tmp_path):
+    raw_dir = tmp_path / "lastfm"
+    jan_file = raw_dir / "scrobbles_2024-01.jsonl"
+    _write_jsonl(
+        jan_file,
+        [
+            {
+                "uts": 1704067200,
+                "artist": {"#text": "A", "mbid": ""},
+                "track": {"#text": "Song"},
+                "album": {"#text": ""},
+            }
+        ],
+    )
+
+    merge_raw_monthly_jsonl(
+        [
+            {
+                "uts": 1704067200,
+                "played_at_utc": pd.to_datetime(1704067200, unit="s", utc=True),
+                "artist": "A",
+                "track": "Song",
+                "album": None,
+                "mbid_track": "new",
+                "source": "lastfm",
+            },
+        ],
+        raw_dir=raw_dir,
+    )
+
+    jan_rows = _read_jsonl(jan_file)
+    assert len(jan_rows) == 1
+    assert jan_rows[0]["uts"] == 1704067200
+    assert jan_rows[0]["track"] == "Song"
+    assert jan_rows[0]["mbid_track"] == "new"

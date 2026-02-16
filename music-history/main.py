@@ -40,12 +40,17 @@ def get_credentials() -> tuple[str, str]:
     return user, key
 
 
-def row_key(row: dict) -> tuple:
-    def _normalize_text(value) -> str:
-        if isinstance(value, dict):
-            value = value.get("#text")
-        return value or ""
+def _normalize_text(value) -> str:
+    if isinstance(value, dict):
+        value = value.get("#text")
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, sort_keys=True, ensure_ascii=False)
+    return str(value)
 
+
+def row_key(row: dict) -> tuple:
     return (
         int(row["uts"]),
         _normalize_text(row.get("artist")),
@@ -198,6 +203,9 @@ def merge_raw_monthly_jsonl(rows: list[dict], raw_dir: Path = RAW) -> None:
                     continue
                 existing_for_key = dict(existing)
                 existing_for_key["uts"] = existing_uts
+                existing_for_key["artist"] = _normalize_text(existing.get("artist"))
+                existing_for_key["track"] = _normalize_text(existing.get("track") or existing.get("name"))
+                existing_for_key["album"] = _normalize_text(existing.get("album"))
                 merged[row_key(existing_for_key)] = existing
 
         for row in month_rows:
