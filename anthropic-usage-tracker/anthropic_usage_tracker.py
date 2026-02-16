@@ -444,7 +444,8 @@ def build_model_parquet_rows(snapshot_day: date, usage_rows: list[UsageRow]) -> 
             "cache_creation_input_tokens": 0,
             "cache_read_input_tokens": 0,
             "estimated_cost_usd": Decimal("0"),
-            "api_reported_cost_usd_sum": None,
+            "api_reported_cost_usd_sum": Decimal("0"),
+            "has_api_reported_cost": False,
             "ingested_at": datetime.now(UTC).isoformat(),
         }
     )
@@ -459,18 +460,15 @@ def build_model_parquet_rows(snapshot_day: date, usage_rows: list[UsageRow]) -> 
         r["cache_read_input_tokens"] += row.cache_read_input_tokens
         r["estimated_cost_usd"] = Decimal(r["estimated_cost_usd"]) + row.estimated_cost_usd
         if row.api_reported_cost_usd is not None:
-            current_cost = r["api_reported_cost_usd_sum"]
-            r["api_reported_cost_usd_sum"] = (
-                row.api_reported_cost_usd
-                if current_cost is None
-                else Decimal(current_cost) + row.api_reported_cost_usd
-            )
+            r["has_api_reported_cost"] = True
+            r["api_reported_cost_usd_sum"] = Decimal(r["api_reported_cost_usd_sum"]) + row.api_reported_cost_usd
 
     model_parquet_rows = []
     for info in model_rollup.values():
-        api_reported_cost_usd_sum = info["api_reported_cost_usd_sum"]
         api_reported_cost_usd = (
-            None if api_reported_cost_usd_sum is None else float(Decimal(api_reported_cost_usd_sum))
+            float(Decimal(info["api_reported_cost_usd_sum"]))
+            if info["has_api_reported_cost"]
+            else None
         )
         model_parquet_rows.append(
             {

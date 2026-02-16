@@ -243,3 +243,40 @@ def test_build_model_parquet_rows_keeps_mapped_zero_api_cost_as_real_value() -> 
 
     assert len(model_rows) == 1
     assert model_rows[0]["api_reported_cost_usd"] == 0.0
+
+
+def test_build_model_parquet_rows_keeps_unmapped_model_api_cost_nullable_when_other_models_have_costs() -> None:
+    rows = [
+        UsageRow(
+            snapshot_date="2026-02-11",
+            model="claude-sonnet-4-5",
+            model_family="sonnet",
+            api_key_id="key_1",
+            agent="agent-a",
+            input_tokens=100,
+            output_tokens=50,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+            estimated_cost_usd=Decimal("1.25"),
+            api_reported_cost_usd=None,
+        ),
+        UsageRow(
+            snapshot_date="2026-02-11",
+            model="claude-haiku-3-5",
+            model_family="haiku",
+            api_key_id="key_2",
+            agent="agent-b",
+            input_tokens=100,
+            output_tokens=50,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+            estimated_cost_usd=Decimal("0.25"),
+            api_reported_cost_usd=Decimal("0.75"),
+        ),
+    ]
+
+    model_rows = build_model_parquet_rows(date(2026, 2, 11), rows)
+    by_model = {row["model"]: row for row in model_rows}
+
+    assert by_model["claude-sonnet-4-5"]["api_reported_cost_usd"] is None
+    assert by_model["claude-haiku-3-5"]["api_reported_cost_usd"] == 0.75
