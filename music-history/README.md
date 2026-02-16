@@ -71,6 +71,27 @@ It currently includes:
 python scripts/lastfm_ingest.py
 ```
 
+## Apple Music Privacy Export Freshness Check
+
+If you're ingesting Apple Music privacy export data from:
+`~/datalake.me/raw/apple-music/Apple Music - Track Play History.csv`,
+run the freshness validator before ingestion:
+
+```bash
+python check_apple_music_privacy_export.py
+```
+
+Useful flags:
+
+```bash
+python check_apple_music_privacy_export.py --csv-path "~/datalake.me/raw/apple-music/Apple Music - Track Play History.csv" --max-age-days 45
+```
+
+When stale, the checker exits non-zero and tells you to request a new export from `privacy.apple.com`:
+`Data & Privacy > Get a copy of your data > Apple Media Services information`.
+
+## Example Query
+=======
 Incremental mode is the default. If no arguments are provided, the script starts from the latest known timestamp (state file and curated parquet max `uts`) and only fetches new scrobbles.
 
 Optional flags:
