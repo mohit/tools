@@ -21,7 +21,13 @@ def run_source(conn: duckdb.DuckDBPyConnection, source_name: str, source_cfg: di
         return len(raw_events), len(visits), 0, 0
 
     if source_name == "foursquare_export":
-        visits = load_foursquare_export(source_cfg["path"])
+        places_api_key = os.getenv(source_cfg.get("places_api_key_env", "FOURSQUARE_PLACES_API_KEY"))
+        visits = load_foursquare_export(
+            source_cfg["path"],
+            places_api_key=places_api_key,
+            cache_path=source_cfg.get("places_cache_path"),
+            places_api_base_url=source_cfg.get("places_api_base_url", "https://api.foursquare.com/v3/places"),
+        )
         _insert_visits(conn, visits)
         return 0, len(visits), 0, 0
 
