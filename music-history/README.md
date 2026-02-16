@@ -110,8 +110,21 @@ Useful flags:
 python check_apple_music_privacy_export.py --csv-path "~/datalake.me/raw/apple-music/Apple Music - Track Play History.csv" --max-age-days 45
 ```
 
-When stale, the checker exits non-zero and tells you to request a new export from `privacy.apple.com`:
-`Data & Privacy > Get a copy of your data > Apple Media Services information`.
+## Apple Music Export Freshness Guard
+
+Apple Music ingestion now checks `apple_music_export_metadata.json` before loading data.
+
+Run the check manually:
+```bash
+python check_apple_music_export.py
+```
+
+Current tracked state (issue #36):
+- `latest_play_date`: `2023-11-09`
+- `last_export_date`: `2023-11-10`
+- detected stale on `2026-02-14`
+
+If the check fails, request a new Apple Music export from `privacy.apple.com`, replace the raw data file, then update `apple_music_export_metadata.json` with the new `last_export_date` and `latest_play_date`.
 
 ## Example Query
 =======

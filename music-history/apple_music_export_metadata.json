@@ -1,0 +1,9 @@
+{
+  "source": "privacy.apple.com",
+  "last_export_date": "2023-11-10",
+  "latest_play_date": "2023-11-09",
+  "detected_stale_on": "2026-02-14",
+  "issue": 36,
+  "status": "stale",
+  "notes": "Previous issue #15 was closed without a refreshed Apple Music export. Request a new export from privacy.apple.com and update this metadata after ingesting the replacement file."
+}
