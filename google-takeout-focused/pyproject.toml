@@ -1,0 +1,21 @@
+[project]
+name = "google-takeout-focused"
+version = "0.1.0"
+description = "Focused Google Takeout processing for location, search, and YouTube Music"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "duckdb>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+]
+
+[project.scripts]
+google-takeout-focused = "google_takeout_focused:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
