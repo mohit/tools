@@ -306,10 +306,34 @@ def create_app(db_path: str = "./data/reflection.duckdb"):
         """Update a goal."""
         data = request.json
         if not data or 'metric' not in data or 'target' not in data:
-            return jsonify({'error': 'Missing metric or target'}), 400
+            return jsonify({
+                'error': {
+                    'code': 'invalid_payload',
+                    'message': 'Missing metric or target'
+                }
+            }), 400
+
+        target = data['target']
+        if isinstance(target, bool):
+            return jsonify({
+                'error': {
+                    'code': 'invalid_target',
+                    'message': 'Target must be a number'
+                }
+            }), 400
+
+        try:
+            target_value = float(target)
+        except (ValueError, TypeError):
+            return jsonify({
+                'error': {
+                    'code': 'invalid_target',
+                    'message': 'Target must be a number'
+                }
+            }), 400
             
         db = get_db()
-        db.update_goal(data['metric'], float(data['target']), data.get('period', 'daily'))
+        db.update_goal(data['metric'], target_value, data.get('period', 'daily'))
         goals = db.get_goals()
         db.close()
         return jsonify(goals)
