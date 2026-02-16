@@ -3,6 +3,8 @@ import argparse
 import datetime as dt
 import json
 import os
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -26,6 +28,11 @@ DEFAULT_TYPES = [
 
 MAX_RETRIES = 5
 BASE_DELAY = 15  # seconds
+REQUIRED_STRAVA_VARS = (
+    "STRAVA_CLIENT_ID",
+    "STRAVA_CLIENT_SECRET",
+    "STRAVA_REFRESH_TOKEN",
+)
 
 
 def parse_date(value: str) -> int:
@@ -36,11 +43,127 @@ def parse_date(value: str) -> int:
     return int(parsed.replace(tzinfo=dt.timezone.utc).timestamp())
 
 
-def load_env(var_name: str) -> str:
-    value = os.getenv(var_name)
-    if not value:
-        raise SystemExit(f"Missing required env var: {var_name}")
-    return value
+def parse_dotenv(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+
+    with path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export ") :].strip()
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if not key:
+                continue
+            if (value.startswith('"') and value.endswith('"')) or (
+                value.startswith("'") and value.endswith("'")
+            ):
+                value = value[1:-1]
+            values[key] = value
+    return values
+
+
+def discover_env_files() -> list[Path]:
+    candidate_paths: list[Path] = []
+    explicit_env_file = os.getenv("STRAVA_ENV_FILE")
+    if explicit_env_file:
+        candidate_paths.append(Path(explicit_env_file).expanduser())
+
+    script_dir = Path(__file__).resolve().parent
+    cwd = Path.cwd()
+    for path in (
+        script_dir / ".env",
+        cwd / ".env",
+        Path.home() / "code" / "tools" / "strava-data-puller" / ".env",
+    ):
+        if path not in candidate_paths:
+            candidate_paths.append(path)
+    return candidate_paths
+
+
+def load_keychain_secret(var_name: str) -> str | None:
+    # macOS keychain fallback for unattended runs.
+    lookups = (
+        ("strava-data-puller", var_name),
+        ("com.mohit.tools.strava-data-puller", var_name),
+        (var_name, None),
+    )
+
+    for service, account in lookups:
+        cmd = ["security", "find-generic-password", "-w", "-s", service]
+        if account:
+            cmd.extend(["-a", account])
+        try:
+            result = subprocess.run(
+                cmd,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except FileNotFoundError:
+            return None
+        except subprocess.TimeoutExpired:
+            continue
+        if result.returncode == 0:
+            secret = result.stdout.strip()
+            if secret:
+                return secret
+    return None
+
+
+def resolve_strava_credentials() -> tuple[dict[str, str], dict[str, str], list[Path]]:
+    values: dict[str, str] = {}
+    sources: dict[str, str] = {}
+
+    for var_name in REQUIRED_STRAVA_VARS:
+        env_value = os.getenv(var_name)
+        if env_value:
+            values[var_name] = env_value
+            sources[var_name] = "environment"
+
+    env_files = discover_env_files()
+    for env_file in env_files:
+        if not env_file.exists():
+            continue
+        env_values = parse_dotenv(env_file)
+        for var_name in REQUIRED_STRAVA_VARS:
+            if var_name in values:
+                continue
+            env_value = env_values.get(var_name)
+            if env_value:
+                values[var_name] = env_value
+                sources[var_name] = f"dotenv:{env_file}"
+
+    for var_name in REQUIRED_STRAVA_VARS:
+        if var_name in values:
+            continue
+        keychain_value = load_keychain_secret(var_name)
+        if keychain_value:
+            values[var_name] = keychain_value
+            sources[var_name] = "keychain"
+
+    return values, sources, env_files
+
+
+def format_missing_credentials_message(
+    missing_vars: list[str], searched_env_files: list[Path]
+) -> str:
+    env_locations = ", ".join(shlex.quote(str(path)) for path in searched_env_files)
+    missing = ", ".join(missing_vars)
+    return (
+        f"Missing Strava credentials: {missing}\n"
+        "Credential lookup order: environment variables -> .env files -> macOS keychain.\n"
+        f"Searched .env paths: {env_locations}\n"
+        "To automate runs, add credentials to one of those .env files or keychain."
+    )
 
 
 def get_access_token(client_id: str, client_secret: str, refresh_token: str) -> str:
@@ -275,14 +398,32 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Force re-fetch all activities, ignoring existing data.",
     )
+    parser.add_argument(
+        "--check-credentials",
+        action="store_true",
+        help="Validate credential discovery and exit without calling the Strava API.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    client_id = load_env("STRAVA_CLIENT_ID")
-    client_secret = load_env("STRAVA_CLIENT_SECRET")
-    refresh_token = load_env("STRAVA_REFRESH_TOKEN")
+    credentials, sources, searched_env_files = resolve_strava_credentials()
+    missing_vars = [var for var in REQUIRED_STRAVA_VARS if var not in credentials]
+    if missing_vars:
+        raise SystemExit(
+            format_missing_credentials_message(missing_vars, searched_env_files)
+        )
+
+    if args.check_credentials:
+        print("Strava credentials available for automated runs:")
+        for var in REQUIRED_STRAVA_VARS:
+            print(f"- {var}: {sources[var]}")
+        return
+
+    client_id = credentials["STRAVA_CLIENT_ID"]
+    client_secret = credentials["STRAVA_CLIENT_SECRET"]
+    refresh_token = credentials["STRAVA_REFRESH_TOKEN"]
 
     access_token = get_access_token(client_id, client_secret, refresh_token)
 
