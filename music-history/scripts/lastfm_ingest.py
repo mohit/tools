@@ -1,311 +1,13 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import datetime as dt
 import json
 import os
-from collections import defaultdict
+import time
 from pathlib import Path
 from typing import Any
-
-import requests
-
-API_URL = "https://ws.audioscrobbler.com/2.0/"
-
-DEFAULT_RAW_ROOT = Path(
-    os.environ.get(
-        "DATALAKE_RAW_ROOT",
-        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports",
-    )
-)
-DEFAULT_OUTPUT_DIR = DEFAULT_RAW_ROOT / "lastfm" / "scrobbles"
-
-
-class LastfmIngestError(RuntimeError):
-    pass
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Fetch Last.fm scrobbles and merge them into month-partitioned JSONL files."
-        )
-    )
-    parser.add_argument(
-        "--since",
-        nargs="?",
-        const="auto",
-        default=None,
-        help=(
-            "Incremental mode. Use '--since' for auto-detect from existing JSONL, "
-            "or provide a unix timestamp / ISO datetime. Omit for full-history fetch."
-        ),
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=DEFAULT_OUTPUT_DIR,
-        help=f"Directory for month-partitioned JSONL output (default: {DEFAULT_OUTPUT_DIR})",
-    )
-    parser.add_argument(
-        "--user",
-        default=os.environ.get("LASTFM_USER"),
-        help="Last.fm username (default: LASTFM_USER env var)",
-    )
-    parser.add_argument(
-        "--api-key",
-        default=os.environ.get("LASTFM_API_KEY"),
-        help="Last.fm API key (default: LASTFM_API_KEY env var)",
-    )
-    parser.add_argument(
-        "--page-size",
-        type=int,
-        default=200,
-        help="Items per API request (max 200, default: 200)",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=30,
-        help="HTTP timeout in seconds (default: 30)",
-    )
-    return parser.parse_args()
-
-
-def iter_jsonl_files(root: Path):
-    if not root.exists():
-        return
-    for path in sorted(root.rglob("*.jsonl")):
-        if path.is_file():
-            yield path
-
-
-def parse_uts_from_row(row: dict[str, Any]) -> int | None:
-    if "uts" in row:
-        try:
-            return int(row["uts"])
-        except (TypeError, ValueError):
-            return None
-
-    date_block = row.get("date")
-    if isinstance(date_block, dict) and "uts" in date_block:
-        try:
-            return int(date_block["uts"])
-        except (TypeError, ValueError):
-            return None
-
-    return None
-
-
-def find_latest_uts_in_jsonl(root: Path) -> int | None:
-    latest: int | None = None
-    for jsonl_path in iter_jsonl_files(root):
-        with jsonl_path.open("r", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                uts = parse_uts_from_row(row)
-                if uts is None:
-                    continue
-                if latest is None or uts > latest:
-                    latest = uts
-    return latest
-
-
-def parse_since_value(since: str | None, output_dir: Path) -> int | None:
-    if since is None:
-        return None
-    if since == "auto":
-        return find_latest_uts_in_jsonl(output_dir)
-
-    try:
-        return int(since)
-    except ValueError:
-        pass
-
-    iso_candidate = since.rstrip("Z")
-    try:
-        parsed = dt.datetime.fromisoformat(iso_candidate)
-    except ValueError as exc:
-        raise LastfmIngestError(
-            "--since must be 'auto', a unix timestamp, or ISO datetime"
-        ) from exc
-
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=dt.timezone.utc)
-
-    return int(parsed.timestamp())
-
-
-def fetch_recent_tracks(
-    *,
-    user: str,
-    api_key: str,
-    from_uts: int | None,
-    page_size: int,
-    timeout: int,
-) -> list[dict[str, Any]]:
-    if not user:
-        raise LastfmIngestError("Missing Last.fm user. Set LASTFM_USER or pass --user.")
-    if not api_key:
-        raise LastfmIngestError(
-            "Missing Last.fm API key. Set LASTFM_API_KEY or pass --api-key."
-        )
-
-    rows: list[dict[str, Any]] = []
-    page = 1
-    total_pages = 1
-
-    while page <= total_pages:
-        params: dict[str, Any] = {
-            "method": "user.getRecentTracks",
-            "user": user,
-            "api_key": api_key,
-            "format": "json",
-            "limit": min(max(page_size, 1), 200),
-            "page": page,
-        }
-        if from_uts is not None:
-            params["from"] = from_uts
-
-        response = requests.get(API_URL, params=params, timeout=timeout)
-        response.raise_for_status()
-        payload = response.json()
-
-        recent_tracks = payload.get("recenttracks", {})
-        tracks = recent_tracks.get("track", [])
-        attr = recent_tracks.get("@attr", {})
-
-        try:
-            total_pages = int(attr.get("totalPages", "1"))
-        except ValueError:
-            total_pages = 1
-
-        if isinstance(tracks, dict):
-            tracks = [tracks]
-
-        for track in tracks:
-            # Ignore the synthetic currently-playing row.
-            if track.get("@attr", {}).get("nowplaying") == "true":
-                continue
-
-            uts = parse_uts_from_row(track)
-            if uts is None:
-                continue
-
-            row = {
-                "uts": uts,
-                "artist": (track.get("artist") or {}).get("#text"),
-                "track": track.get("name"),
-                "album": (track.get("album") or {}).get("#text") or None,
-                "mbid": track.get("mbid") or None,
-            }
-            rows.append(row)
-
-        page += 1
-
-    return rows
-
-
-def month_partition_path(output_dir: Path, uts: int) -> Path:
-    ts = dt.datetime.fromtimestamp(uts, tz=dt.timezone.utc)
-    return output_dir / f"year={ts.year:04d}" / f"month={ts.month:02d}" / "scrobbles.jsonl"
-
-
-def scrobble_identity(row: dict[str, Any]) -> tuple[Any, Any, Any, Any]:
-    return (row.get("uts"), row.get("artist"), row.get("track"), row.get("album"))
-
-
-def merge_into_monthly_jsonl(rows: list[dict[str, Any]], output_dir: Path) -> dict[str, int]:
-    if not rows:
-        return {"inserted": 0, "deduped": 0, "files_touched": 0}
-
-    by_file: dict[Path, list[dict[str, Any]]] = defaultdict(list)
-    for row in rows:
-        uts = parse_uts_from_row(row)
-        if uts is None:
-            continue
-        row["uts"] = uts
-        by_file[month_partition_path(output_dir, uts)].append(row)
-
-    inserted = 0
-    deduped = 0
-
-    for file_path, pending_rows in by_file.items():
-        existing_keys: set[tuple[Any, Any, Any, Any]] = set()
-
-        if file_path.exists():
-            with file_path.open("r", encoding="utf-8") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        row = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    existing_keys.add(scrobble_identity(row))
-
-        unique_new_rows: list[dict[str, Any]] = []
-        for row in pending_rows:
-            key = scrobble_identity(row)
-            if key in existing_keys:
-                deduped += 1
-                continue
-            existing_keys.add(key)
-            unique_new_rows.append(row)
-
-        if not unique_new_rows:
-            continue
-
-        unique_new_rows.sort(key=lambda r: int(r["uts"]))
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        with file_path.open("a", encoding="utf-8") as fh:
-            for row in unique_new_rows:
-                fh.write(json.dumps(row, ensure_ascii=True) + "\n")
-                inserted += 1
-
-    return {"inserted": inserted, "deduped": deduped, "files_touched": len(by_file)}
-
-
-def main() -> None:
-    args = parse_args()
-
-    since_uts = parse_since_value(args.since, args.output_dir)
-    rows = fetch_recent_tracks(
-        user=args.user,
-        api_key=args.api_key,
-        from_uts=since_uts,
-        page_size=args.page_size,
-        timeout=args.timeout,
-    )
-
-    if since_uts is not None:
-        # Last.fm 'from' may include the boundary timestamp.
-        rows = [row for row in rows if int(row.get("uts", 0)) > since_uts]
-
-    summary = merge_into_monthly_jsonl(rows, args.output_dir)
-
-    print(f"Fetched: {len(rows)}")
-    print(f"Inserted: {summary['inserted']}")
-    print(f"Deduped: {summary['deduped']}")
-    print(f"Files touched: {summary['files_touched']}")
-
-
-if __name__ == "__main__":
-    main()
-=======
-import argparse
-import json
-import os
-import random
-import time
-from datetime import datetime, timezone
-from pathlib import Path
 
 import pandas as pd
 import pyarrow as pa
@@ -313,124 +15,172 @@ import pyarrow.parquet as pq
 import requests
 
 API = "https://ws.audioscrobbler.com/2.0/"
-DEFAULT_TIMEOUT_CONNECT = 10
-DEFAULT_TIMEOUT_READ = 30
-DEFAULT_MAX_RETRIES = 5
-DEFAULT_BACKOFF_BASE_SECONDS = 1.0
-DEFAULT_LIMIT = 200
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+MAX_RETRIES = 5
+BASE_DELAY_SECONDS = 5
+
+DEFAULT_RAW_ROOT = Path(
+    "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports"
+)
+DEFAULT_CURATED_ROOT = Path(
+    "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated"
+)
+STATE_DIR = Path.home() / ".local" / "share" / "datalake"
+STATE_FILE = STATE_DIR / "lastfm_last_uts.txt"
+CHECKPOINT_FILE = STATE_DIR / "lastfm_ingest_checkpoint.json"
+
+
+def parse_date(value: str) -> int:
+    try:
+        parsed = dt.datetime.strptime(value, "%Y-%m-%d")
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Dates must be YYYY-MM-DD") from exc
+    return int(parsed.replace(tzinfo=dt.timezone.utc).timestamp())
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Ingest Last.fm scrobbles into datalake")
-    parser.add_argument("--from-uts", type=int, default=None, help="Fetch scrobbles strictly after this unix timestamp")
+    parser = argparse.ArgumentParser(description="Ingest Last.fm scrobbles into raw JSONL and parquet")
+    parser.add_argument(
+        "--from",
+        dest="from_uts",
+        type=int,
+        help="Unix timestamp (UTC seconds) to fetch from",
+    )
     parser.add_argument(
         "--since",
-        type=str,
-        default=None,
-        help="Fetch scrobbles since this datetime (ISO-8601, e.g. 2026-01-31T00:00:00Z)",
+        type=parse_date,
+        help="Fetch from this UTC date (YYYY-MM-DD)",
     )
     parser.add_argument(
-        "--full-refetch",
+        "--no-resume",
         action="store_true",
-        help="Ignore state and fetch full history from uts=0",
+        help="Ignore checkpoint and start fresh for the selected range",
     )
-    parser.add_argument("--max-retries", type=int, default=DEFAULT_MAX_RETRIES)
-    parser.add_argument("--connect-timeout", type=float, default=DEFAULT_TIMEOUT_CONNECT)
-    parser.add_argument("--read-timeout", type=float, default=DEFAULT_TIMEOUT_READ)
-    parser.add_argument("--backoff-base", type=float, default=DEFAULT_BACKOFF_BASE_SECONDS)
-    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=None,
+        help="Optional page limit for debugging",
+    )
     return parser.parse_args()
 
 
-def parse_since_to_uts(since_value: str) -> int:
-    candidate = since_value.strip()
-    if candidate.isdigit():
-        return int(candidate)
-
-    if candidate.endswith("Z"):
-        candidate = candidate[:-1] + "+00:00"
-
-    dt = datetime.fromisoformat(candidate)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return int(dt.timestamp())
+def load_env(var_name: str) -> str:
+    value = os.getenv(var_name)
+    if not value:
+        raise SystemExit(f"Missing required env var: {var_name}")
+    return value
 
 
-def load_last_uts(state_file: Path) -> int | None:
-    if not state_file.exists():
-        return None
-
-    raw = state_file.read_text().strip()
-    if not raw:
-        return None
-
-    try:
-        return int(raw)
-    except ValueError:
-        return None
+def load_last_uts(state_file: Path = STATE_FILE) -> int:
+    if state_file.exists():
+        try:
+            return int(state_file.read_text().strip())
+        except ValueError:
+            pass
+    return int(time.time()) - 30 * 24 * 3600
 
 
-def save_last_uts(state_file: Path, value: int) -> None:
+def save_last_uts(value: int, state_file: Path = STATE_FILE) -> None:
     state_file.parent.mkdir(parents=True, exist_ok=True)
     state_file.write_text(str(value))
 
 
-def latest_uts_from_curated(curated_root: Path) -> int | None:
-    if not curated_root.exists():
+def load_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> dict[str, Any] | None:
+    if not checkpoint_file.exists():
         return None
+    with checkpoint_file.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
 
-    max_uts: int | None = None
-    for parquet_file in curated_root.rglob("*.parquet"):
-        table = pq.read_table(parquet_file, columns=["uts"])
-        if table.num_rows == 0:
+
+def save_checkpoint(
+    from_uts: int,
+    next_page: int,
+    run_id: int,
+    max_uts_seen: int | None,
+    checkpoint_file: Path = CHECKPOINT_FILE,
+) -> None:
+    checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "from_uts": from_uts,
+        "next_page": next_page,
+        "run_id": run_id,
+        "max_uts_seen": max_uts_seen,
+        "saved_at": int(time.time()),
+    }
+    with checkpoint_file.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, sort_keys=True)
+
+
+def clear_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> None:
+    if checkpoint_file.exists():
+        checkpoint_file.unlink()
+
+
+def request_recent_tracks(
+    user: str,
+    api_key: str,
+    from_uts: int,
+    page: int,
+    max_retries: int = MAX_RETRIES,
+    base_delay_seconds: int = BASE_DELAY_SECONDS,
+) -> dict[str, Any]:
+    params = {
+        "method": "user.getRecentTracks",
+        "user": user,
+        "api_key": api_key,
+        "format": "json",
+        "from": from_uts,
+        "limit": 200,
+        "page": page,
+    }
+
+    last_error: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(API, params=params, timeout=30)
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            last_error = exc
+            if attempt == max_retries - 1:
+                break
+            delay = base_delay_seconds * (2**attempt)
+            print(
+                f"Transient network error on page {page}: {exc}. "
+                f"Retrying in {delay}s ({attempt + 1}/{max_retries})..."
+            )
+            time.sleep(delay)
             continue
-        column_max = table.column("uts").to_pandas().max()
-        if pd.isna(column_max):
+
+        if response.status_code in RETRYABLE_STATUS_CODES:
+            if attempt == max_retries - 1:
+                response.raise_for_status()
+            delay = base_delay_seconds * (2**attempt)
+            print(
+                f"Transient HTTP {response.status_code} on page {page}. "
+                f"Retrying in {delay}s ({attempt + 1}/{max_retries})..."
+            )
+            time.sleep(delay)
             continue
-        value = int(column_max)
-        if max_uts is None or value > max_uts:
-            max_uts = value
-    return max_uts
+
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("error"):
+            raise SystemExit(f"Last.fm API error {payload.get('error')}: {payload.get('message')}")
+        return payload
+
+    raise SystemExit(f"Failed to fetch page {page} after {max_retries} retries: {last_error}")
 
 
-def resolve_from_uts(
-    cli_from_uts: int | None,
-    cli_since: str | None,
-    full_refetch: bool,
-    state_file: Path,
-    curated_root: Path,
-) -> int:
-    if full_refetch:
-        return 0
-    if cli_from_uts is not None:
-        # Last.fm `from` is inclusive; +1 preserves strict "after this timestamp" CLI semantics.
-        return cli_from_uts + 1
-    if cli_since is not None:
-        return parse_since_to_uts(cli_since)
-
-    state_uts = load_last_uts(state_file)
-    curated_uts = latest_uts_from_curated(curated_root)
-    latest_known = max([v for v in [state_uts, curated_uts] if v is not None], default=None)
-
-    if latest_known is None:
-        return int(time.time()) - (30 * 24 * 3600)
-
-    # Last.fm `from` is inclusive. Add 1 second to avoid re-fetching the last known scrobble.
-    return latest_known + 1
-
-
-def normalize(items: list[dict]) -> list[dict]:
-    out: list[dict] = []
+def normalize(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
     for item in items:
         if "@attr" in item and item["@attr"].get("nowplaying") == "true":
             continue
-
-        date_info = item.get("date")
-        if not date_info or "uts" not in date_info:
+        date = item.get("date")
+        if not date or "uts" not in date:
             continue
-
-        uts = int(date_info["uts"])
-        out.append(
+        uts = int(date["uts"])
+        rows.append(
             {
                 "uts": uts,
                 "played_at_utc": pd.to_datetime(uts, unit="s", utc=True),
@@ -441,153 +191,197 @@ def normalize(items: list[dict]) -> list[dict]:
                 "source": "lastfm",
             }
         )
-    return out
+    return rows
 
 
-def fetch_page_with_retries(
-    session: requests.Session,
-    user: str,
-    api_key: str,
-    from_uts: int,
-    page: int,
-    limit: int,
-    connect_timeout: float,
-    read_timeout: float,
-    max_retries: int,
-    backoff_base: float,
-) -> dict:
-    params = {
-        "method": "user.getRecentTracks",
-        "user": user,
-        "api_key": api_key,
-        "format": "json",
-        "from": from_uts,
-        "limit": limit,
-        "page": page,
-    }
-
-    last_error: Exception | None = None
-    for attempt in range(1, max_retries + 1):
-        try:
-            response = session.get(API, params=params, timeout=(connect_timeout, read_timeout))
-            response.raise_for_status()
-            return response.json()
-        except (requests.Timeout, requests.ConnectionError, requests.HTTPError, requests.JSONDecodeError) as exc:
-            last_error = exc
-            if attempt == max_retries:
-                break
-
-            # Exponential backoff with jitter to avoid synchronized retries.
-            sleep_seconds = backoff_base * (2 ** (attempt - 1)) + random.uniform(0, 0.3)
-            print(
-                f"Request failed on page {page} attempt {attempt}/{max_retries}: {exc}. "
-                f"Retrying in {sleep_seconds:.2f}s..."
-            )
-            time.sleep(sleep_seconds)
-
-    raise RuntimeError(f"Failed to fetch Last.fm page={page} after {max_retries} attempts") from last_error
-
-
-def write_raw_jsonl(raw_dir: Path, rows: list[dict]) -> None:
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    out_path = raw_dir / f"recent_{int(time.time())}.jsonl"
-    with out_path.open("w", encoding="utf-8") as handle:
+def write_raw_page(raw_root: Path, run_id: int, page: int, rows: list[dict[str, Any]]) -> Path:
+    raw_root.mkdir(parents=True, exist_ok=True)
+    raw_path = raw_root / f"recent_{run_id}_page_{page:04d}.jsonl"
+    with raw_path.open("w", encoding="utf-8") as handle:
         for row in rows:
-            handle.write(json.dumps(row, default=str) + "\n")
+            handle.write(json.dumps(row, default=str, sort_keys=True))
+            handle.write("\n")
+    return raw_path
 
 
-def append_parquet_partitions(df: pd.DataFrame, curated_root: Path) -> None:
+def scrobble_key(row: dict[str, Any]) -> tuple[Any, Any, Any, Any]:
+    return (
+        row.get("uts"),
+        row.get("artist"),
+        row.get("track"),
+        row.get("album"),
+    )
+
+
+def dedupe_rows(
+    rows: list[dict[str, Any]],
+    seen_keys: set[tuple[Any, Any, Any, Any]],
+) -> list[dict[str, Any]]:
+    unique_rows: list[dict[str, Any]] = []
+    for row in rows:
+        key = scrobble_key(row)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        unique_rows.append(row)
+    return unique_rows
+
+
+def load_seen_keys_for_run(
+    curated_root: Path,
+    run_id: int,
+) -> set[tuple[Any, Any, Any, Any]]:
+    seen_keys: set[tuple[Any, Any, Any, Any]] = set()
+    pattern = f"scrobbles_{run_id}_p*.parquet"
+    for parquet_file in curated_root.rglob(pattern):
+        table = pq.read_table(parquet_file, columns=["uts", "artist", "track", "album"])
+        for row in table.to_pylist():
+            seen_keys.add(scrobble_key(row))
+    return seen_keys
+
+
+def append_parquet_partitions(
+    curated_root: Path,
+    run_id: int,
+    page: int,
+    rows: list[dict[str, Any]],
+    seen_keys: set[tuple[Any, Any, Any, Any]] | None = None,
+) -> int:
+    if not rows:
+        return 0
+
+    # Fallback ensures cross-page dedupe still works for callers that do not
+    # carry an in-memory seen_keys set across page writes.
+    effective_seen_keys = seen_keys
+    if effective_seen_keys is None:
+        effective_seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
+
+    deduped_rows = dedupe_rows(rows=rows, seen_keys=effective_seen_keys)
+    if not deduped_rows:
+        return 0
+
+    df = pd.DataFrame(deduped_rows)
     if df.empty:
-        return
+        return 0
 
-    df = df.copy()
     df["year"] = df["played_at_utc"].dt.year.astype(int)
     df["month"] = df["played_at_utc"].dt.month.astype(int)
 
+    written = 0
     for (year, month), group in df.groupby(["year", "month"]):
         part_dir = curated_root / f"year={year:04d}" / f"month={month:02d}"
         part_dir.mkdir(parents=True, exist_ok=True)
-        out_file = part_dir / f"scrobbles_{int(time.time())}.parquet"
+        out_file = part_dir / f"scrobbles_{run_id}_p{page:04d}.parquet"
         table = pa.Table.from_pandas(group.drop(columns=["year", "month"]), preserve_index=False)
         pq.write_table(table, out_file)
+        written += len(group)
+    return written
 
 
-def run() -> int:
-    args = parse_args()
+def resolve_start(
+    args: argparse.Namespace,
+    checkpoint: dict[str, Any] | None,
+    fallback_from_uts: int,
+) -> tuple[int, int, int, int | None]:
+    if args.from_uts is not None and args.since is not None:
+        raise SystemExit("Use only one of --from or --since.")
 
-    user = os.environ["LASTFM_USER"]
-    api_key = os.environ["LASTFM_API_KEY"]
+    explicit_from = args.from_uts if args.from_uts is not None else args.since
+    if explicit_from is not None:
+        return explicit_from, 1, int(time.time()), None
 
-    raw_root = Path(
-        os.environ.get(
-            "DATALAKE_RAW_ROOT",
-            "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports",
-        )
-    )
-    curated_root = Path(
-        os.environ.get(
-            "DATALAKE_CURATED_ROOT",
-            "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated",
-        )
-    )
-
-    raw_dir = raw_root / "lastfm"
-    curated_dir = curated_root / "lastfm" / "scrobbles"
-
-    state_dir = Path.home() / ".local" / "share" / "datalake"
-    state_file = state_dir / "lastfm_last_uts.txt"
-
-    from_uts = resolve_from_uts(args.from_uts, args.since, args.full_refetch, state_file, curated_dir)
-    print(f"Starting Last.fm fetch from uts={from_uts} (full_refetch={args.full_refetch})")
-
-    all_rows: list[dict] = []
-    page = 1
-
-    with requests.Session() as session:
-        while True:
-            payload = fetch_page_with_retries(
-                session=session,
-                user=user,
-                api_key=api_key,
-                from_uts=from_uts,
-                page=page,
-                limit=args.limit,
-                connect_timeout=args.connect_timeout,
-                read_timeout=args.read_timeout,
-                max_retries=args.max_retries,
-                backoff_base=args.backoff_base,
+    if checkpoint and not args.no_resume:
+        try:
+            return (
+                int(checkpoint["from_uts"]),
+                int(checkpoint.get("next_page", 1)),
+                int(checkpoint.get("run_id", int(time.time()))),
+                checkpoint.get("max_uts_seen"),
             )
-            recent = payload.get("recenttracks", {})
-            tracks = recent.get("track", [])
-            rows = normalize(tracks)
+        except (TypeError, ValueError, KeyError):
+            pass
 
-            if not rows:
-                break
+    return fallback_from_uts, 1, int(time.time()), None
 
-            all_rows.extend(rows)
 
-            attr = recent.get("@attr", {})
-            total_pages = int(attr.get("totalPages", "1"))
-            print(f"Fetched page {page}/{total_pages}, rows={len(rows)}")
+def main() -> None:
+    args = parse_args()
+    user = load_env("LASTFM_USER")
+    api_key = load_env("LASTFM_API_KEY")
+    raw_root = Path(os.getenv("DATALAKE_RAW_ROOT", str(DEFAULT_RAW_ROOT))) / "lastfm"
+    curated_root = Path(os.getenv("DATALAKE_CURATED_ROOT", str(DEFAULT_CURATED_ROOT))) / "lastfm" / "scrobbles"
 
-            if page >= total_pages:
-                break
-            page += 1
+    state_from_uts = load_last_uts()
+    checkpoint = None if args.no_resume else load_checkpoint()
+    from_uts, page, run_id, max_uts_seen = resolve_start(args, checkpoint, state_from_uts)
+    seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
+    print(
+        f"Starting Last.fm ingest: from_uts={from_uts}, start_page={page}, "
+        f"run_id={run_id}, resume={'yes' if checkpoint and not args.no_resume else 'no'}"
+    )
 
-    if not all_rows:
-        print("No new scrobbles found.")
-        return 0
+    pages_processed = 0
+    rows_written = 0
 
-    write_raw_jsonl(raw_dir, all_rows)
+    while True:
+        payload = request_recent_tracks(user=user, api_key=api_key, from_uts=from_uts, page=page)
+        recent = payload.get("recenttracks", {})
+        tracks = recent.get("track", [])
+        rows = normalize(tracks if isinstance(tracks, list) else [])
 
-    df = pd.DataFrame(all_rows).drop_duplicates(subset=["uts", "artist", "track", "album"])
-    append_parquet_partitions(df, curated_dir)
+        if not rows:
+            print(f"No rows on page {page}; finishing.")
+            break
 
-    max_uts = int(df["uts"].max())
-    save_last_uts(state_file, max_uts)
-    print(f"Ingested {len(df)} deduplicated scrobbles. Updated state to uts={max_uts}.")
-    return 0
+        page_rows = rows
+        write_raw_page(raw_root=raw_root, run_id=run_id, page=page, rows=page_rows)
+        page_rows_written = append_parquet_partitions(
+            curated_root=curated_root,
+            run_id=run_id,
+            page=page,
+            rows=page_rows,
+            seen_keys=seen_keys,
+        )
+        rows_written += page_rows_written
+        page_max = max(row["uts"] for row in page_rows)
+        max_uts_seen = page_max if max_uts_seen is None else max(max_uts_seen, page_max)
+
+        next_page = page + 1
+        save_checkpoint(
+            from_uts=from_uts,
+            next_page=next_page,
+            run_id=run_id,
+            max_uts_seen=max_uts_seen,
+        )
+
+        pages_processed += 1
+        attr = recent.get("@attr", {})
+        total_pages = int(attr.get("totalPages", "1"))
+        print(
+            f"Processed page {page}/{total_pages}: fetched={len(page_rows)} "
+            f"deduped={page_rows_written}"
+        )
+
+        if args.max_pages is not None and pages_processed >= args.max_pages:
+            print(f"Reached --max-pages={args.max_pages}; stopping early.")
+            return
+
+        if page >= total_pages:
+            break
+        page = next_page
+
+    if max_uts_seen is None:
+        clear_checkpoint()
+        print("No new rows found.")
+        return
+
+    save_last_uts(max_uts_seen)
+    clear_checkpoint()
+    print(
+        f"Ingest complete: pages={pages_processed}, parquet_rows={rows_written}, "
+        f"last_uts={max_uts_seen}"
+    )
 
 
 if __name__ == "__main__":
-    raise SystemExit(run())
+    main()
