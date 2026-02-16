@@ -262,7 +262,6 @@ def main():
     merge_raw_monthly_jsonl(df.to_dict(orient="records"))
     append_parquet_partitions(df)
 
-    save_last_uts(int(df["uts"].max()))
 
 
 if __name__ == "__main__":

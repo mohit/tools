@@ -6,6 +6,8 @@ A public collection of small productivity and quality-of-life tools. Each tool l
 
 - `firefox-2fa-autofill/` — Firefox extension that auto-fills 2FA codes from Google Voice SMS. See `firefox-2fa-autofill/README.md`.
 - `apple-health-export/` — Python tool to export and analyze Apple Health and Fitness data on macOS. See `apple-health-export/README.md`.
+- `anthropic-usage-tracker/` — Track Anthropic API token usage and estimated cost into daily raw + curated datalake snapshots. See `anthropic-usage-tracker/README.md`.
+- `google-takeout-focused/` — Focused Google Takeout ingestion for location timeline, search history, and YouTube Music history. See `google-takeout-focused/README.md`.
 
 ## Repository Layout
 
