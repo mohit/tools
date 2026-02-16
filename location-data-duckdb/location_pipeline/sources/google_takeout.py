@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +22,12 @@ def _e7_to_float(value: int | None) -> float | None:
     return value / 1e7
 
 
+def _stable_id(prefix: str, payload: Any) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+    return f"{prefix}-{digest}"
+
+
 def load_google_takeout(base_path: str) -> tuple[list[RawEventRecord], list[VisitRecord]]:
     root = Path(base_path)
     raw_events: list[RawEventRecord] = []
@@ -32,7 +39,7 @@ def load_google_takeout(base_path: str) -> tuple[list[RawEventRecord], list[Visi
         for item in payload.get("locations", []):
             raw_events.append(
                 RawEventRecord(
-                    event_id=f"google-record-{item.get('timestampMs', 'unknown')}-{len(raw_events)}",
+                    event_id=_stable_id("google-record", item),
                     source_name="google_takeout",
                     event_ts=_parse_ts_millis(item.get("timestampMs")),
                     lat=_e7_to_float(item.get("latitudeE7")),
@@ -54,7 +61,7 @@ def load_google_takeout(base_path: str) -> tuple[list[RawEventRecord], list[Visi
             duration = visit.get("duration", {})
             visits.append(
                 VisitRecord(
-                    visit_id=f"google-visit-{duration.get('startTimestamp', 'unknown')}-{len(visits)}",
+                    visit_id=_stable_id("google-visit", visit),
                     source_name="google_takeout",
                     started_at=_parse_iso(duration.get("startTimestamp")),
                     ended_at=_parse_iso(duration.get("endTimestamp")),
