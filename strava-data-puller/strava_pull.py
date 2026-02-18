@@ -590,6 +590,22 @@ def find_missing_detail_ids(
     return candidates
 
 
+def collect_in_scope_activity_ids(
+    activities: list[dict[str, Any]],
+    types: set[str],
+    after: int | None,
+    before: int | None,
+) -> set[int]:
+    activity_ids: set[int] = set()
+    for activity in activities:
+        if not activity_in_scope(activity, types, after, before):
+            continue
+        activity_id = activity.get("id")
+        if isinstance(activity_id, int):
+            activity_ids.add(activity_id)
+    return activity_ids
+
+
 def export_parquet(out_dir: Path) -> None:
     con = duckdb.connect()
     con.execute(
@@ -653,16 +669,32 @@ def export_parquet(out_dir: Path) -> None:
             "CREATE OR REPLACE TABLE activity_streams_raw AS SELECT * FROM read_json_auto(?)",
             [str(out_dir / "activity_streams.ndjson")],
         )
+        stream_columns = {
+            row[1]
+            for row in con.execute("PRAGMA table_info('activity_streams_raw')").fetchall()
+            if len(row) > 1 and isinstance(row[1], str)
+        }
+        stream_point_definitions = [
+            ("time", "time_points"),
+            ("distance", "distance_points"),
+            ("heartrate", "heartrate_points"),
+            ("watts", "power_points"),
+            ("cadence", "cadence_points"),
+        ]
+        point_count_projection = ",\n                ".join(
+            f"COALESCE(array_length({stream_key}.data), 0) AS {point_name}"
+            if stream_key in stream_columns
+            else f"0 AS {point_name}"
+            for stream_key, point_name in stream_point_definitions
+        )
         con.execute(
             """
             CREATE OR REPLACE TABLE activity_streams AS
             SELECT
                 *,
-                COALESCE(array_length(time.data), 0) AS time_points,
-                COALESCE(array_length(distance.data), 0) AS distance_points,
-                COALESCE(array_length(heartrate.data), 0) AS heartrate_points,
-                COALESCE(array_length(watts.data), 0) AS power_points,
-                COALESCE(array_length(cadence.data), 0) AS cadence_points
+                """
+            + point_count_projection
+            + """
             FROM activity_streams_raw
             """
         )
@@ -828,11 +860,12 @@ def main() -> None:
             details_or_streams_updated = True
 
     if details_or_streams_updated:
-        current_activity_ids = {
-            activity_id
-            for activity in final_activities
-            if isinstance((activity_id := activity.get("id")), int)
-        }
+        current_activity_ids = collect_in_scope_activity_ids(
+            final_activities,
+            activity_types,
+            args.after,
+            args.before,
+        )
         detail_rows = build_activity_details_ndjson(out_dir, current_activity_ids)
         stream_rows = build_activity_streams_ndjson(out_dir, current_activity_ids)
         print(f"Rebuilt detail indexes: {detail_rows} detail records, {stream_rows} stream records.")

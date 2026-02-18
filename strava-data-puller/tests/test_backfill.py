@@ -131,3 +131,68 @@ class TestBackfill(TestCase):
         self.assertEqual(payloads[0]["activity_id"], 444)
         self.assertEqual(payloads[0]["watts"]["data"], [])
         self.assertEqual(payloads[0]["heartrate"]["data"], [])
+
+    def test_collect_in_scope_activity_ids_filters_by_type_and_time_window(self):
+        activities = [
+            {"id": 101, "type": "Ride", "start_date": "2024-01-03T08:00:00Z"},
+            {"id": 202, "type": "Run", "start_date": "2024-01-03T08:00:00Z"},
+            {"id": 303, "type": "Ride", "start_date": "2024-01-01T08:00:00Z"},
+        ]
+        after = strava_pull.parse_date("2024-01-02")
+
+        activity_ids = strava_pull.collect_in_scope_activity_ids(
+            activities=activities,
+            types={"Ride"},
+            after=after,
+            before=None,
+        )
+
+        self.assertEqual(activity_ids, {101})
+
+    def test_export_parquet_handles_missing_watts_stream_column(self):
+        out_dir = self.tmp_dir
+        (out_dir / "activities.ndjson").write_text("{}\n", encoding="utf-8")
+        (out_dir / "athlete.json").write_text("{}", encoding="utf-8")
+        (out_dir / "stats.json").write_text("{}", encoding="utf-8")
+        (out_dir / "activity_streams.ndjson").write_text('{"activity_id": 1, "time": {"data": [0, 1]}}\n', encoding="utf-8")
+
+        class FakeResult:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def fetchall(self):
+                return self._rows
+
+        class FakeConnection:
+            def __init__(self):
+                self.statements = []
+
+            def execute(self, sql, params=None):
+                self.statements.append((sql, params))
+                if "PRAGMA table_info('activity_streams_raw')" in sql:
+                    # Match DuckDB PRAGMA table_info shape: cid, name, type, ...
+                    return FakeResult(
+                        [
+                            (0, "activity_id", "BIGINT", False, None, False),
+                            (1, "time", "STRUCT(data BIGINT[])", False, None, False),
+                            (2, "distance", "STRUCT(data DOUBLE[])", False, None, False),
+                            (3, "heartrate", "STRUCT(data BIGINT[])", False, None, False),
+                            (4, "cadence", "STRUCT(data BIGINT[])", False, None, False),
+                        ]
+                    )
+                return self
+
+        fake_con = FakeConnection()
+        original_duckdb = strava_pull.duckdb
+        strava_pull.duckdb = types.SimpleNamespace(connect=lambda: fake_con)
+        try:
+            strava_pull.export_parquet(out_dir)
+        finally:
+            strava_pull.duckdb = original_duckdb
+
+        streams_create_sql = next(
+            sql
+            for sql, _ in fake_con.statements
+            if "CREATE OR REPLACE TABLE activity_streams AS" in sql
+        )
+        self.assertIn("0 AS power_points", streams_create_sql)
