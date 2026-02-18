@@ -2,7 +2,7 @@
 
 ## Test Coverage
 
-The Apple Health Export tool includes comprehensive test coverage with 48 unit tests covering all major functionality.
+The Apple Health Export tool includes comprehensive test coverage for manual export, XML parsing, and automated Health Auto Export ingestion.
 
 ## Test Suite Overview
 
@@ -10,7 +10,8 @@ The Apple Health Export tool includes comprehensive test coverage with 48 unit t
 
 1. **`tests/test_health_export.py`** - Tests for `health_export.py`
 2. **`tests/test_health_parser.py`** - Tests for `health_parser.py`
-3. **`tests/fixtures/sample_export.xml`** - Sample Apple Health export data
+3. **`tests/test_health_auto_export.py`** - Tests for Health Auto Export REST + parquet ingestion
+4. **`tests/fixtures/sample_export.xml`** - Sample Apple Health export data
 
 ### Running Tests
 
