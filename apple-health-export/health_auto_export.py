@@ -5,6 +5,7 @@ import argparse
 import json
 import secrets
 import sys
+import threading
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -54,6 +55,7 @@ class HealthAutoExportIngestor:
         self.curated_dir = Path(curated_dir)
         self.records_parquet = self.curated_dir / "health_records.parquet"
         self.workouts_parquet = self.curated_dir / "health_workouts.parquet"
+        self._parquet_merge_lock = threading.Lock()
 
     def ingest_payload(self, payload: Any, request_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         records, workouts, errors = self._normalize_payload(payload)
@@ -171,34 +173,35 @@ class HealthAutoExportIngestor:
         }
 
     def _merge_to_parquet(self, records: list[dict[str, Any]], workouts: list[dict[str, Any]], raw_path: Path) -> dict[str, Any]:
-        self.curated_dir.mkdir(parents=True, exist_ok=True)
+        with self._parquet_merge_lock:
+            self.curated_dir.mkdir(parents=True, exist_ok=True)
 
-        con = duckdb.connect(":memory:")
-        ingested_at = datetime.now(UTC).isoformat()
+            con = duckdb.connect(":memory:")
+            ingested_at = datetime.now(UTC).isoformat()
 
-        records_with_lineage = [
-            {
-                **row,
-                "ingestionSource": "health_auto_export",
-                "rawFile": str(raw_path),
-                "ingestedAt": ingested_at,
-            }
-            for row in records
-        ]
-        workouts_with_lineage = [
-            {
-                **row,
-                "ingestionSource": "health_auto_export",
-                "rawFile": str(raw_path),
-                "ingestedAt": ingested_at,
-            }
-            for row in workouts
-        ]
+            records_with_lineage = [
+                {
+                    **row,
+                    "ingestionSource": "health_auto_export",
+                    "rawFile": str(raw_path),
+                    "ingestedAt": ingested_at,
+                }
+                for row in records
+            ]
+            workouts_with_lineage = [
+                {
+                    **row,
+                    "ingestionSource": "health_auto_export",
+                    "rawFile": str(raw_path),
+                    "ingestedAt": ingested_at,
+                }
+                for row in workouts
+            ]
 
-        self._write_records_parquet(con, records_with_lineage)
-        self._write_workouts_parquet(con, workouts_with_lineage)
+            self._write_records_parquet(con, records_with_lineage)
+            self._write_workouts_parquet(con, workouts_with_lineage)
 
-        con.close()
+            con.close()
         return {
             "records_ingested": len(records_with_lineage),
             "workouts_ingested": len(workouts_with_lineage),
@@ -250,16 +253,39 @@ class HealthAutoExportIngestor:
                 ],
             )
 
+        con.execute(
+            """
+            CREATE TEMP TABLE deduped_incoming_records AS
+            SELECT * EXCLUDE (row_num)
+            FROM (
+                SELECT
+                    *,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY
+                            type,
+                            sourceName,
+                            unit,
+                            value,
+                            startDate,
+                            endDate
+                        ORDER BY ingestedAt DESC, rawFile DESC
+                    ) AS row_num
+                FROM incoming_records
+            )
+            WHERE row_num = 1
+            """
+        )
+
         if self.records_parquet.exists():
             con.execute(
                 "CREATE TEMP TABLE existing_records AS SELECT * FROM read_parquet(?)",
                 [str(self.records_parquet)],
             )
             con.execute(
-                "CREATE TEMP TABLE merged_records AS SELECT * FROM existing_records UNION ALL SELECT * FROM incoming_records"
+                "CREATE TEMP TABLE merged_records AS SELECT * FROM existing_records UNION ALL SELECT * FROM deduped_incoming_records"
             )
         else:
-            con.execute("CREATE TEMP TABLE merged_records AS SELECT * FROM incoming_records")
+            con.execute("CREATE TEMP TABLE merged_records AS SELECT * FROM deduped_incoming_records")
 
         con.execute(
             """
@@ -338,16 +364,40 @@ class HealthAutoExportIngestor:
                 ],
             )
 
+        con.execute(
+            """
+            CREATE TEMP TABLE deduped_incoming_workouts AS
+            SELECT * EXCLUDE (row_num)
+            FROM (
+                SELECT
+                    *,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY
+                            workoutActivityType,
+                            sourceName,
+                            startDate,
+                            endDate,
+                            duration,
+                            totalDistance,
+                            totalEnergyBurned
+                        ORDER BY ingestedAt DESC, rawFile DESC
+                    ) AS row_num
+                FROM incoming_workouts
+            )
+            WHERE row_num = 1
+            """
+        )
+
         if self.workouts_parquet.exists():
             con.execute(
                 "CREATE TEMP TABLE existing_workouts AS SELECT * FROM read_parquet(?)",
                 [str(self.workouts_parquet)],
             )
             con.execute(
-                "CREATE TEMP TABLE merged_workouts AS SELECT * FROM existing_workouts UNION ALL SELECT * FROM incoming_workouts"
+                "CREATE TEMP TABLE merged_workouts AS SELECT * FROM existing_workouts UNION ALL SELECT * FROM deduped_incoming_workouts"
             )
         else:
-            con.execute("CREATE TEMP TABLE merged_workouts AS SELECT * FROM incoming_workouts")
+            con.execute("CREATE TEMP TABLE merged_workouts AS SELECT * FROM deduped_incoming_workouts")
 
         con.execute(
             """

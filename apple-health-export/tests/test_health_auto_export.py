@@ -10,6 +10,20 @@ import duckdb
 import health_auto_export
 
 
+class _CountingLock:
+    def __init__(self):
+        self.enter_count = 0
+        self.exit_count = 0
+
+    def __enter__(self):
+        self.enter_count += 1
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.exit_count += 1
+        return False
+
+
 class TestHealthAutoExportIngestor(unittest.TestCase):
     """Test ingestion and parquet conversion behavior."""
 
@@ -112,6 +126,37 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
     def test_ingest_payload_rejects_invalid_payload(self):
         with self.assertRaises(ValueError):
             self.ingestor.ingest_payload({"foo": "bar"})
+
+    def test_ingest_payload_deduplicates_duplicates_within_single_batch(self):
+        payload = self.sample_payload()
+        payload["records"].append(dict(payload["records"][0]))
+        payload["workouts"].append(dict(payload["workouts"][0]))
+
+        self.ingestor.ingest_payload(payload)
+
+        con = duckdb.connect(":memory:")
+        record_count = con.execute(
+            "SELECT COUNT(*) FROM read_parquet(?)",
+            [str(self.curated_dir / "health_records.parquet")],
+        ).fetchone()[0]
+        workout_count = con.execute(
+            "SELECT COUNT(*) FROM read_parquet(?)",
+            [str(self.curated_dir / "health_workouts.parquet")],
+        ).fetchone()[0]
+        con.close()
+
+        self.assertEqual(record_count, 2)
+        self.assertEqual(workout_count, 1)
+
+    def test_ingest_payload_uses_parquet_merge_lock(self):
+        payload = self.sample_payload()
+        lock = _CountingLock()
+        self.ingestor._parquet_merge_lock = lock
+
+        self.ingestor.ingest_payload(payload)
+
+        self.assertEqual(lock.enter_count, 1)
+        self.assertEqual(lock.exit_count, 1)
 
 
 @unittest.skipUnless(health_auto_export.HAS_FLASK, "flask not installed")
