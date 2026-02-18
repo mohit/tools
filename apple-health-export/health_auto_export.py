@@ -2,6 +2,7 @@
 """Health Auto Export ingestion service and CLI for Apple Health data."""
 
 import argparse
+import contextlib
 import json
 import secrets
 import sys
@@ -15,6 +16,11 @@ try:
     import duckdb
 except ImportError as exc:  # pragma: no cover - import guard
     raise RuntimeError("duckdb is required for health_auto_export") from exc
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - not available on Windows
+    fcntl = None  # type: ignore[assignment]
 
 try:
     from flask import Flask, jsonify, request
@@ -55,6 +61,7 @@ class HealthAutoExportIngestor:
         self.curated_dir = Path(curated_dir)
         self.records_parquet = self.curated_dir / "health_records.parquet"
         self.workouts_parquet = self.curated_dir / "health_workouts.parquet"
+        self._parquet_merge_lock_file = self.curated_dir / ".parquet_merge.lock"
         self._parquet_merge_lock = threading.Lock()
 
     def ingest_payload(self, payload: Any, request_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -173,9 +180,9 @@ class HealthAutoExportIngestor:
         }
 
     def _merge_to_parquet(self, records: list[dict[str, Any]], workouts: list[dict[str, Any]], raw_path: Path) -> dict[str, Any]:
-        with self._parquet_merge_lock:
-            self.curated_dir.mkdir(parents=True, exist_ok=True)
+        self.curated_dir.mkdir(parents=True, exist_ok=True)
 
+        with self._parquet_merge_lock, self._acquire_process_merge_lock():
             con = duckdb.connect(":memory:")
             ingested_at = datetime.now(UTC).isoformat()
 
@@ -188,6 +195,7 @@ class HealthAutoExportIngestor:
                 }
                 for row in records
             ]
+            records_with_lineage = self._dedupe_incoming_records_batch(records_with_lineage)
             workouts_with_lineage = [
                 {
                     **row,
@@ -197,6 +205,7 @@ class HealthAutoExportIngestor:
                 }
                 for row in workouts
             ]
+            workouts_with_lineage = self._dedupe_incoming_workouts_batch(workouts_with_lineage)
 
             self._write_records_parquet(con, records_with_lineage)
             self._write_workouts_parquet(con, workouts_with_lineage)
@@ -208,6 +217,50 @@ class HealthAutoExportIngestor:
             "records_parquet": str(self.records_parquet),
             "workouts_parquet": str(self.workouts_parquet),
         }
+
+    @contextlib.contextmanager
+    def _acquire_process_merge_lock(self):
+        if fcntl is None:
+            yield
+            return
+
+        with self._parquet_merge_lock_file.open("a+", encoding="utf-8") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    @staticmethod
+    def _dedupe_incoming_records_batch(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        deduped_by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
+        for row in records:
+            key = (
+                row["type"],
+                row["sourceName"],
+                row["unit"],
+                row["value"],
+                row["startDate"],
+                row["endDate"],
+            )
+            deduped_by_key[key] = row
+        return list(deduped_by_key.values())
+
+    @staticmethod
+    def _dedupe_incoming_workouts_batch(workouts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        deduped_by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
+        for row in workouts:
+            key = (
+                row["workoutActivityType"],
+                row["sourceName"],
+                row["startDate"],
+                row["endDate"],
+                row["duration"],
+                row["totalDistance"],
+                row["totalEnergyBurned"],
+            )
+            deduped_by_key[key] = row
+        return list(deduped_by_key.values())
 
     def _write_records_parquet(self, con: duckdb.DuckDBPyConnection, records: list[dict[str, Any]]) -> None:
         con.execute(
