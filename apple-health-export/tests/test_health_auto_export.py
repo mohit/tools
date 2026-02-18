@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import duckdb
 
@@ -132,7 +133,9 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         payload["records"].append(dict(payload["records"][0]))
         payload["workouts"].append(dict(payload["workouts"][0]))
 
-        self.ingestor.ingest_payload(payload)
+        result = self.ingestor.ingest_payload(payload)
+        self.assertEqual(result["records_ingested"], 2)
+        self.assertEqual(result["workouts_ingested"], 1)
 
         con = duckdb.connect(":memory:")
         record_count = con.execute(
@@ -157,6 +160,27 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
 
         self.assertEqual(lock.enter_count, 1)
         self.assertEqual(lock.exit_count, 1)
+
+    @unittest.skipIf(health_auto_export.fcntl is None, "fcntl not available")
+    def test_ingest_payload_uses_process_file_lock(self):
+        payload = self.sample_payload()
+
+        with mock.patch.object(health_auto_export.fcntl, "flock") as mock_flock:
+            self.ingestor.ingest_payload(payload)
+
+        lock_calls = [
+            call
+            for call in mock_flock.call_args_list
+            if call.args and call.args[1] == health_auto_export.fcntl.LOCK_EX
+        ]
+        unlock_calls = [
+            call
+            for call in mock_flock.call_args_list
+            if call.args and call.args[1] == health_auto_export.fcntl.LOCK_UN
+        ]
+
+        self.assertEqual(len(lock_calls), 1)
+        self.assertEqual(len(unlock_calls), 1)
 
 
 @unittest.skipUnless(health_auto_export.HAS_FLASK, "flask not installed")
