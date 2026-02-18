@@ -431,11 +431,18 @@ def fetch_activity_streams(
     return streams
 
 
-def build_activity_details_ndjson(out_dir: Path) -> int:
+def build_activity_details_ndjson(out_dir: Path, activity_ids: set[int] | None = None) -> int:
     details_dir = out_dir / "activities"
     detail_files = sorted(details_dir.glob("*.json"), key=lambda p: int(p.stem)) if details_dir.exists() else []
     records: list[dict[str, Any]] = []
     for path in detail_files:
+        try:
+            activity_id = int(path.stem)
+        except ValueError:
+            continue
+        if activity_ids is not None and activity_id not in activity_ids:
+            continue
+
         try:
             payload = load_json(path)
         except (OSError, json.JSONDecodeError):
@@ -451,12 +458,20 @@ def build_activity_details_ndjson(out_dir: Path) -> int:
     return len(records)
 
 
-def build_activity_streams_ndjson(out_dir: Path) -> int:
+def build_activity_streams_ndjson(out_dir: Path, activity_ids: set[int] | None = None) -> int:
     streams_dir = out_dir / "streams"
     stream_files = sorted(streams_dir.glob("*.json"), key=lambda p: int(p.stem)) if streams_dir.exists() else []
     records: list[dict[str, Any]] = []
+    point_count_streams = ("time", "distance", "heartrate", "watts", "cadence")
 
     for path in stream_files:
+        try:
+            activity_id = int(path.stem)
+        except ValueError:
+            continue
+        if activity_ids is not None and activity_id not in activity_ids:
+            continue
+
         try:
             payload = load_json(path)
         except (OSError, json.JSONDecodeError):
@@ -465,13 +480,17 @@ def build_activity_streams_ndjson(out_dir: Path) -> int:
         if not isinstance(payload, dict):
             continue
 
-        try:
-            activity_id = int(path.stem)
-        except ValueError:
-            continue
-
         record = {"activity_id": activity_id}
         record.update(payload)
+        for stream_key in point_count_streams:
+            stream_value = record.get(stream_key)
+            if not isinstance(stream_value, dict):
+                record[stream_key] = {"data": []}
+                continue
+            if not isinstance(stream_value.get("data"), list):
+                stream_copy = dict(stream_value)
+                stream_copy["data"] = []
+                record[stream_key] = stream_copy
         records.append(record)
 
     ndjson_path = out_dir / "activity_streams.ndjson"
@@ -809,8 +828,13 @@ def main() -> None:
             details_or_streams_updated = True
 
     if details_or_streams_updated:
-        detail_rows = build_activity_details_ndjson(out_dir)
-        stream_rows = build_activity_streams_ndjson(out_dir)
+        current_activity_ids = {
+            activity_id
+            for activity in final_activities
+            if isinstance((activity_id := activity.get("id")), int)
+        }
+        detail_rows = build_activity_details_ndjson(out_dir, current_activity_ids)
+        stream_rows = build_activity_streams_ndjson(out_dir, current_activity_ids)
         print(f"Rebuilt detail indexes: {detail_rows} detail records, {stream_rows} stream records.")
 
     if not args.skip_parquet:

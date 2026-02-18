@@ -89,3 +89,45 @@ class TestBackfill(TestCase):
         self.assertEqual(payload["activity_id"], 444)
         self.assertIn("time", payload)
         self.assertIn("watts", payload)
+
+    def test_build_activity_details_ndjson_excludes_stale_files(self):
+        activities_dir = self.tmp_dir / "activities"
+        activities_dir.mkdir(parents=True, exist_ok=True)
+        (activities_dir / "111.json").write_text(
+            json.dumps({"id": 111, "laps": [], "splits_metric": []}),
+            encoding="utf-8",
+        )
+        (activities_dir / "222.json").write_text(
+            json.dumps({"id": 222, "laps": [], "splits_metric": []}),
+            encoding="utf-8",
+        )
+
+        rows = strava_pull.build_activity_details_ndjson(self.tmp_dir, {111})
+        self.assertEqual(rows, 1)
+
+        ndjson_path = self.tmp_dir / "activity_details.ndjson"
+        payloads = [json.loads(line) for line in ndjson_path.read_text(encoding="utf-8").splitlines() if line]
+        self.assertEqual(len(payloads), 1)
+        self.assertEqual(payloads[0]["id"], 111)
+
+    def test_build_activity_streams_ndjson_excludes_stale_files_and_defaults_optional_streams(self):
+        streams_dir = self.tmp_dir / "streams"
+        streams_dir.mkdir(parents=True, exist_ok=True)
+        (streams_dir / "444.json").write_text(
+            json.dumps({"time": {"data": [0, 1]}}),
+            encoding="utf-8",
+        )
+        (streams_dir / "555.json").write_text(
+            json.dumps({"time": {"data": [0, 1]}, "watts": {"data": [220, 230]}}),
+            encoding="utf-8",
+        )
+
+        rows = strava_pull.build_activity_streams_ndjson(self.tmp_dir, {444})
+        self.assertEqual(rows, 1)
+
+        ndjson_path = self.tmp_dir / "activity_streams.ndjson"
+        payloads = [json.loads(line) for line in ndjson_path.read_text(encoding="utf-8").splitlines() if line]
+        self.assertEqual(len(payloads), 1)
+        self.assertEqual(payloads[0]["activity_id"], 444)
+        self.assertEqual(payloads[0]["watts"]["data"], [])
+        self.assertEqual(payloads[0]["heartrate"]["data"], [])
