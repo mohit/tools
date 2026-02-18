@@ -7,7 +7,7 @@ Pull your Strava data locally via the Strava API with a focus on cycling and wal
 - Fetch per-activity detail and optional time-series streams (distance, elevation, cadence, etc.).
 - Save athlete profile info and lifetime stats.
 - Output JSON for easy reuse in other tools.
-- Export Parquet files via DuckDB for analytics workflows.
+- Export transformed Parquet files via DuckDB for analytics workflows (derived pace/speed and detail coverage fields).
 
 ## Setup
 1. Create a Strava API application: <https://www.strava.com/settings/api>.
@@ -63,6 +63,11 @@ python strava_pull.py \
   --types Ride,VirtualRide,GravelRide,Walk,Hike \
   --after 2023-01-01 \
   --include-streams
+
+# Repair historical pulls where per-activity detail/streams are missing
+python strava_pull.py \
+  --out-dir ./strava-export \
+  --backfill-details
 ```
 
 ### Options
@@ -70,6 +75,7 @@ python strava_pull.py \
 - `--types`: Comma-separated activity types to include.
 - `--after` / `--before`: ISO-8601 dates (YYYY-MM-DD) to filter activities.
 - `--include-streams`: Also fetch activity streams for detailed analysis.
+- `--backfill-details`: Scan existing activities and fetch missing detail payloads (`/activities/{id}` + streams).
 - `--per-page`: Number of activities per page (default: 200, max allowed by Strava).
 - `--max-pages`: Safety cap on pagination pages.
 - `--skip-parquet`: Skip DuckDB Parquet export (default exports Parquet files).
@@ -92,6 +98,8 @@ strava-export/
     <activity_id>.json
   activity_streams.ndjson
   activity_streams.parquet
+
+`activities.parquet`, `activity_details.parquet`, and `activity_streams.parquet` are curated/typed tables with derived fields (for example `distance_km`, `average_speed_kph`, `moving_ratio`, `lap_count`, stream point counts) rather than byte-identical raw copies.
 
 ## DuckDB Example Query
 
