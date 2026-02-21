@@ -21,6 +21,26 @@ strava_pull = load_module()
 
 
 class TestCredentials(TestCase):
+    def test_write_credentials_env_file(self):
+        env_file = Path(__file__).resolve().parent / "tmp_written.env"
+        credentials = {
+            "STRAVA_CLIENT_ID": "abc123",
+            "STRAVA_CLIENT_SECRET": "secret456",
+            "STRAVA_REFRESH_TOKEN": "refresh789",
+        }
+
+        try:
+            strava_pull.write_credentials_env_file(env_file, credentials)
+            written = env_file.read_text(encoding="utf-8")
+            mode = env_file.stat().st_mode & 0o777
+        finally:
+            env_file.unlink(missing_ok=True)
+
+        self.assertIn('STRAVA_CLIENT_ID="abc123"', written)
+        self.assertIn('STRAVA_CLIENT_SECRET="secret456"', written)
+        self.assertIn('STRAVA_REFRESH_TOKEN="refresh789"', written)
+        self.assertEqual(mode, 0o600)
+
     def test_parse_dotenv_supports_export_and_quotes(self):
         env_file = Path(__file__).resolve().parent / "tmp_parse.env"
         env_file.write_text(
