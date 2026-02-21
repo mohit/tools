@@ -26,11 +26,17 @@ pip install -r requirements.txt
 Recommended: create `strava-data-puller/.env` (auto-discovered by `strava_pull.py`):
 
 ```bash
-cat > .env <<'EOF'
-STRAVA_CLIENT_ID="YOUR_CLIENT_ID"
-STRAVA_CLIENT_SECRET="YOUR_CLIENT_SECRET"
-STRAVA_REFRESH_TOKEN="YOUR_REFRESH_TOKEN"
-EOF
+cp .env.example .env
+# then edit .env with real values
+```
+
+Or install credentials into the default automation path (`~/code/tools/strava-data-puller/.env`) in one step:
+
+```bash
+STRAVA_CLIENT_ID="YOUR_CLIENT_ID" \
+STRAVA_CLIENT_SECRET="YOUR_CLIENT_SECRET" \
+STRAVA_REFRESH_TOKEN="YOUR_REFRESH_TOKEN" \
+python strava_pull.py --install-credentials
 ```
 
 Alternative: export in shell environment:
@@ -73,6 +79,8 @@ python strava_pull.py \
 - `--per-page`: Number of activities per page (default: 200, max allowed by Strava).
 - `--max-pages`: Safety cap on pagination pages.
 - `--skip-parquet`: Skip DuckDB Parquet export (default exports Parquet files).
+- `--install-credentials`: Write discovered credentials to a stable `.env` file and exit.
+- `--credentials-file`: Override target path for `--install-credentials`.
 
 ### Output structure
 ```

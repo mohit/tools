@@ -7,6 +7,7 @@ Thumbs.db
 *.bak
 .env
 .env.*
+!strava-data-puller/.env.example
 .idea/
 .vscode/
 node_modules/
