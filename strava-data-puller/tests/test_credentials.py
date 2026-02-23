@@ -21,6 +21,26 @@ strava_pull = load_module()
 
 
 class TestCredentials(TestCase):
+    def test_write_credentials_env_file(self):
+        env_file = Path(__file__).resolve().parent / "tmp_written.env"
+        credentials = {
+            "STRAVA_CLIENT_ID": "abc123",
+            "STRAVA_CLIENT_SECRET": "secret456",
+            "STRAVA_REFRESH_TOKEN": "refresh789",
+        }
+
+        try:
+            strava_pull.write_credentials_env_file(env_file, credentials)
+            written = env_file.read_text(encoding="utf-8")
+            mode = env_file.stat().st_mode & 0o777
+        finally:
+            env_file.unlink(missing_ok=True)
+
+        self.assertIn('STRAVA_CLIENT_ID="abc123"', written)
+        self.assertIn('STRAVA_CLIENT_SECRET="secret456"', written)
+        self.assertIn('STRAVA_REFRESH_TOKEN="refresh789"', written)
+        self.assertEqual(mode, 0o600)
+
     def test_parse_dotenv_supports_export_and_quotes(self):
         env_file = Path(__file__).resolve().parent / "tmp_parse.env"
         env_file.write_text(
@@ -206,3 +226,24 @@ class TestCredentials(TestCase):
         self.assertEqual(sources["STRAVA_CLIENT_ID"], f"dotenv:{readable}")
         self.assertEqual(sources["STRAVA_CLIENT_SECRET"], f"dotenv:{readable}")
         self.assertEqual(sources["STRAVA_REFRESH_TOKEN"], f"dotenv:{readable}")
+
+    @patch("subprocess.run")
+    def test_load_keychain_secret_supports_service_account_reversed_format(self, mock_run):
+        def fake_run(cmd, check, capture_output, text, timeout):
+            if cmd == [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "STRAVA_CLIENT_ID",
+                "-a",
+                "strava-data-puller",
+            ]:
+                return types.SimpleNamespace(returncode=0, stdout="client-from-keychain\n")
+            return types.SimpleNamespace(returncode=44, stdout="")
+
+        mock_run.side_effect = fake_run
+
+        value = strava_pull.load_keychain_secret("STRAVA_CLIENT_ID")
+
+        self.assertEqual(value, "client-from-keychain")

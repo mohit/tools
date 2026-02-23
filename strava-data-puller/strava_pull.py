@@ -32,6 +32,9 @@ REQUIRED_STRAVA_VARS = (
     "STRAVA_CLIENT_SECRET",
     "STRAVA_REFRESH_TOKEN",
 )
+DEFAULT_AUTOMATION_ENV_FILE = (
+    Path.home() / "code" / "tools" / "strava-data-puller" / ".env"
+)
 
 
 def is_readable_file(path: Path) -> bool:
@@ -84,21 +87,36 @@ def discover_env_files() -> list[Path]:
 
     script_dir = Path(__file__).resolve().parent
     cwd = Path.cwd()
+    shared_tools_dir = Path.home() / "code" / "tools"
     for path in (
         script_dir / ".env",
+        script_dir.parent / ".env",
         cwd / ".env",
-        Path.home() / "code" / "tools" / "strava-data-puller" / ".env",
+        cwd.parent / ".env",
+        DEFAULT_AUTOMATION_ENV_FILE,
+        shared_tools_dir / ".env",
+        Path.home() / ".env",
     ):
         if path not in candidate_paths:
             candidate_paths.append(path)
     return candidate_paths
 
 
+def write_credentials_env_file(path: Path, credentials: dict[str, str]) -> None:
+    path = path.expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [f'{key}="{credentials[key]}"' for key in REQUIRED_STRAVA_VARS]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    path.chmod(0o600)
+
+
 def load_keychain_secret(var_name: str) -> str | None:
     # macOS keychain fallback for unattended runs.
+    service_names = ("strava-data-puller", "com.mohit.tools.strava-data-puller")
     lookups = (
-        ("strava-data-puller", var_name),
-        ("com.mohit.tools.strava-data-puller", var_name),
+        *[(service, var_name) for service in service_names],
+        *[(service, None) for service in service_names],
+        *[(var_name, service) for service in service_names],
         (var_name, None),
     )
 
@@ -411,6 +429,22 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Validate credential discovery and exit without calling the Strava API.",
     )
+    parser.add_argument(
+        "--install-credentials",
+        action="store_true",
+        help=(
+            "Write discovered credentials to a stable .env file for automated runs and "
+            "exit without calling the Strava API."
+        ),
+    )
+    parser.add_argument(
+        "--credentials-file",
+        default=str(DEFAULT_AUTOMATION_ENV_FILE),
+        help=(
+            "Path to write with --install-credentials "
+            "(default: ~/code/tools/strava-data-puller/.env)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -422,6 +456,13 @@ def main() -> None:
         raise SystemExit(
             format_missing_credentials_message(missing_vars, searched_env_files)
         )
+
+    if args.install_credentials:
+        credentials_file = Path(args.credentials_file).expanduser()
+        write_credentials_env_file(credentials_file, credentials)
+        print(f"Wrote Strava credentials to {credentials_file}")
+        print("Run --check-credentials to confirm automation discovery.")
+        return
 
     if args.check_credentials:
         print("Strava credentials available for automated runs:")
