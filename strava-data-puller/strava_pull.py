@@ -115,8 +115,8 @@ def load_keychain_secret(var_name: str) -> str | None:
     service_names = ("strava-data-puller", "com.mohit.tools.strava-data-puller")
     lookups = (
         *[(service, var_name) for service in service_names],
-        *[(service, None) for service in service_names],
         *[(var_name, service) for service in service_names],
+        *[(service, None) for service in service_names],
         (var_name, None),
     )
 
