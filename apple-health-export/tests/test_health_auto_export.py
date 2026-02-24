@@ -171,6 +171,39 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(record_count, 2)
         self.assertEqual(workout_count, 1)
 
+    def test_ingest_payload_list_input_deduplicates_within_single_batch(self):
+        payload = [
+            {
+                "type": "HKQuantityTypeIdentifierStepCount",
+                "sourceName": "iPhone",
+                "unit": "count",
+                "value": 555,
+                "startDate": "2026-02-19T10:00:00Z",
+                "endDate": "2026-02-19T10:15:00Z",
+            },
+            {
+                "type": "HKQuantityTypeIdentifierStepCount",
+                "sourceName": "iPhone",
+                "unit": "count",
+                "value": 555,
+                "startDate": "2026-02-19T10:00:00Z",
+                "endDate": "2026-02-19T10:15:00Z",
+            },
+        ]
+
+        result = self.ingestor.ingest_payload(payload)
+        self.assertEqual(result["records_ingested"], 1)
+        self.assertEqual(result["workouts_ingested"], 0)
+
+        con = duckdb.connect(":memory:")
+        record_count = con.execute(
+            "SELECT COUNT(*) FROM read_parquet(?)",
+            [str(self.curated_dir / "health_records.parquet")],
+        ).fetchone()[0]
+        con.close()
+
+        self.assertEqual(record_count, 1)
+
     def test_normalize_payload_deduplicates_within_payload_batch(self):
         payload = self.sample_payload()
         payload["records"].append(dict(payload["records"][0]))

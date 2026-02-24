@@ -77,11 +77,6 @@ class HealthAutoExportIngestor:
         if errors:
             raise ValueError("; ".join(errors))
 
-        # Keep request-level dedupe at the ingestion boundary so duplicates from a
-        # single payload never enter the parquet merge path.
-        records = self._dedupe_incoming_records_batch(records)
-        workouts = self._dedupe_incoming_workouts_batch(workouts)
-
         raw_path = self._write_raw_payload(payload, request_metadata=request_metadata)
         result = self._merge_to_parquet(records, workouts, raw_path)
         result["raw_path"] = str(raw_path)
