@@ -249,7 +249,7 @@ class TestCredentials(TestCase):
         self.assertEqual(value, "client-from-keychain")
 
     @patch("subprocess.run")
-    def test_load_keychain_secret_tries_only_specific_lookups(self, mock_run):
+    def test_load_keychain_secret_tries_specific_lookups_before_service_only(self, mock_run):
         expected_calls = [
             [
                 "security",
@@ -287,6 +287,20 @@ class TestCredentials(TestCase):
                 "-a",
                 "com.mohit.tools.strava-data-puller",
             ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "strava-data-puller",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "com.mohit.tools.strava-data-puller",
+            ],
         ]
 
         def fake_run(cmd, check, capture_output, text, timeout):
@@ -302,16 +316,66 @@ class TestCredentials(TestCase):
         self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
 
     @patch("subprocess.run")
-    def test_load_keychain_secret_never_uses_service_only_lookup(self, mock_run):
+    def test_load_keychain_secret_uses_service_only_after_specific_lookups(self, mock_run):
+        expected_calls = [
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "strava-data-puller",
+                "-a",
+                "STRAVA_CLIENT_ID",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "com.mohit.tools.strava-data-puller",
+                "-a",
+                "STRAVA_CLIENT_ID",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "STRAVA_CLIENT_ID",
+                "-a",
+                "strava-data-puller",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "STRAVA_CLIENT_ID",
+                "-a",
+                "com.mohit.tools.strava-data-puller",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "strava-data-puller",
+            ],
+        ]
+
         def fake_run(cmd, check, capture_output, text, timeout):
-            self.assertIn("-a", cmd)
+            call_index = len(mock_run.call_args_list) - 1
+            self.assertEqual(cmd, expected_calls[call_index])
+            if cmd == expected_calls[-1]:
+                return types.SimpleNamespace(returncode=0, stdout="client-from-service-only\n")
             return types.SimpleNamespace(returncode=44, stdout="")
 
         mock_run.side_effect = fake_run
 
         value = strava_pull.load_keychain_secret("STRAVA_CLIENT_ID")
 
-        self.assertIsNone(value)
+        self.assertEqual(value, "client-from-service-only")
+        self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
 
     @patch.object(strava_pull, "parse_args")
     @patch.object(strava_pull, "resolve_strava_credentials")

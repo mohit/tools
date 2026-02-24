@@ -113,13 +113,16 @@ def write_credentials_env_file(path: Path, credentials: dict[str, str]) -> None:
 def load_keychain_secret(var_name: str) -> str | None:
     # macOS keychain fallback for unattended runs.
     service_names = ("strava-data-puller", "com.mohit.tools.strava-data-puller")
-    # Use only fully-specific entries to avoid ambiguous service-only matches.
-    lookups: list[tuple[str, str]] = []
+    # Prefer fully-specific account/service matches before broad service-only fallback.
+    lookups: list[tuple[str, str | None]] = []
     lookups.extend((service, var_name) for service in service_names)
     lookups.extend((var_name, service) for service in service_names)
+    lookups.extend((service, None) for service in service_names)
 
     for service, account in lookups:
-        cmd = ["security", "find-generic-password", "-w", "-s", service, "-a", account]
+        cmd = ["security", "find-generic-password", "-w", "-s", service]
+        if account is not None:
+            cmd.extend(["-a", account])
         try:
             result = subprocess.run(
                 cmd,
