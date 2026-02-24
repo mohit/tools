@@ -301,6 +301,18 @@ class TestCredentials(TestCase):
         self.assertIsNone(value)
         self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
 
+    @patch("subprocess.run")
+    def test_load_keychain_secret_never_uses_service_only_lookup(self, mock_run):
+        def fake_run(cmd, check, capture_output, text, timeout):
+            self.assertIn("-a", cmd)
+            return types.SimpleNamespace(returncode=44, stdout="")
+
+        mock_run.side_effect = fake_run
+
+        value = strava_pull.load_keychain_secret("STRAVA_CLIENT_ID")
+
+        self.assertIsNone(value)
+
     @patch.object(strava_pull, "parse_args")
     @patch.object(strava_pull, "resolve_strava_credentials")
     @patch.object(strava_pull, "get_access_token")
