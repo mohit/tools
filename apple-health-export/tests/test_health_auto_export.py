@@ -213,6 +213,55 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(record_count, 2)
         self.assertEqual(workout_count, 1)
 
+    def test_merge_to_parquet_keeps_first_duplicate_row_in_batch(self):
+        payload = self.sample_payload()
+        records, workouts, errors = self.ingestor._normalize_payload(payload)
+        self.assertEqual(errors, [])
+
+        first_record = dict(records[0])
+        second_record = dict(records[0])
+        first_record["metadata_json"] = '{"source":"first"}'
+        second_record["metadata_json"] = '{"source":"second"}'
+
+        first_workout = dict(workouts[0])
+        second_workout = dict(workouts[0])
+        first_workout["metadata_json"] = '{"source":"first"}'
+        second_workout["metadata_json"] = '{"source":"second"}'
+
+        self.ingestor._merge_to_parquet(
+            [first_record, second_record],
+            [first_workout, second_workout],
+            self.raw_dir / "test_raw.json",
+        )
+
+        con = duckdb.connect(":memory:")
+        record_metadata = con.execute(
+            """
+            SELECT metadata_json
+            FROM read_parquet(?)
+            WHERE type = ?
+            """,
+            [
+                str(self.curated_dir / "health_records.parquet"),
+                first_record["type"],
+            ],
+        ).fetchone()[0]
+        workout_metadata = con.execute(
+            """
+            SELECT metadata_json
+            FROM read_parquet(?)
+            WHERE workoutActivityType = ?
+            """,
+            [
+                str(self.curated_dir / "health_workouts.parquet"),
+                first_workout["workoutActivityType"],
+            ],
+        ).fetchone()[0]
+        con.close()
+
+        self.assertEqual(record_metadata, '{"source":"first"}')
+        self.assertEqual(workout_metadata, '{"source":"first"}')
+
     def test_dedupe_incoming_batch_keeps_first_record_and_workout(self):
         payload = self.sample_payload()
         records, workouts, errors = self.ingestor._normalize_payload(payload)

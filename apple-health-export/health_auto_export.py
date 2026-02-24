@@ -203,6 +203,8 @@ class HealthAutoExportIngestor:
         records = self._dedupe_incoming_records_batch(records)
         workouts = self._dedupe_incoming_workouts_batch(workouts)
 
+        # Serialize the full parquet read-modify-write cycle so parallel requests
+        # cannot clobber each other's updates.
         with self._acquire_merge_lock():
             con = duckdb.connect(":memory:")
             ingested_at = datetime.now(UTC).isoformat()
@@ -303,7 +305,8 @@ class HealthAutoExportIngestor:
                 metadata_json VARCHAR,
                 ingestionSource VARCHAR,
                 rawFile VARCHAR,
-                ingestedAt TIMESTAMPTZ
+                ingestedAt TIMESTAMPTZ,
+                ingestOrdinal BIGINT
             )
             """
         )
@@ -311,7 +314,7 @@ class HealthAutoExportIngestor:
         if records:
             con.executemany(
                 """
-                INSERT INTO incoming_records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO incoming_records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -327,8 +330,9 @@ class HealthAutoExportIngestor:
                         r["ingestionSource"],
                         r["rawFile"],
                         r["ingestedAt"],
+                        idx,
                     )
-                    for r in records
+                    for idx, r in enumerate(records)
                 ],
             )
 
@@ -347,7 +351,7 @@ class HealthAutoExportIngestor:
                             value,
                             startDate,
                             endDate
-                        ORDER BY ingestedAt DESC, rawFile DESC
+                        ORDER BY ingestOrdinal ASC
                     ) AS row_num
                 FROM incoming_records
             )
@@ -415,7 +419,8 @@ class HealthAutoExportIngestor:
                 metadata_json VARCHAR,
                 ingestionSource VARCHAR,
                 rawFile VARCHAR,
-                ingestedAt TIMESTAMPTZ
+                ingestedAt TIMESTAMPTZ,
+                ingestOrdinal BIGINT
             )
             """
         )
@@ -423,7 +428,7 @@ class HealthAutoExportIngestor:
         if workouts:
             con.executemany(
                 """
-                INSERT INTO incoming_workouts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO incoming_workouts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -442,8 +447,9 @@ class HealthAutoExportIngestor:
                         w["ingestionSource"],
                         w["rawFile"],
                         w["ingestedAt"],
+                        idx,
                     )
-                    for w in workouts
+                    for idx, w in enumerate(workouts)
                 ],
             )
 
@@ -463,7 +469,7 @@ class HealthAutoExportIngestor:
                             duration,
                             totalDistance,
                             totalEnergyBurned
-                        ORDER BY ingestedAt DESC, rawFile DESC
+                        ORDER BY ingestOrdinal ASC
                     ) AS row_num
                 FROM incoming_workouts
             )
