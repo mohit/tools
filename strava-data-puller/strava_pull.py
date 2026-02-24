@@ -114,10 +114,9 @@ def load_keychain_secret(var_name: str) -> str | None:
     # macOS keychain fallback for unattended runs.
     service_names = ("strava-data-puller", "com.mohit.tools.strava-data-puller")
     lookups: list[tuple[str, str | None]] = []
-    # Prefer fully-specific entries and avoid ambiguous service-only matches.
+    # Use only fully-specific entries to avoid ambiguous service-only matches.
     lookups.extend((service, var_name) for service in service_names)
     lookups.extend((var_name, service) for service in service_names)
-    lookups.append((var_name, None))
 
     for service, account in lookups:
         cmd = ["security", "find-generic-password", "-w", "-s", service]

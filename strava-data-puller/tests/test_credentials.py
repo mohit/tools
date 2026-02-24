@@ -287,13 +287,6 @@ class TestCredentials(TestCase):
                 "-a",
                 "com.mohit.tools.strava-data-puller",
             ],
-            [
-                "security",
-                "find-generic-password",
-                "-w",
-                "-s",
-                "STRAVA_CLIENT_SECRET",
-            ],
         ]
 
         def fake_run(cmd, check, capture_output, text, timeout):
@@ -307,3 +300,101 @@ class TestCredentials(TestCase):
 
         self.assertIsNone(value)
         self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
+
+    @patch.object(strava_pull, "parse_args")
+    @patch.object(strava_pull, "resolve_strava_credentials")
+    @patch.object(strava_pull, "get_access_token")
+    def test_main_check_credentials_does_not_exchange_token(
+        self, mock_get_access_token, mock_resolve_credentials, mock_parse_args
+    ):
+        mock_parse_args.return_value = types.SimpleNamespace(
+            install_credentials=False,
+            check_credentials=True,
+        )
+        mock_resolve_credentials.return_value = (
+            {
+                "STRAVA_CLIENT_ID": "client-id",
+                "STRAVA_CLIENT_SECRET": "client-secret",
+                "STRAVA_REFRESH_TOKEN": "refresh-token",
+            },
+            {
+                "STRAVA_CLIENT_ID": "keychain",
+                "STRAVA_CLIENT_SECRET": "keychain",
+                "STRAVA_REFRESH_TOKEN": "keychain",
+            },
+            [],
+        )
+
+        strava_pull.main()
+
+        mock_get_access_token.assert_not_called()
+
+    @patch.object(strava_pull, "export_parquet")
+    @patch.object(strava_pull, "write_ndjson")
+    @patch.object(strava_pull, "write_json")
+    @patch.object(strava_pull, "fetch_activities")
+    @patch.object(strava_pull, "fetch_stats")
+    @patch.object(strava_pull, "fetch_athlete")
+    @patch.object(strava_pull, "load_existing_activities")
+    @patch.object(strava_pull, "get_access_token")
+    @patch.object(strava_pull, "resolve_strava_credentials")
+    @patch.object(strava_pull, "parse_args")
+    def test_main_uses_resolved_values_for_token_exchange(
+        self,
+        mock_parse_args,
+        mock_resolve_credentials,
+        mock_get_access_token,
+        mock_load_existing_activities,
+        mock_fetch_athlete,
+        mock_fetch_stats,
+        mock_fetch_activities,
+        mock_write_json,
+        mock_write_ndjson,
+        mock_export_parquet,
+    ):
+        out_dir = Path(__file__).resolve().parent / "tmp_main_out"
+        mock_parse_args.return_value = types.SimpleNamespace(
+            install_credentials=False,
+            check_credentials=False,
+            out_dir=str(out_dir),
+            force=False,
+            after=None,
+            before=None,
+            types=None,
+            per_page=200,
+            max_pages=1,
+            include_streams=False,
+            skip_parquet=False,
+        )
+        mock_resolve_credentials.return_value = (
+            {
+                "STRAVA_CLIENT_ID": "resolved-client-id",
+                "STRAVA_CLIENT_SECRET": "resolved-client-secret",
+                "STRAVA_REFRESH_TOKEN": "resolved-refresh-token",
+            },
+            {
+                "STRAVA_CLIENT_ID": "keychain",
+                "STRAVA_CLIENT_SECRET": "keychain",
+                "STRAVA_REFRESH_TOKEN": "keychain",
+            },
+            [],
+        )
+        mock_get_access_token.return_value = "token"
+        mock_load_existing_activities.return_value = ([], None)
+        mock_fetch_athlete.return_value = 123
+        mock_fetch_activities.return_value = []
+
+        try:
+            strava_pull.main()
+        finally:
+            out_dir.rmdir()
+
+        mock_get_access_token.assert_called_once_with(
+            "resolved-client-id",
+            "resolved-client-secret",
+            "resolved-refresh-token",
+        )
+        mock_fetch_stats.assert_called_once_with("token", 123, out_dir)
+        mock_export_parquet.assert_called_once()
+        mock_write_json.assert_called_once()
+        mock_write_ndjson.assert_called_once()
