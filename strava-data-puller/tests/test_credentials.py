@@ -249,7 +249,7 @@ class TestCredentials(TestCase):
         self.assertEqual(value, "client-from-keychain")
 
     @patch("subprocess.run")
-    def test_load_keychain_secret_tries_service_only_after_specific_lookups(self, mock_run):
+    def test_load_keychain_secret_tries_only_specific_lookups(self, mock_run):
         expected_calls = [
             [
                 "security",
@@ -294,32 +294,16 @@ class TestCredentials(TestCase):
                 "-s",
                 "STRAVA_CLIENT_SECRET",
             ],
-            [
-                "security",
-                "find-generic-password",
-                "-w",
-                "-s",
-                "strava-data-puller",
-            ],
-            [
-                "security",
-                "find-generic-password",
-                "-w",
-                "-s",
-                "com.mohit.tools.strava-data-puller",
-            ],
         ]
 
         def fake_run(cmd, check, capture_output, text, timeout):
             call_index = len(mock_run.call_args_list) - 1
             self.assertEqual(cmd, expected_calls[call_index])
-            if cmd == expected_calls[-1]:
-                return types.SimpleNamespace(returncode=0, stdout="secret-from-service-only\n")
             return types.SimpleNamespace(returncode=44, stdout="")
 
         mock_run.side_effect = fake_run
 
         value = strava_pull.load_keychain_secret("STRAVA_CLIENT_SECRET")
 
-        self.assertEqual(value, "secret-from-service-only")
+        self.assertIsNone(value)
         self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
