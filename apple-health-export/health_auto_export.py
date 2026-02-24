@@ -194,6 +194,10 @@ class HealthAutoExportIngestor:
     def _merge_to_parquet(self, records: list[dict[str, Any]], workouts: list[dict[str, Any]], raw_path: Path) -> dict[str, Any]:
         self.curated_dir.mkdir(parents=True, exist_ok=True)
 
+        # Defensive dedupe: keep merge behavior safe even if future callers bypass _normalize_payload.
+        records = self._dedupe_incoming_records_batch(records)
+        workouts = self._dedupe_incoming_workouts_batch(workouts)
+
         with self._acquire_merge_lock():
             con = duckdb.connect(":memory:")
             ingested_at = datetime.now(UTC).isoformat()

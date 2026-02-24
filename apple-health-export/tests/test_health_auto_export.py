@@ -181,6 +181,37 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(len(records), 2)
         self.assertEqual(len(workouts), 1)
 
+    def test_merge_to_parquet_deduplicates_incoming_batch(self):
+        payload = self.sample_payload()
+        records, workouts, errors = self.ingestor._normalize_payload(payload)
+        self.assertEqual(errors, [])
+
+        duplicate_records = [records[0], dict(records[0]), records[1]]
+        duplicate_workouts = [workouts[0], dict(workouts[0])]
+
+        result = self.ingestor._merge_to_parquet(
+            duplicate_records,
+            duplicate_workouts,
+            self.raw_dir / "test_raw.json",
+        )
+
+        self.assertEqual(result["records_ingested"], 2)
+        self.assertEqual(result["workouts_ingested"], 1)
+
+        con = duckdb.connect(":memory:")
+        record_count = con.execute(
+            "SELECT COUNT(*) FROM read_parquet(?)",
+            [str(self.curated_dir / "health_records.parquet")],
+        ).fetchone()[0]
+        workout_count = con.execute(
+            "SELECT COUNT(*) FROM read_parquet(?)",
+            [str(self.curated_dir / "health_workouts.parquet")],
+        ).fetchone()[0]
+        con.close()
+
+        self.assertEqual(record_count, 2)
+        self.assertEqual(workout_count, 1)
+
     def test_ingest_payload_uses_parquet_merge_lock(self):
         payload = self.sample_payload()
         lock = _CountingLock()
