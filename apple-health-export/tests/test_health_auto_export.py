@@ -2,6 +2,7 @@
 
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -22,6 +23,24 @@ class _CountingLock:
 
     def __exit__(self, exc_type, exc, tb):
         self.exit_count += 1
+        return False
+
+
+class _TrackingLock:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._active = 0
+        self.max_active = 0
+
+    def __enter__(self):
+        self._lock.acquire()
+        self._active += 1
+        self.max_active = max(self.max_active, self._active)
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self._active -= 1
+        self._lock.release()
         return False
 
 
@@ -151,6 +170,17 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(record_count, 2)
         self.assertEqual(workout_count, 1)
 
+    def test_normalize_payload_deduplicates_within_payload_batch(self):
+        payload = self.sample_payload()
+        payload["records"].append(dict(payload["records"][0]))
+        payload["workouts"].append(dict(payload["workouts"][0]))
+
+        records, workouts, errors = self.ingestor._normalize_payload(payload)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(records), 2)
+        self.assertEqual(len(workouts), 1)
+
     def test_ingest_payload_uses_parquet_merge_lock(self):
         payload = self.sample_payload()
         lock = _CountingLock()
@@ -168,6 +198,64 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         )
 
         self.assertIs(self.ingestor._parquet_merge_lock, other_ingestor._parquet_merge_lock)
+
+    def test_concurrent_ingests_serialize_merge_lock_and_preserve_rows(self):
+        tracking_lock = _TrackingLock()
+        self.ingestor._parquet_merge_lock = tracking_lock
+
+        other_ingestor = health_auto_export.HealthAutoExportIngestor(
+            raw_dir=self.raw_dir / "other",
+            curated_dir=self.curated_dir,
+        )
+        other_ingestor._parquet_merge_lock = tracking_lock
+
+        payload_a = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 100,
+                    "startDate": "2026-02-18T10:00:00Z",
+                    "endDate": "2026-02-18T10:10:00Z",
+                }
+            ]
+        }
+        payload_b = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 200,
+                    "startDate": "2026-02-18T11:00:00Z",
+                    "endDate": "2026-02-18T11:10:00Z",
+                }
+            ]
+        }
+
+        thread_a = threading.Thread(target=self.ingestor.ingest_payload, args=(payload_a,))
+        thread_b = threading.Thread(target=other_ingestor.ingest_payload, args=(payload_b,))
+        thread_a.start()
+        thread_b.start()
+        thread_a.join()
+        thread_b.join()
+
+        self.assertEqual(tracking_lock.max_active, 1)
+
+        con = duckdb.connect(":memory:")
+        rows = con.execute(
+            """
+            SELECT value
+            FROM read_parquet(?)
+            WHERE type = 'HKQuantityTypeIdentifierStepCount'
+            ORDER BY startDate
+            """,
+            [str(self.curated_dir / "health_records.parquet")],
+        ).fetchall()
+        con.close()
+
+        self.assertEqual([row[0] for row in rows], ["100", "200"])
 
     @unittest.skipIf(health_auto_export.fcntl is None, "fcntl not available")
     def test_ingest_payload_uses_process_file_lock(self):

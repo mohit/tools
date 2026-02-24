@@ -127,6 +127,10 @@ class HealthAutoExportIngestor:
             errors.append(f"{invalid_records} record(s) missing required fields")
         if invalid_workouts:
             errors.append(f"{invalid_workouts} workout(s) missing required fields")
+
+        valid_records = self._dedupe_incoming_records_batch(valid_records)
+        valid_workouts = self._dedupe_incoming_workouts_batch(valid_workouts)
+
         if not valid_records and not valid_workouts:
             errors.append("no valid records or workouts found")
 
@@ -190,7 +194,7 @@ class HealthAutoExportIngestor:
     def _merge_to_parquet(self, records: list[dict[str, Any]], workouts: list[dict[str, Any]], raw_path: Path) -> dict[str, Any]:
         self.curated_dir.mkdir(parents=True, exist_ok=True)
 
-        with self._parquet_merge_lock, self._acquire_process_merge_lock():
+        with self._acquire_merge_lock():
             con = duckdb.connect(":memory:")
             ingested_at = datetime.now(UTC).isoformat()
 
@@ -203,7 +207,6 @@ class HealthAutoExportIngestor:
                 }
                 for row in records
             ]
-            records_with_lineage = self._dedupe_incoming_records_batch(records_with_lineage)
             workouts_with_lineage = [
                 {
                     **row,
@@ -213,7 +216,6 @@ class HealthAutoExportIngestor:
                 }
                 for row in workouts
             ]
-            workouts_with_lineage = self._dedupe_incoming_workouts_batch(workouts_with_lineage)
 
             self._write_records_parquet(con, records_with_lineage)
             self._write_workouts_parquet(con, workouts_with_lineage)
@@ -225,6 +227,11 @@ class HealthAutoExportIngestor:
             "records_parquet": str(self.records_parquet),
             "workouts_parquet": str(self.workouts_parquet),
         }
+
+    @contextlib.contextmanager
+    def _acquire_merge_lock(self):
+        with self._parquet_merge_lock, self._acquire_process_merge_lock():
+            yield
 
     @contextlib.contextmanager
     def _acquire_process_merge_lock(self):
