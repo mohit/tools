@@ -36,7 +36,7 @@ _PARQUET_MERGE_LOCKS_GUARD = threading.Lock()
 
 
 def _get_parquet_merge_lock(curated_dir: Path) -> threading.Lock:
-    resolved_dir = curated_dir.resolve()
+    resolved_dir = curated_dir.expanduser().resolve()
     with _PARQUET_MERGE_LOCKS_GUARD:
         return _PARQUET_MERGE_LOCKS.setdefault(resolved_dir, threading.Lock())
 
@@ -66,7 +66,7 @@ class HealthAutoExportIngestor:
 
     def __init__(self, raw_dir: Path = DEFAULT_RAW_DIR, curated_dir: Path = DEFAULT_CURATED_DIR):
         self.raw_dir = Path(raw_dir)
-        self.curated_dir = Path(curated_dir)
+        self.curated_dir = Path(curated_dir).expanduser().resolve()
         self.records_parquet = self.curated_dir / "health_records.parquet"
         self.workouts_parquet = self.curated_dir / "health_workouts.parquet"
         self._parquet_merge_lock_file = self.curated_dir / ".parquet_merge.lock"
@@ -267,7 +267,8 @@ class HealthAutoExportIngestor:
                 row["startDate"],
                 row["endDate"],
             )
-            deduped_by_key[key] = row
+            if key not in deduped_by_key:
+                deduped_by_key[key] = row
         return list(deduped_by_key.values())
 
     @staticmethod
@@ -283,7 +284,8 @@ class HealthAutoExportIngestor:
                 row["totalDistance"],
                 row["totalEnergyBurned"],
             )
-            deduped_by_key[key] = row
+            if key not in deduped_by_key:
+                deduped_by_key[key] = row
         return list(deduped_by_key.values())
 
     def _write_records_parquet(self, con: duckdb.DuckDBPyConnection, records: list[dict[str, Any]]) -> None:

@@ -1,6 +1,7 @@
 """Tests for health_auto_export.py."""
 
 import json
+import os
 import tempfile
 import threading
 import unittest
@@ -212,6 +213,24 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(record_count, 2)
         self.assertEqual(workout_count, 1)
 
+    def test_dedupe_incoming_batch_keeps_first_record_and_workout(self):
+        payload = self.sample_payload()
+        records, workouts, errors = self.ingestor._normalize_payload(payload)
+        self.assertEqual(errors, [])
+
+        duplicate_record = dict(records[0])
+        duplicate_record["metadata_json"] = '{"alternate":"value"}'
+        duplicate_workout = dict(workouts[0])
+        duplicate_workout["metadata_json"] = '{"alternate":"value"}'
+
+        deduped_records = self.ingestor._dedupe_incoming_records_batch([records[0], duplicate_record])
+        deduped_workouts = self.ingestor._dedupe_incoming_workouts_batch([workouts[0], duplicate_workout])
+
+        self.assertEqual(len(deduped_records), 1)
+        self.assertEqual(len(deduped_workouts), 1)
+        self.assertEqual(deduped_records[0]["metadata_json"], records[0]["metadata_json"])
+        self.assertEqual(deduped_workouts[0]["metadata_json"], workouts[0]["metadata_json"])
+
     def test_ingest_payload_uses_parquet_merge_lock(self):
         payload = self.sample_payload()
         lock = _CountingLock()
@@ -229,6 +248,20 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         )
 
         self.assertIs(self.ingestor._parquet_merge_lock, other_ingestor._parquet_merge_lock)
+
+    def test_ingestors_share_merge_lock_for_tilde_and_absolute_curated_dir(self):
+        with mock.patch.dict(os.environ, {"HOME": str(self.root)}):
+            tilde_curated = Path("~") / "curated"
+            first_ingestor = health_auto_export.HealthAutoExportIngestor(
+                raw_dir=self.raw_dir / "first",
+                curated_dir=tilde_curated,
+            )
+            second_ingestor = health_auto_export.HealthAutoExportIngestor(
+                raw_dir=self.raw_dir / "other",
+                curated_dir=self.root / "curated",
+            )
+
+        self.assertIs(first_ingestor._parquet_merge_lock, second_ingestor._parquet_merge_lock)
 
     def test_concurrent_ingests_serialize_merge_lock_and_preserve_rows(self):
         tracking_lock = _TrackingLock()
