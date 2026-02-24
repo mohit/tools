@@ -161,6 +161,14 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(lock.enter_count, 1)
         self.assertEqual(lock.exit_count, 1)
 
+    def test_ingestors_share_merge_lock_for_same_curated_dir(self):
+        other_ingestor = health_auto_export.HealthAutoExportIngestor(
+            raw_dir=self.raw_dir / "other",
+            curated_dir=self.curated_dir,
+        )
+
+        self.assertIs(self.ingestor._parquet_merge_lock, other_ingestor._parquet_merge_lock)
+
     @unittest.skipIf(health_auto_export.fcntl is None, "fcntl not available")
     def test_ingest_payload_uses_process_file_lock(self):
         payload = self.sample_payload()

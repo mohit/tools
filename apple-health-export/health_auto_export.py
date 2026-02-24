@@ -31,6 +31,14 @@ except ImportError:  # pragma: no cover - optional dependency in some environmen
 
 DEFAULT_RAW_DIR = Path.home() / "datalake.me" / "raw" / "apple-health" / "auto-export"
 DEFAULT_CURATED_DIR = Path.home() / "datalake.me" / "curated" / "apple-health"
+_PARQUET_MERGE_LOCKS: dict[Path, threading.Lock] = {}
+_PARQUET_MERGE_LOCKS_GUARD = threading.Lock()
+
+
+def _get_parquet_merge_lock(curated_dir: Path) -> threading.Lock:
+    resolved_dir = curated_dir.resolve()
+    with _PARQUET_MERGE_LOCKS_GUARD:
+        return _PARQUET_MERGE_LOCKS.setdefault(resolved_dir, threading.Lock())
 
 
 def _parse_datetime(value: str | None) -> str | None:
@@ -62,7 +70,7 @@ class HealthAutoExportIngestor:
         self.records_parquet = self.curated_dir / "health_records.parquet"
         self.workouts_parquet = self.curated_dir / "health_workouts.parquet"
         self._parquet_merge_lock_file = self.curated_dir / ".parquet_merge.lock"
-        self._parquet_merge_lock = threading.Lock()
+        self._parquet_merge_lock = _get_parquet_merge_lock(self.curated_dir)
 
     def ingest_payload(self, payload: Any, request_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         records, workouts, errors = self._normalize_payload(payload)
