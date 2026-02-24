@@ -370,10 +370,12 @@ class HealthAutoExportIngestor:
             WHERE row_num = 1
             """
         )
+        records_tmp_path = self.records_parquet.with_name(f"{self.records_parquet.name}.tmp")
         con.execute(
             "COPY deduped_records TO ? (FORMAT PARQUET, COMPRESSION ZSTD)",
-            [str(self.records_parquet)],
+            [str(records_tmp_path)],
         )
+        records_tmp_path.replace(self.records_parquet)
 
     def _write_workouts_parquet(self, con: duckdb.DuckDBPyConnection, workouts: list[dict[str, Any]]) -> None:
         con.execute(
@@ -483,10 +485,12 @@ class HealthAutoExportIngestor:
             WHERE row_num = 1
             """
         )
+        workouts_tmp_path = self.workouts_parquet.with_name(f"{self.workouts_parquet.name}.tmp")
         con.execute(
             "COPY deduped_workouts TO ? (FORMAT PARQUET, COMPRESSION ZSTD)",
-            [str(self.workouts_parquet)],
+            [str(workouts_tmp_path)],
         )
+        workouts_tmp_path.replace(self.workouts_parquet)
 
 
 def create_app(ingestor: HealthAutoExportIngestor, token: str | None = None) -> Flask:
