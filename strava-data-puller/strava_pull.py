@@ -116,8 +116,8 @@ def load_keychain_secret(var_name: str) -> str | None:
     lookups = (
         *[(service, var_name) for service in service_names],
         *[(var_name, service) for service in service_names],
-        *[(service, None) for service in service_names],
         (var_name, None),
+        *[(service, None) for service in service_names],
     )
 
     for service, account in lookups:

@@ -247,3 +247,65 @@ class TestCredentials(TestCase):
         value = strava_pull.load_keychain_secret("STRAVA_CLIENT_ID")
 
         self.assertEqual(value, "client-from-keychain")
+
+    @patch("subprocess.run")
+    def test_load_keychain_secret_tries_service_only_after_specific_lookups(self, mock_run):
+        expected_calls = [
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "strava-data-puller",
+                "-a",
+                "STRAVA_CLIENT_SECRET",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "com.mohit.tools.strava-data-puller",
+                "-a",
+                "STRAVA_CLIENT_SECRET",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "STRAVA_CLIENT_SECRET",
+                "-a",
+                "strava-data-puller",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "STRAVA_CLIENT_SECRET",
+                "-a",
+                "com.mohit.tools.strava-data-puller",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "STRAVA_CLIENT_SECRET",
+            ],
+        ]
+
+        def fake_run(cmd, check, capture_output, text, timeout):
+            call_index = len(mock_run.call_args_list) - 1
+            self.assertEqual(cmd, expected_calls[call_index])
+            if cmd == expected_calls[-1]:
+                return types.SimpleNamespace(returncode=0, stdout="secret-from-var-only\n")
+            return types.SimpleNamespace(returncode=44, stdout="")
+
+        mock_run.side_effect = fake_run
+
+        value = strava_pull.load_keychain_secret("STRAVA_CLIENT_SECRET")
+
+        self.assertEqual(value, "secret-from-var-only")
+        self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
