@@ -292,14 +292,14 @@ class TestCredentials(TestCase):
                 "find-generic-password",
                 "-w",
                 "-s",
-                "strava-data-puller",
+                "com.mohit.tools.strava-data-puller",
             ],
             [
                 "security",
                 "find-generic-password",
                 "-w",
                 "-s",
-                "com.mohit.tools.strava-data-puller",
+                "strava-data-puller",
             ],
         ]
 
@@ -359,7 +359,7 @@ class TestCredentials(TestCase):
                 "find-generic-password",
                 "-w",
                 "-s",
-                "strava-data-puller",
+                "com.mohit.tools.strava-data-puller",
             ],
         ]
 
@@ -376,6 +376,38 @@ class TestCredentials(TestCase):
 
         self.assertEqual(value, "client-from-service-only")
         self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
+
+    @patch("subprocess.run")
+    def test_load_keychain_secret_prefers_namespaced_service_only_over_legacy(self, mock_run):
+        namespaced_service_only = [
+            "security",
+            "find-generic-password",
+            "-w",
+            "-s",
+            "com.mohit.tools.strava-data-puller",
+        ]
+        legacy_service_only = [
+            "security",
+            "find-generic-password",
+            "-w",
+            "-s",
+            "strava-data-puller",
+        ]
+
+        def fake_run(cmd, check, capture_output, text, timeout):
+            if cmd == namespaced_service_only:
+                return types.SimpleNamespace(returncode=0, stdout="correct-client-id\n")
+            if cmd == legacy_service_only:
+                return types.SimpleNamespace(returncode=0, stdout="wrong-refresh-token\n")
+            return types.SimpleNamespace(returncode=44, stdout="")
+
+        mock_run.side_effect = fake_run
+
+        value = strava_pull.load_keychain_secret("STRAVA_CLIENT_ID")
+
+        self.assertEqual(value, "correct-client-id")
+        called_cmds = [call.args[0] for call in mock_run.call_args_list]
+        self.assertNotIn(legacy_service_only, called_cmds)
 
     @patch("subprocess.run")
     def test_load_keychain_secret_prefers_reversed_specific_match_over_service_only(
