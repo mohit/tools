@@ -377,6 +377,42 @@ class TestCredentials(TestCase):
         self.assertEqual(value, "client-from-service-only")
         self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
 
+    @patch("subprocess.run")
+    def test_load_keychain_secret_prefers_reversed_specific_match_over_service_only(
+        self, mock_run
+    ):
+        reversed_match = [
+            "security",
+            "find-generic-password",
+            "-w",
+            "-s",
+            "STRAVA_REFRESH_TOKEN",
+            "-a",
+            "strava-data-puller",
+        ]
+        service_only = [
+            "security",
+            "find-generic-password",
+            "-w",
+            "-s",
+            "strava-data-puller",
+        ]
+
+        def fake_run(cmd, check, capture_output, text, timeout):
+            if cmd == reversed_match:
+                return types.SimpleNamespace(returncode=0, stdout="correct-refresh-token\n")
+            if cmd == service_only:
+                return types.SimpleNamespace(returncode=0, stdout="wrong-client-id\n")
+            return types.SimpleNamespace(returncode=44, stdout="")
+
+        mock_run.side_effect = fake_run
+
+        value = strava_pull.load_keychain_secret("STRAVA_REFRESH_TOKEN")
+
+        self.assertEqual(value, "correct-refresh-token")
+        called_cmds = [call.args[0] for call in mock_run.call_args_list]
+        self.assertNotIn(service_only, called_cmds)
+
     @patch.object(strava_pull, "parse_args")
     @patch.object(strava_pull, "resolve_strava_credentials")
     @patch.object(strava_pull, "get_access_token")

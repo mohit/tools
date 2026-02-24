@@ -113,10 +113,13 @@ def write_credentials_env_file(path: Path, credentials: dict[str, str]) -> None:
 def load_keychain_secret(var_name: str) -> str | None:
     # macOS keychain fallback for unattended runs.
     service_names = ("strava-data-puller", "com.mohit.tools.strava-data-puller")
-    # Prefer fully-specific account/service matches before broad service-only fallback.
+    # Always try both specific forms before broad service-only lookup.
+    # This avoids selecting the wrong secret when multiple items share a service.
     lookups: list[tuple[str, str | None]] = []
-    lookups.extend((service, var_name) for service in service_names)
-    lookups.extend((var_name, service) for service in service_names)
+    for service in service_names:
+        lookups.append((service, var_name))
+    for service in service_names:
+        lookups.append((var_name, service))
     lookups.extend((service, None) for service in service_names)
 
     for service, account in lookups:
