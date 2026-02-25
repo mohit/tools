@@ -117,13 +117,18 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
 
     # Lookup account-scoped entries only by default. Service-only lookups can
     # return an arbitrary item when multiple secrets share the same service.
-    account_specific_lookups: list[tuple[str, str]] = [
+    direct_account_lookups: list[tuple[str, str]] = [
         (namespaced_service, var_name),
         (legacy_service, var_name),
+    ]
+    reversed_account_lookups: list[tuple[str, str]] = [
         (var_name, namespaced_service),
         (var_name, legacy_service),
     ]
-    lookup_order: list[tuple[str, str | None]] = [*account_specific_lookups]
+    lookup_order: list[tuple[str, str | None]] = [
+        *direct_account_lookups,
+        *reversed_account_lookups,
+    ]
     if allow_service_only:
         service_only_lookups: list[tuple[str, None]] = [
             # If we must fall back to service-only, prefer namespaced entries.
