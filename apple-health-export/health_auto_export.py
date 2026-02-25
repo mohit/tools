@@ -204,7 +204,6 @@ class HealthAutoExportIngestor:
         # Serialize the full parquet read-modify-write cycle so parallel requests
         # cannot clobber each other's updates.
         with self._acquire_merge_lock():
-            con = duckdb.connect(":memory:")
             ingested_at = datetime.now(UTC).isoformat()
 
             records_with_lineage = [
@@ -226,10 +225,10 @@ class HealthAutoExportIngestor:
                 for row in workouts
             ]
 
-            self._write_records_parquet(con, records_with_lineage)
-            self._write_workouts_parquet(con, workouts_with_lineage)
+            with duckdb.connect(":memory:") as con:
+                self._write_records_parquet(con, records_with_lineage)
+                self._write_workouts_parquet(con, workouts_with_lineage)
 
-            con.close()
         return {
             "records_ingested": len(records_with_lineage),
             "workouts_ingested": len(workouts_with_lineage),

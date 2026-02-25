@@ -380,7 +380,20 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
                     "startDate": "2026-02-18T10:00:00Z",
                     "endDate": "2026-02-18T10:10:00Z",
                 }
-            ]
+            ],
+            "workouts": [
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 10,
+                    "durationUnit": "min",
+                    "totalDistance": 1.0,
+                    "totalDistanceUnit": "km",
+                    "totalEnergyBurned": 75,
+                    "totalEnergyBurnedUnit": "kcal",
+                    "startDate": "2026-02-18T10:00:00Z",
+                    "endDate": "2026-02-18T10:10:00Z",
+                }
+            ],
         }
         payload_b = {
             "records": [
@@ -392,7 +405,20 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
                     "startDate": "2026-02-18T11:00:00Z",
                     "endDate": "2026-02-18T11:10:00Z",
                 }
-            ]
+            ],
+            "workouts": [
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 20,
+                    "durationUnit": "min",
+                    "totalDistance": 2.0,
+                    "totalDistanceUnit": "km",
+                    "totalEnergyBurned": 150,
+                    "totalEnergyBurnedUnit": "kcal",
+                    "startDate": "2026-02-18T11:00:00Z",
+                    "endDate": "2026-02-18T11:20:00Z",
+                }
+            ],
         }
 
         thread_a = threading.Thread(target=self.ingestor.ingest_payload, args=(payload_a,))
@@ -414,9 +440,19 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
             """,
             [str(self.curated_dir / "health_records.parquet")],
         ).fetchall()
+        workout_rows = con.execute(
+            """
+            SELECT duration
+            FROM read_parquet(?)
+            WHERE workoutActivityType = 'HKWorkoutActivityTypeWalking'
+            ORDER BY startDate
+            """,
+            [str(self.curated_dir / "health_workouts.parquet")],
+        ).fetchall()
         con.close()
 
         self.assertEqual([row[0] for row in rows], ["100", "200"])
+        self.assertEqual([row[0] for row in workout_rows], ["10", "20"])
 
     @unittest.skipIf(health_auto_export.fcntl is None, "fcntl not available")
     def test_ingest_payload_uses_process_file_lock(self):
