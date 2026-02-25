@@ -546,6 +546,19 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(len(lock_calls), 1)
         self.assertEqual(len(unlock_calls), 1)
 
+    @unittest.skipIf(health_auto_export.fcntl is None, "fcntl not available")
+    def test_acquire_process_merge_lock_creates_lock_dir(self):
+        lock_dir = self.curated_dir / "nested" / "curated"
+        ingestor = health_auto_export.HealthAutoExportIngestor(
+            raw_dir=self.raw_dir,
+            curated_dir=lock_dir,
+        )
+
+        self.assertFalse(lock_dir.exists())
+        with ingestor._acquire_process_merge_lock():
+            self.assertTrue(lock_dir.exists())
+            self.assertTrue((lock_dir / ".parquet_merge.lock").exists())
+
 
 @unittest.skipUnless(health_auto_export.HAS_FLASK, "flask not installed")
 class TestHealthAutoExportAPI(unittest.TestCase):

@@ -257,6 +257,7 @@ class HealthAutoExportIngestor:
             yield
             return
 
+        self._parquet_merge_lock_file.parent.mkdir(parents=True, exist_ok=True)
         with self._parquet_merge_lock_file.open("a+", encoding="utf-8") as lock_file:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
