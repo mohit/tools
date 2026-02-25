@@ -345,6 +345,21 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
 
         self.assertIs(first_ingestor._parquet_merge_lock, second_ingestor._parquet_merge_lock)
 
+    def test_ingestors_share_merge_lock_for_symlinked_curated_dir(self):
+        linked_curated = self.root / "linked-curated"
+        linked_curated.symlink_to(self.curated_dir, target_is_directory=True)
+
+        first_ingestor = health_auto_export.HealthAutoExportIngestor(
+            raw_dir=self.raw_dir / "first",
+            curated_dir=self.curated_dir,
+        )
+        second_ingestor = health_auto_export.HealthAutoExportIngestor(
+            raw_dir=self.raw_dir / "second",
+            curated_dir=linked_curated,
+        )
+
+        self.assertIs(first_ingestor._parquet_merge_lock, second_ingestor._parquet_merge_lock)
+
     def test_concurrent_ingests_serialize_merge_lock_and_preserve_rows(self):
         tracking_lock = _TrackingLock()
         self.ingestor._parquet_merge_lock = tracking_lock
