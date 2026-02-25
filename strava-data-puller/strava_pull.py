@@ -114,18 +114,22 @@ def load_keychain_secret(var_name: str) -> str | None:
     # macOS keychain fallback for unattended runs.
     namespaced_service = "com.mohit.tools.strava-data-puller"
     legacy_service = "strava-data-puller"
-    # Prefer namespaced entries and always try specific account-based forms
-    # before broad service-only lookup. Service-only lookup can return an
-    # arbitrary account when multiple entries exist, so it must remain last.
-    lookups: list[tuple[str, str | None]] = [
+    # Keep service-only lookup in a separate final phase. It can return an
+    # arbitrary account when multiple entries share the same service.
+    specific_lookups: list[tuple[str, str | None]] = [
         (namespaced_service, var_name),
         (legacy_service, var_name),
+    ]
+    reversed_lookups: list[tuple[str, str | None]] = [
         (var_name, namespaced_service),
         (var_name, legacy_service),
+    ]
+    service_only_lookups: list[tuple[str, str | None]] = [
         # If we must fall back to service-only, prefer namespaced entries.
         (namespaced_service, None),
         (legacy_service, None),
     ]
+    lookups = specific_lookups + reversed_lookups + service_only_lookups
 
     for service, account in lookups:
         cmd = ["security", "find-generic-password", "-w", "-s", service]
