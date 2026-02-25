@@ -114,50 +114,38 @@ def load_keychain_secret(var_name: str) -> str | None:
     # macOS keychain fallback for unattended runs.
     namespaced_service = "com.mohit.tools.strava-data-puller"
     legacy_service = "strava-data-puller"
-    # Keep service-only lookup in a separate final phase. It can return an
-    # arbitrary account when multiple entries share the same service.
-    specific_lookups: list[tuple[str, str | None]] = [
+    # Keep service-only lookups strictly last. Without an account they can
+    # return an arbitrary secret when multiple items share a service name.
+    lookup_order: list[tuple[str, str | None]] = [
         (namespaced_service, var_name),
         (legacy_service, var_name),
-    ]
-    reversed_lookups: list[tuple[str, str | None]] = [
         (var_name, namespaced_service),
         (var_name, legacy_service),
-    ]
-    service_only_lookups: list[tuple[str, str | None]] = [
         # If we must fall back to service-only, prefer namespaced entries.
         (namespaced_service, None),
         (legacy_service, None),
     ]
-    # Execute account-specific lookups first to avoid selecting a secret from
-    # the wrong account when multiple keychain items share a service name.
-    lookup_phases = (
-        specific_lookups,
-        reversed_lookups,
-        service_only_lookups,
-    )
 
-    for lookups in lookup_phases:
-        for service, account in lookups:
-            cmd = ["security", "find-generic-password", "-w", "-s", service]
-            if account is not None:
-                cmd.extend(["-a", account])
-            try:
-                result = subprocess.run(
-                    cmd,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-            except FileNotFoundError:
-                return None
-            except subprocess.TimeoutExpired:
-                continue
-            if result.returncode == 0:
-                secret = result.stdout.strip()
-                if secret:
-                    return secret
+    for service, account in lookup_order:
+        cmd = ["security", "find-generic-password", "-w", "-s", service]
+        if account is not None:
+            cmd.extend(["-a", account])
+        try:
+            result = subprocess.run(
+                cmd,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except FileNotFoundError:
+            return None
+        except subprocess.TimeoutExpired:
+            continue
+        if result.returncode == 0:
+            secret = result.stdout.strip()
+            if secret:
+                return secret
     return None
 
 
