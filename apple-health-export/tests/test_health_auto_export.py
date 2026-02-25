@@ -525,6 +525,106 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
 
         self.assertEqual([row[0] for row in rows], ["300", "400"])
 
+    def test_concurrent_ingests_same_ingestor_preserve_rows(self):
+        payload_a = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 700,
+                    "startDate": "2026-02-21T10:00:00Z",
+                    "endDate": "2026-02-21T10:10:00Z",
+                }
+            ]
+        }
+        payload_b = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 800,
+                    "startDate": "2026-02-21T11:00:00Z",
+                    "endDate": "2026-02-21T11:10:00Z",
+                }
+            ]
+        }
+
+        errors: list[Exception] = []
+
+        def _ingest_with_capture(payload):
+            try:
+                self.ingestor.ingest_payload(payload)
+            except Exception as exc:  # pragma: no cover - defensive in thread
+                errors.append(exc)
+
+        thread_a = threading.Thread(target=_ingest_with_capture, args=(payload_a,))
+        thread_b = threading.Thread(target=_ingest_with_capture, args=(payload_b,))
+        thread_a.start()
+        thread_b.start()
+        thread_a.join()
+        thread_b.join()
+
+        self.assertEqual(errors, [])
+
+        con = duckdb.connect(":memory:")
+        rows = con.execute(
+            """
+            SELECT value
+            FROM read_parquet(?)
+            WHERE type = 'HKQuantityTypeIdentifierStepCount'
+            ORDER BY startDate
+            """,
+            [str(self.curated_dir / "health_records.parquet")],
+        ).fetchall()
+        con.close()
+
+        self.assertEqual([row[0] for row in rows], ["700", "800"])
+
+    def test_ingest_payload_deduplicates_batch_when_only_metadata_differs(self):
+        payload = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 1234,
+                    "startDate": "2026-02-22T10:00:00Z",
+                    "endDate": "2026-02-22T10:15:00Z",
+                    "metadata": {"dedupe": "first"},
+                },
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 1234,
+                    "startDate": "2026-02-22T10:00:00Z",
+                    "endDate": "2026-02-22T10:15:00Z",
+                    "metadata": {"dedupe": "second"},
+                },
+            ]
+        }
+
+        result = self.ingestor.ingest_payload(payload)
+        self.assertEqual(result["records_ingested"], 1)
+        self.assertEqual(result["workouts_ingested"], 0)
+
+        con = duckdb.connect(":memory:")
+        ingested = con.execute(
+            """
+            SELECT value, metadata_json
+            FROM read_parquet(?)
+            WHERE type = 'HKQuantityTypeIdentifierStepCount'
+            """,
+            [str(self.curated_dir / "health_records.parquet")],
+        ).fetchall()
+        con.close()
+
+        self.assertEqual(len(ingested), 1)
+        self.assertEqual(ingested[0][0], "1234")
+        self.assertEqual(json.loads(ingested[0][1]), {"dedupe": "first"})
+
     @unittest.skipIf(health_auto_export.fcntl is None, "fcntl not available")
     def test_ingest_payload_uses_process_file_lock(self):
         payload = self.sample_payload()
