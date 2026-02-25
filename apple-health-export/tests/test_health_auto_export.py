@@ -421,13 +421,22 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
             ],
         }
 
-        thread_a = threading.Thread(target=self.ingestor.ingest_payload, args=(payload_a,))
-        thread_b = threading.Thread(target=other_ingestor.ingest_payload, args=(payload_b,))
+        errors: list[Exception] = []
+
+        def _ingest_with_capture(ingestor, payload):
+            try:
+                ingestor.ingest_payload(payload)
+            except Exception as exc:  # pragma: no cover - defensive in thread
+                errors.append(exc)
+
+        thread_a = threading.Thread(target=_ingest_with_capture, args=(self.ingestor, payload_a))
+        thread_b = threading.Thread(target=_ingest_with_capture, args=(other_ingestor, payload_b))
         thread_a.start()
         thread_b.start()
         thread_a.join()
         thread_b.join()
 
+        self.assertEqual(errors, [])
         self.assertEqual(tracking_lock.max_active, 1)
 
         con = duckdb.connect(":memory:")
@@ -453,6 +462,68 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
 
         self.assertEqual([row[0] for row in rows], ["100", "200"])
         self.assertEqual([row[0] for row in workout_rows], ["10", "20"])
+
+    def test_concurrent_ingests_with_shared_default_lock_preserve_rows(self):
+        other_ingestor = health_auto_export.HealthAutoExportIngestor(
+            raw_dir=self.raw_dir / "other",
+            curated_dir=self.curated_dir,
+        )
+
+        payload_a = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 300,
+                    "startDate": "2026-02-20T10:00:00Z",
+                    "endDate": "2026-02-20T10:10:00Z",
+                }
+            ]
+        }
+        payload_b = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 400,
+                    "startDate": "2026-02-20T11:00:00Z",
+                    "endDate": "2026-02-20T11:10:00Z",
+                }
+            ]
+        }
+
+        errors: list[Exception] = []
+
+        def _ingest_with_capture(ingestor, payload):
+            try:
+                ingestor.ingest_payload(payload)
+            except Exception as exc:  # pragma: no cover - defensive in thread
+                errors.append(exc)
+
+        thread_a = threading.Thread(target=_ingest_with_capture, args=(self.ingestor, payload_a))
+        thread_b = threading.Thread(target=_ingest_with_capture, args=(other_ingestor, payload_b))
+        thread_a.start()
+        thread_b.start()
+        thread_a.join()
+        thread_b.join()
+
+        self.assertEqual(errors, [])
+
+        con = duckdb.connect(":memory:")
+        rows = con.execute(
+            """
+            SELECT value
+            FROM read_parquet(?)
+            WHERE type = 'HKQuantityTypeIdentifierStepCount'
+            ORDER BY startDate
+            """,
+            [str(self.curated_dir / "health_records.parquet")],
+        ).fetchall()
+        con.close()
+
+        self.assertEqual([row[0] for row in rows], ["300", "400"])
 
     @unittest.skipIf(health_auto_export.fcntl is None, "fcntl not available")
     def test_ingest_payload_uses_process_file_lock(self):
