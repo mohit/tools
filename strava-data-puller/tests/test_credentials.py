@@ -256,15 +256,6 @@ class TestCredentials(TestCase):
                 "find-generic-password",
                 "-w",
                 "-s",
-                "strava-data-puller",
-                "-a",
-                "STRAVA_CLIENT_SECRET",
-            ],
-            [
-                "security",
-                "find-generic-password",
-                "-w",
-                "-s",
                 "com.mohit.tools.strava-data-puller",
                 "-a",
                 "STRAVA_CLIENT_SECRET",
@@ -274,9 +265,9 @@ class TestCredentials(TestCase):
                 "find-generic-password",
                 "-w",
                 "-s",
-                "STRAVA_CLIENT_SECRET",
-                "-a",
                 "strava-data-puller",
+                "-a",
+                "STRAVA_CLIENT_SECRET",
             ],
             [
                 "security",
@@ -286,6 +277,15 @@ class TestCredentials(TestCase):
                 "STRAVA_CLIENT_SECRET",
                 "-a",
                 "com.mohit.tools.strava-data-puller",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "STRAVA_CLIENT_SECRET",
+                "-a",
+                "strava-data-puller",
             ],
             [
                 "security",
@@ -323,15 +323,6 @@ class TestCredentials(TestCase):
                 "find-generic-password",
                 "-w",
                 "-s",
-                "strava-data-puller",
-                "-a",
-                "STRAVA_CLIENT_ID",
-            ],
-            [
-                "security",
-                "find-generic-password",
-                "-w",
-                "-s",
                 "com.mohit.tools.strava-data-puller",
                 "-a",
                 "STRAVA_CLIENT_ID",
@@ -341,9 +332,9 @@ class TestCredentials(TestCase):
                 "find-generic-password",
                 "-w",
                 "-s",
-                "STRAVA_CLIENT_ID",
-                "-a",
                 "strava-data-puller",
+                "-a",
+                "STRAVA_CLIENT_ID",
             ],
             [
                 "security",
@@ -353,6 +344,15 @@ class TestCredentials(TestCase):
                 "STRAVA_CLIENT_ID",
                 "-a",
                 "com.mohit.tools.strava-data-puller",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "STRAVA_CLIENT_ID",
+                "-a",
+                "strava-data-puller",
             ],
             [
                 "security",
@@ -376,6 +376,44 @@ class TestCredentials(TestCase):
 
         self.assertEqual(value, "client-from-service-only")
         self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
+
+    @patch("subprocess.run")
+    def test_load_keychain_secret_prefers_namespaced_specific_match_over_legacy(
+        self, mock_run
+    ):
+        namespaced_match = [
+            "security",
+            "find-generic-password",
+            "-w",
+            "-s",
+            "com.mohit.tools.strava-data-puller",
+            "-a",
+            "STRAVA_CLIENT_ID",
+        ]
+        legacy_match = [
+            "security",
+            "find-generic-password",
+            "-w",
+            "-s",
+            "strava-data-puller",
+            "-a",
+            "STRAVA_CLIENT_ID",
+        ]
+
+        def fake_run(cmd, check, capture_output, text, timeout):
+            if cmd == namespaced_match:
+                return types.SimpleNamespace(returncode=0, stdout="correct-client-id\n")
+            if cmd == legacy_match:
+                return types.SimpleNamespace(returncode=0, stdout="stale-client-id\n")
+            return types.SimpleNamespace(returncode=44, stdout="")
+
+        mock_run.side_effect = fake_run
+
+        value = strava_pull.load_keychain_secret("STRAVA_CLIENT_ID")
+
+        self.assertEqual(value, "correct-client-id")
+        called_cmds = [call.args[0] for call in mock_run.call_args_list]
+        self.assertNotIn(legacy_match, called_cmds)
 
     @patch("subprocess.run")
     def test_load_keychain_secret_prefers_namespaced_service_only_over_legacy(self, mock_run):
