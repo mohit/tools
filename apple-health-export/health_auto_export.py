@@ -203,13 +203,13 @@ class HealthAutoExportIngestor:
     def _merge_to_parquet(self, records: list[dict[str, Any]], workouts: list[dict[str, Any]], raw_path: Path) -> dict[str, Any]:
         self.curated_dir.mkdir(parents=True, exist_ok=True)
 
-        # Defensive dedupe: keep merge behavior safe even if future callers bypass _normalize_payload.
-        records = self._dedupe_incoming_records_batch(records)
-        workouts = self._dedupe_incoming_workouts_batch(workouts)
-
-        # Serialize the full parquet read-modify-write cycle so parallel requests
-        # cannot clobber each other's updates.
+        # Serialize the full merge lifecycle so parallel requests cannot clobber
+        # each other's parquet read-modify-write updates.
         with self._acquire_merge_lock():
+            # Defensive dedupe: keep merge behavior safe even if future callers
+            # bypass _normalize_payload.
+            records = self._dedupe_incoming_records_batch(records)
+            workouts = self._dedupe_incoming_workouts_batch(workouts)
             ingested_at = datetime.now(UTC).isoformat()
 
             records_with_lineage = [
