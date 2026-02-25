@@ -625,6 +625,57 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(ingested[0][0], "1234")
         self.assertEqual(json.loads(ingested[0][1]), {"dedupe": "first"})
 
+    def test_ingest_payload_deduplicates_workout_batch_when_only_metadata_differs(self):
+        payload = {
+            "workouts": [
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 45,
+                    "durationUnit": "min",
+                    "totalDistance": 3.5,
+                    "totalDistanceUnit": "km",
+                    "totalEnergyBurned": 210,
+                    "totalEnergyBurnedUnit": "kcal",
+                    "sourceName": "Apple Watch",
+                    "startDate": "2026-02-22T16:00:00Z",
+                    "endDate": "2026-02-22T16:45:00Z",
+                    "metadata": {"dedupe": "first"},
+                },
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 45,
+                    "durationUnit": "min",
+                    "totalDistance": 3.5,
+                    "totalDistanceUnit": "km",
+                    "totalEnergyBurned": 210,
+                    "totalEnergyBurnedUnit": "kcal",
+                    "sourceName": "Apple Watch",
+                    "startDate": "2026-02-22T16:00:00Z",
+                    "endDate": "2026-02-22T16:45:00Z",
+                    "metadata": {"dedupe": "second"},
+                },
+            ]
+        }
+
+        result = self.ingestor.ingest_payload(payload)
+        self.assertEqual(result["records_ingested"], 0)
+        self.assertEqual(result["workouts_ingested"], 1)
+
+        con = duckdb.connect(":memory:")
+        ingested = con.execute(
+            """
+            SELECT duration, metadata_json
+            FROM read_parquet(?)
+            WHERE workoutActivityType = 'HKWorkoutActivityTypeWalking'
+            """,
+            [str(self.curated_dir / "health_workouts.parquet")],
+        ).fetchall()
+        con.close()
+
+        self.assertEqual(len(ingested), 1)
+        self.assertEqual(ingested[0][0], "45")
+        self.assertEqual(json.loads(ingested[0][1]), {"dedupe": "first"})
+
     @unittest.skipIf(health_auto_export.fcntl is None, "fcntl not available")
     def test_ingest_payload_uses_process_file_lock(self):
         payload = self.sample_payload()
