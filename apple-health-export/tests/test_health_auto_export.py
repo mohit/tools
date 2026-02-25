@@ -215,6 +215,30 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(len(records), 2)
         self.assertEqual(len(workouts), 1)
 
+    def test_normalize_payload_deduplicates_invalid_rows_before_error_counting(self):
+        payload = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 100,
+                },
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 100,
+                },
+            ]
+        }
+
+        records, workouts, errors = self.ingestor._normalize_payload(payload)
+
+        self.assertEqual(records, [])
+        self.assertEqual(workouts, [])
+        self.assertEqual(errors, ["1 record(s) missing required fields", "no valid records or workouts found"])
+
     def test_merge_to_parquet_deduplicates_incoming_batch(self):
         payload = self.sample_payload()
         records, workouts, errors = self.ingestor._normalize_payload(payload)

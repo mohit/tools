@@ -127,18 +127,18 @@ class HealthAutoExportIngestor:
         records = [self._normalize_record(item) for item in raw_records if isinstance(item, dict)]
         workouts = [self._normalize_workout(item) for item in raw_workouts if isinstance(item, dict)]
 
-        valid_records = [r for r in records if r["type"] and r["startDate"]]
-        valid_workouts = [w for w in workouts if w["workoutActivityType"] and w["startDate"]]
+        deduped_records = self._dedupe_incoming_records_batch(records)
+        deduped_workouts = self._dedupe_incoming_workouts_batch(workouts)
 
-        invalid_records = len(records) - len(valid_records)
-        invalid_workouts = len(workouts) - len(valid_workouts)
+        valid_records = [r for r in deduped_records if r["type"] and r["startDate"]]
+        valid_workouts = [w for w in deduped_workouts if w["workoutActivityType"] and w["startDate"]]
+
+        invalid_records = len(deduped_records) - len(valid_records)
+        invalid_workouts = len(deduped_workouts) - len(valid_workouts)
         if invalid_records:
             errors.append(f"{invalid_records} record(s) missing required fields")
         if invalid_workouts:
             errors.append(f"{invalid_workouts} workout(s) missing required fields")
-
-        valid_records = self._dedupe_incoming_records_batch(valid_records)
-        valid_workouts = self._dedupe_incoming_workouts_batch(valid_workouts)
 
         if not valid_records and not valid_workouts:
             errors.append("no valid records or workouts found")
