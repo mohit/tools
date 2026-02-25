@@ -249,7 +249,7 @@ class TestCredentials(TestCase):
         self.assertEqual(value, "client-from-keychain")
 
     @patch("subprocess.run")
-    def test_load_keychain_secret_tries_specific_lookups_before_service_only(self, mock_run):
+    def test_load_keychain_secret_tries_specific_lookups_by_default(self, mock_run):
         expected_calls = [
             [
                 "security",
@@ -287,20 +287,6 @@ class TestCredentials(TestCase):
                 "-a",
                 "strava-data-puller",
             ],
-            [
-                "security",
-                "find-generic-password",
-                "-w",
-                "-s",
-                "com.mohit.tools.strava-data-puller",
-            ],
-            [
-                "security",
-                "find-generic-password",
-                "-w",
-                "-s",
-                "strava-data-puller",
-            ],
         ]
 
         def fake_run(cmd, check, capture_output, text, timeout):
@@ -316,7 +302,9 @@ class TestCredentials(TestCase):
         self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
 
     @patch("subprocess.run")
-    def test_load_keychain_secret_uses_service_only_after_specific_lookups(self, mock_run):
+    def test_load_keychain_secret_uses_service_only_after_specific_lookups_when_enabled(
+        self, mock_run
+    ):
         expected_calls = [
             [
                 "security",
@@ -372,7 +360,9 @@ class TestCredentials(TestCase):
 
         mock_run.side_effect = fake_run
 
-        value = strava_pull.load_keychain_secret("STRAVA_CLIENT_ID")
+        value = strava_pull.load_keychain_secret(
+            "STRAVA_CLIENT_ID", allow_service_only=True
+        )
 
         self.assertEqual(value, "client-from-service-only")
         self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
@@ -441,7 +431,9 @@ class TestCredentials(TestCase):
 
         mock_run.side_effect = fake_run
 
-        value = strava_pull.load_keychain_secret("STRAVA_CLIENT_ID")
+        value = strava_pull.load_keychain_secret(
+            "STRAVA_CLIENT_ID", allow_service_only=True
+        )
 
         self.assertEqual(value, "correct-client-id")
         called_cmds = [call.args[0] for call in mock_run.call_args_list]

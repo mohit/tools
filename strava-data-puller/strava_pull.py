@@ -110,28 +110,27 @@ def write_credentials_env_file(path: Path, credentials: dict[str, str]) -> None:
     path.chmod(0o600)
 
 
-def load_keychain_secret(var_name: str) -> str | None:
+def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str | None:
     # macOS keychain fallback for unattended runs.
     namespaced_service = "com.mohit.tools.strava-data-puller"
     legacy_service = "strava-data-puller"
 
-    # Keep service-only lookups strictly last. Without an account they can
-    # return an arbitrary secret when multiple items share a service name.
+    # Lookup account-scoped entries only by default. Service-only lookups can
+    # return an arbitrary item when multiple secrets share the same service.
     account_specific_lookups: list[tuple[str, str]] = [
         (namespaced_service, var_name),
         (legacy_service, var_name),
         (var_name, namespaced_service),
         (var_name, legacy_service),
     ]
-    service_only_lookups: list[tuple[str, None]] = [
-        # If we must fall back to service-only, prefer namespaced entries.
-        (namespaced_service, None),
-        (legacy_service, None),
-    ]
-    lookup_order: list[tuple[str, str | None]] = [
-        *account_specific_lookups,
-        *service_only_lookups,
-    ]
+    lookup_order: list[tuple[str, str | None]] = [*account_specific_lookups]
+    if allow_service_only:
+        service_only_lookups: list[tuple[str, None]] = [
+            # If we must fall back to service-only, prefer namespaced entries.
+            (namespaced_service, None),
+            (legacy_service, None),
+        ]
+        lookup_order.extend(service_only_lookups)
 
     for service, account in lookup_order:
         cmd = ["security", "find-generic-password", "-w", "-s", service]
