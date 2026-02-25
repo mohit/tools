@@ -31,15 +31,12 @@ except ImportError:  # pragma: no cover - optional dependency in some environmen
 
 DEFAULT_RAW_DIR = Path.home() / "datalake.me" / "raw" / "apple-health" / "auto-export"
 DEFAULT_CURATED_DIR = Path.home() / "datalake.me" / "curated" / "apple-health"
-_PARQUET_MERGE_LOCKS: dict[tuple[Path, Path], threading.Lock] = {}
+_PARQUET_MERGE_LOCKS: dict[Path, threading.Lock] = {}
 _PARQUET_MERGE_LOCKS_GUARD = threading.Lock()
 
 
-def _get_parquet_merge_lock(records_parquet: Path, workouts_parquet: Path) -> threading.Lock:
-    lock_key = (
-        records_parquet.expanduser().resolve(),
-        workouts_parquet.expanduser().resolve(),
-    )
+def _get_parquet_merge_lock(curated_dir: Path) -> threading.Lock:
+    lock_key = curated_dir.expanduser().resolve()
     with _PARQUET_MERGE_LOCKS_GUARD:
         lock = _PARQUET_MERGE_LOCKS.get(lock_key)
         if lock is None:
@@ -77,7 +74,7 @@ class HealthAutoExportIngestor:
         self.records_parquet = self.curated_dir / "health_records.parquet"
         self.workouts_parquet = self.curated_dir / "health_workouts.parquet"
         self._parquet_merge_lock_file = self.curated_dir / ".parquet_merge.lock"
-        self._parquet_merge_lock = _get_parquet_merge_lock(self.records_parquet, self.workouts_parquet)
+        self._parquet_merge_lock = _get_parquet_merge_lock(self.curated_dir)
 
     def ingest_payload(self, payload: Any, request_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         records, workouts, errors = self._normalize_payload(payload)
