@@ -129,28 +129,35 @@ def load_keychain_secret(var_name: str) -> str | None:
         (namespaced_service, None),
         (legacy_service, None),
     ]
-    lookups = specific_lookups + reversed_lookups + service_only_lookups
+    # Execute account-specific lookups first to avoid selecting a secret from
+    # the wrong account when multiple keychain items share a service name.
+    lookup_phases = (
+        specific_lookups,
+        reversed_lookups,
+        service_only_lookups,
+    )
 
-    for service, account in lookups:
-        cmd = ["security", "find-generic-password", "-w", "-s", service]
-        if account is not None:
-            cmd.extend(["-a", account])
-        try:
-            result = subprocess.run(
-                cmd,
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-        except FileNotFoundError:
-            return None
-        except subprocess.TimeoutExpired:
-            continue
-        if result.returncode == 0:
-            secret = result.stdout.strip()
-            if secret:
-                return secret
+    for lookups in lookup_phases:
+        for service, account in lookups:
+            cmd = ["security", "find-generic-password", "-w", "-s", service]
+            if account is not None:
+                cmd.extend(["-a", account])
+            try:
+                result = subprocess.run(
+                    cmd,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+            except FileNotFoundError:
+                return None
+            except subprocess.TimeoutExpired:
+                continue
+            if result.returncode == 0:
+                secret = result.stdout.strip()
+                if secret:
+                    return secret
     return None
 
 
