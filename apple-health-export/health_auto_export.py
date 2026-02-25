@@ -226,8 +226,14 @@ class HealthAutoExportIngestor:
             ]
 
             with duckdb.connect(":memory:") as con:
-                self._write_records_parquet(con, records_with_lineage)
-                self._write_workouts_parquet(con, workouts_with_lineage)
+                con.execute("BEGIN TRANSACTION")
+                try:
+                    self._write_records_parquet(con, records_with_lineage)
+                    self._write_workouts_parquet(con, workouts_with_lineage)
+                    con.execute("COMMIT")
+                except Exception:
+                    con.execute("ROLLBACK")
+                    raise
 
         return {
             "records_ingested": len(records_with_lineage),
