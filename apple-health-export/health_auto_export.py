@@ -23,6 +23,11 @@ except ImportError:  # pragma: no cover - not available on Windows
     fcntl = None  # type: ignore[assignment]
 
 try:
+    import msvcrt
+except ImportError:  # pragma: no cover - not available on POSIX
+    msvcrt = None  # type: ignore[assignment]
+
+try:
     from flask import Flask, jsonify, request
     HAS_FLASK = True
 except ImportError:  # pragma: no cover - optional dependency in some environments
@@ -250,17 +255,33 @@ class HealthAutoExportIngestor:
 
     @contextlib.contextmanager
     def _acquire_process_merge_lock(self):
-        if fcntl is None:
-            yield
-            return
-
         self._parquet_merge_lock_file.parent.mkdir(parents=True, exist_ok=True)
         with self._parquet_merge_lock_file.open("a+", encoding="utf-8") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                return
+
+            if msvcrt is not None:
+                # Lock a single byte for cross-process serialization on Windows.
+                lock_file.seek(0)
+                if lock_file.read(1) == "":
+                    lock_file.seek(0)
+                    lock_file.write("\0")
+                    lock_file.flush()
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                try:
+                    yield
+                finally:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                return
+
+            yield
 
     @staticmethod
     def _dedupe_incoming_records_batch(records: list[dict[str, Any]]) -> list[dict[str, Any]]:

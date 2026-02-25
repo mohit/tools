@@ -710,6 +710,24 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
             self.assertTrue(lock_dir.exists())
             self.assertTrue((lock_dir / ".parquet_merge.lock").exists())
 
+    def test_acquire_process_merge_lock_uses_msvcrt_when_fcntl_missing(self):
+        mock_msvcrt = mock.Mock()
+        mock_msvcrt.LK_LOCK = 1
+        mock_msvcrt.LK_UNLCK = 2
+
+        with (
+            mock.patch.object(health_auto_export, "fcntl", None),
+            mock.patch.object(health_auto_export, "msvcrt", mock_msvcrt),
+        ):
+            with self.ingestor._acquire_process_merge_lock():
+                pass
+
+        self.assertEqual(mock_msvcrt.locking.call_count, 2)
+        lock_call = mock_msvcrt.locking.call_args_list[0]
+        unlock_call = mock_msvcrt.locking.call_args_list[1]
+        self.assertEqual(lock_call.args[1], mock_msvcrt.LK_LOCK)
+        self.assertEqual(unlock_call.args[1], mock_msvcrt.LK_UNLCK)
+
 
 @unittest.skipUnless(health_auto_export.HAS_FLASK, "flask not installed")
 class TestHealthAutoExportAPI(unittest.TestCase):
