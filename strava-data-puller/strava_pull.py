@@ -115,32 +115,47 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
     namespaced_service = "com.mohit.tools.strava-data-puller"
     legacy_service = "strava-data-puller"
 
-    # Lookup account-scoped entries only by default. Service-only lookups can
-    # return an arbitrary item when multiple secrets share the same service.
-    direct_account_lookups: list[tuple[str, str]] = [
+    # Lookup account-scoped entries first. Service-only lookups can return an
+    # arbitrary item when multiple secrets share the same service, so they are
+    # only attempted as an explicit final fallback.
+    account_scoped_lookups: list[tuple[str, str]] = [
         (namespaced_service, var_name),
         (legacy_service, var_name),
-    ]
-    reversed_account_lookups: list[tuple[str, str]] = [
         (var_name, namespaced_service),
         (var_name, legacy_service),
     ]
-    lookup_order: list[tuple[str, str | None]] = [
-        *direct_account_lookups,
-        *reversed_account_lookups,
-    ]
-    if allow_service_only:
-        service_only_lookups: list[tuple[str, None]] = [
-            # If we must fall back to service-only, prefer namespaced entries.
-            (namespaced_service, None),
-            (legacy_service, None),
-        ]
-        lookup_order.extend(service_only_lookups)
 
-    for service, account in lookup_order:
+    for service, account in account_scoped_lookups:
         cmd = ["security", "find-generic-password", "-w", "-s", service]
         if account is not None:
             cmd.extend(["-a", account])
+        try:
+            result = subprocess.run(
+                cmd,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except FileNotFoundError:
+            return None
+        except subprocess.TimeoutExpired:
+            continue
+        if result.returncode == 0:
+            secret = result.stdout.strip()
+            if secret:
+                return secret
+
+    if not allow_service_only:
+        return None
+
+    service_only_lookups: list[str] = [
+        # If we must fall back to service-only, prefer namespaced entries.
+        namespaced_service,
+        legacy_service,
+    ]
+    for service in service_only_lookups:
+        cmd = ["security", "find-generic-password", "-w", "-s", service]
         try:
             result = subprocess.run(
                 cmd,
