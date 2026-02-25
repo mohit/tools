@@ -3,7 +3,7 @@ import sys
 import types
 from pathlib import Path
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 
 def load_module():
@@ -97,7 +97,7 @@ class TestCredentials(TestCase):
         )
         mock_discover_env_files.return_value = [env_path]
         mock_keychain_secret.side_effect = (
-            lambda var_name: "keychain-refresh-token"
+            lambda var_name, allow_service_only=False: "keychain-refresh-token"
             if var_name == "STRAVA_REFRESH_TOKEN"
             else None
         )
@@ -113,6 +113,36 @@ class TestCredentials(TestCase):
         self.assertEqual(sources["STRAVA_CLIENT_ID"], "environment")
         self.assertEqual(sources["STRAVA_CLIENT_SECRET"], f"dotenv:{env_path}")
         self.assertEqual(sources["STRAVA_REFRESH_TOKEN"], "keychain")
+
+    @patch.object(strava_pull, "discover_env_files")
+    @patch.object(strava_pull, "load_keychain_secret")
+    @patch.dict("os.environ", {}, clear=True)
+    def test_resolve_keychain_lookup_disables_service_only_fallback(
+        self, mock_keychain_secret, mock_discover_env_files
+    ):
+        mock_discover_env_files.return_value = []
+        mock_keychain_secret.side_effect = [
+            "keychain-client-id",
+            "keychain-client-secret",
+            "keychain-refresh-token",
+        ]
+
+        values, sources, _ = strava_pull.resolve_strava_credentials()
+
+        self.assertEqual(values["STRAVA_CLIENT_ID"], "keychain-client-id")
+        self.assertEqual(values["STRAVA_CLIENT_SECRET"], "keychain-client-secret")
+        self.assertEqual(values["STRAVA_REFRESH_TOKEN"], "keychain-refresh-token")
+        self.assertEqual(sources["STRAVA_CLIENT_ID"], "keychain")
+        self.assertEqual(sources["STRAVA_CLIENT_SECRET"], "keychain")
+        self.assertEqual(sources["STRAVA_REFRESH_TOKEN"], "keychain")
+        self.assertEqual(
+            mock_keychain_secret.call_args_list,
+            [
+                call("STRAVA_CLIENT_ID", allow_service_only=False),
+                call("STRAVA_CLIENT_SECRET", allow_service_only=False),
+                call("STRAVA_REFRESH_TOKEN", allow_service_only=False),
+            ],
+        )
 
     @patch.object(strava_pull, "discover_env_files")
     @patch.object(strava_pull, "load_keychain_secret")
@@ -170,7 +200,7 @@ class TestCredentials(TestCase):
         )
         mock_discover_env_files.return_value = [env_dir, env_file]
         mock_keychain_secret.side_effect = (
-            lambda var_name: "keychain-refresh-token"
+            lambda var_name, allow_service_only=False: "keychain-refresh-token"
             if var_name == "STRAVA_REFRESH_TOKEN"
             else None
         )

@@ -188,7 +188,8 @@ def resolve_strava_credentials() -> tuple[dict[str, str], dict[str, str], list[P
     for var_name in REQUIRED_STRAVA_VARS:
         if var_name in values:
             continue
-        keychain_value = load_keychain_secret(var_name)
+        # Keep lookups account-scoped/reversed-only to avoid ambiguous service-only matches.
+        keychain_value = load_keychain_secret(var_name, allow_service_only=False)
         if keychain_value:
             values[var_name] = keychain_value
             sources[var_name] = "keychain"
