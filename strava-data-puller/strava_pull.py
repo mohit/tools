@@ -112,16 +112,15 @@ def write_credentials_env_file(path: Path, credentials: dict[str, str]) -> None:
 
 def load_keychain_secret(var_name: str) -> str | None:
     # macOS keychain fallback for unattended runs.
-    service_names = ("strava-data-puller", "com.mohit.tools.strava-data-puller")
-    # Always try both specific forms before broad service-only lookup.
-    # For service-only fallback, prefer the namespaced service because the
-    # legacy service may contain multiple accounts and return the wrong secret.
+    # Prefer the namespaced service before the legacy one for all lookup forms.
+    service_names = ("com.mohit.tools.strava-data-puller", "strava-data-puller")
+    # Always try specific account-based forms before broad service-only lookup.
+    # Service-only lookup can return an arbitrary account when multiple entries
+    # exist, so it must remain the final fallback.
     lookups: list[tuple[str, str | None]] = []
-    for service in service_names:
-        lookups.append((service, var_name))
-    for service in service_names:
-        lookups.append((var_name, service))
-    lookups.extend((service, None) for service in reversed(service_names))
+    lookups.extend((service, var_name) for service in service_names)
+    lookups.extend((var_name, service) for service in service_names)
+    lookups.extend((service, None) for service in service_names)
 
     for service, account in lookups:
         cmd = ["security", "find-generic-password", "-w", "-s", service]
