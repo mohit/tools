@@ -10,7 +10,7 @@ import threading
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 try:
     import duckdb
@@ -41,7 +41,11 @@ def _get_parquet_merge_lock(records_parquet: Path, workouts_parquet: Path) -> th
         workouts_parquet.expanduser().resolve(),
     )
     with _PARQUET_MERGE_LOCKS_GUARD:
-        return _PARQUET_MERGE_LOCKS.setdefault(lock_key, threading.Lock())
+        lock = _PARQUET_MERGE_LOCKS.get(lock_key)
+        if lock is None:
+            lock = threading.Lock()
+            _PARQUET_MERGE_LOCKS[lock_key] = lock
+        return lock
 
 
 def _parse_datetime(value: str | None) -> str | None:
@@ -262,25 +266,23 @@ class HealthAutoExportIngestor:
 
     @staticmethod
     def _dedupe_incoming_records_batch(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        deduped_by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
-        for row in records:
-            key = (
+        return HealthAutoExportIngestor._dedupe_incoming_batch(
+            records,
+            lambda row: (
                 row["type"],
                 row["sourceName"],
                 row["unit"],
                 row["value"],
                 row["startDate"],
                 row["endDate"],
-            )
-            if key not in deduped_by_key:
-                deduped_by_key[key] = row
-        return list(deduped_by_key.values())
+            ),
+        )
 
     @staticmethod
     def _dedupe_incoming_workouts_batch(workouts: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        deduped_by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
-        for row in workouts:
-            key = (
+        return HealthAutoExportIngestor._dedupe_incoming_batch(
+            workouts,
+            lambda row: (
                 row["workoutActivityType"],
                 row["sourceName"],
                 row["startDate"],
@@ -288,10 +290,23 @@ class HealthAutoExportIngestor:
                 row["duration"],
                 row["totalDistance"],
                 row["totalEnergyBurned"],
-            )
-            if key not in deduped_by_key:
-                deduped_by_key[key] = row
-        return list(deduped_by_key.values())
+            ),
+        )
+
+    @staticmethod
+    def _dedupe_incoming_batch(
+        rows: list[dict[str, Any]],
+        key_builder: Callable[[dict[str, Any]], tuple[Any, ...]],
+    ) -> list[dict[str, Any]]:
+        deduped_rows: list[dict[str, Any]] = []
+        seen_keys: set[tuple[Any, ...]] = set()
+        for row in rows:
+            key = key_builder(row)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            deduped_rows.append(row)
+        return deduped_rows
 
     def _write_records_parquet(self, con: duckdb.DuckDBPyConnection, records: list[dict[str, Any]]) -> None:
         con.execute(
