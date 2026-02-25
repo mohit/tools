@@ -483,6 +483,42 @@ class TestCredentials(TestCase):
         called_cmds = [call.args[0] for call in mock_run.call_args_list]
         self.assertNotIn(service_only, called_cmds)
 
+    @patch("subprocess.run")
+    def test_load_keychain_secret_never_uses_service_only_before_reversed_lookup(
+        self, mock_run
+    ):
+        reversed_match = [
+            "security",
+            "find-generic-password",
+            "-w",
+            "-s",
+            "STRAVA_CLIENT_SECRET",
+            "-a",
+            "com.mohit.tools.strava-data-puller",
+        ]
+        namespaced_service_only = [
+            "security",
+            "find-generic-password",
+            "-w",
+            "-s",
+            "com.mohit.tools.strava-data-puller",
+        ]
+
+        def fake_run(cmd, check, capture_output, text, timeout):
+            if cmd == reversed_match:
+                return types.SimpleNamespace(returncode=0, stdout="correct-client-secret\n")
+            if cmd == namespaced_service_only:
+                return types.SimpleNamespace(returncode=0, stdout="wrong-refresh-token\n")
+            return types.SimpleNamespace(returncode=44, stdout="")
+
+        mock_run.side_effect = fake_run
+
+        value = strava_pull.load_keychain_secret("STRAVA_CLIENT_SECRET")
+
+        self.assertEqual(value, "correct-client-secret")
+        called_cmds = [call.args[0] for call in mock_run.call_args_list]
+        self.assertNotIn(namespaced_service_only, called_cmds)
+
     @patch.object(strava_pull, "parse_args")
     @patch.object(strava_pull, "resolve_strava_credentials")
     @patch.object(strava_pull, "get_access_token")
