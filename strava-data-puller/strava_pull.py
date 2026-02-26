@@ -137,13 +137,22 @@ def keychain_lookup_candidates(
 
 def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str | None:
     # macOS keychain fallback for unattended runs.
-    candidates = keychain_lookup_candidates(var_name, allow_service_only)
-    # Enforce specific/reversed account lookups before service-only fallback.
-    ordered_candidates = [
-        *[candidate for candidate in candidates if candidate[1] is not None],
-        *[candidate for candidate in candidates if candidate[1] is None],
+    # Always run account-scoped (including reversed service/account) lookups first.
+    account_scoped_candidates = [
+        candidate
+        for candidate in keychain_lookup_candidates(var_name, allow_service_only=False)
+        if candidate[1] is not None
     ]
-    for service, account in ordered_candidates:
+    candidates = account_scoped_candidates
+    # Append service-only fallback entries only after all account-scoped attempts.
+    if allow_service_only:
+        service_only_candidates = [
+            candidate
+            for candidate in keychain_lookup_candidates(var_name, allow_service_only=True)
+            if candidate[1] is None
+        ]
+        candidates.extend(service_only_candidates)
+    for service, account in candidates:
         cmd = ["security", "find-generic-password", "-w", "-s", service]
         if account is not None:
             cmd.extend(["-a", account])
