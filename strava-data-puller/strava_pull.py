@@ -149,10 +149,21 @@ def keychain_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
     return candidates
 
 
+def keychain_lookup_sequence(
+    var_name: str, allow_service_only: bool = False
+) -> list[tuple[str, str | None]]:
+    candidates: list[tuple[str, str | None]] = []
+    candidates.extend(keychain_lookup_candidates(var_name))
+    if allow_service_only:
+        candidates.extend(keychain_service_only_candidates())
+    return candidates
+
+
 def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str | None:
     # macOS keychain fallback for unattended runs.
     # Always run account-scoped (including reversed service/account) lookups first.
-    # Service-only lookup is opt-in and runs in a second pass because it can be ambiguous.
+    # Service-only lookup is opt-in and always appended after strict candidates because it can
+    # be ambiguous and may return a credential for the wrong variable.
     def query_candidate(service: str, account: str | None) -> str | None:
         cmd = ["security", "find-generic-password", "-w", "-s", service]
         if account is not None:
@@ -175,18 +186,12 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    # First pass: account-scoped (normal + reversed) lookups only.
-    for service, account in keychain_lookup_candidates(var_name):
+    for service, account in keychain_lookup_sequence(
+        var_name, allow_service_only=allow_service_only
+    ):
         secret = query_candidate(service, account)
         if secret:
             return secret
-
-    # Second pass: service-only lookups, if explicitly enabled.
-    if allow_service_only:
-        for service, account in keychain_service_only_candidates():
-            secret = query_candidate(service, account)
-            if secret:
-                return secret
     return None
 
 
