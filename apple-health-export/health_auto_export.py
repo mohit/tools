@@ -470,7 +470,7 @@ class HealthAutoExportIngestor:
                     ROW_NUMBER() OVER (
                         PARTITION BY
                             {", ".join(self.RECORD_DEDUPE_KEY_FIELDS)}
-                        ORDER BY ingestedAt DESC
+                        ORDER BY ingestedAt DESC, rawFile DESC, ingestOrdinal DESC
                     ) AS row_num
                 FROM merged_records
             )
@@ -577,7 +577,7 @@ class HealthAutoExportIngestor:
                     ROW_NUMBER() OVER (
                         PARTITION BY
                             {", ".join(self.WORKOUT_DEDUPE_KEY_FIELDS)}
-                        ORDER BY ingestedAt DESC
+                        ORDER BY ingestedAt DESC, rawFile DESC, ingestOrdinal DESC
                     ) AS row_num
                 FROM merged_workouts
             )
