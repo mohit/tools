@@ -186,9 +186,15 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    for service, account in keychain_lookup_sequence(
-        var_name, allow_service_only=allow_service_only
-    ):
+    for service, account in keychain_lookup_candidates(var_name):
+        secret = query_candidate(service, account)
+        if secret:
+            return secret
+
+    if not allow_service_only:
+        return None
+
+    for service, account in keychain_service_only_candidates():
         secret = query_candidate(service, account)
         if secret:
             return secret
