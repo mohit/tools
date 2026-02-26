@@ -36,16 +36,16 @@ except ImportError:  # pragma: no cover - optional dependency in some environmen
 
 DEFAULT_RAW_DIR = Path.home() / "datalake.me" / "raw" / "apple-health" / "auto-export"
 DEFAULT_CURATED_DIR = Path.home() / "datalake.me" / "curated" / "apple-health"
-_PARQUET_MERGE_LOCKS: dict[Path, threading.Lock] = {}
+_PARQUET_MERGE_LOCKS: dict[Path, threading.RLock] = {}
 _PARQUET_MERGE_LOCKS_GUARD = threading.Lock()
 
 
-def _get_parquet_merge_lock(curated_dir: Path) -> threading.Lock:
+def _get_parquet_merge_lock(curated_dir: Path) -> threading.RLock:
     lock_key = curated_dir.expanduser().resolve()
     with _PARQUET_MERGE_LOCKS_GUARD:
         lock = _PARQUET_MERGE_LOCKS.get(lock_key)
         if lock is None:
-            lock = threading.Lock()
+            lock = threading.RLock()
             _PARQUET_MERGE_LOCKS[lock_key] = lock
         return lock
 
@@ -147,8 +147,7 @@ class HealthAutoExportIngestor:
         records = [self._normalize_record(item) for item in raw_records if isinstance(item, dict)]
         workouts = [self._normalize_workout(item) for item in raw_workouts if isinstance(item, dict)]
 
-        deduped_records = self._dedupe_incoming_records_batch(records)
-        deduped_workouts = self._dedupe_incoming_workouts_batch(workouts)
+        deduped_records, deduped_workouts = self._dedupe_normalized_batches(records, workouts)
 
         valid_records = [r for r in deduped_records if r["type"] and r["startDate"]]
         valid_workouts = [w for w in deduped_workouts if w["workoutActivityType"] and w["startDate"]]
@@ -315,6 +314,16 @@ class HealthAutoExportIngestor:
         return HealthAutoExportIngestor._dedupe_incoming_batch(
             workouts,
             lambda row: tuple(row.get(field) for field in HealthAutoExportIngestor.WORKOUT_DEDUPE_KEY_FIELDS),
+        )
+
+    @staticmethod
+    def _dedupe_normalized_batches(
+        records: list[dict[str, Any]],
+        workouts: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        return (
+            HealthAutoExportIngestor._dedupe_incoming_records_batch(records),
+            HealthAutoExportIngestor._dedupe_incoming_workouts_batch(workouts),
         )
 
     @staticmethod
