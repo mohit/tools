@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import collections
 import datetime as dt
 import json
 import os
@@ -120,8 +119,11 @@ def save_last_uts(value: int, state_file: Path = STATE_FILE) -> None:
 def load_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> dict[str, Any] | None:
     if not checkpoint_file.exists():
         return None
-    with checkpoint_file.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+    try:
+        with checkpoint_file.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 def save_checkpoint(
@@ -232,49 +234,38 @@ def merge_raw_monthly_jsonl(rows: list[dict[str, Any]], raw_root: Path) -> int:
 
     raw_root.mkdir(parents=True, exist_ok=True)
 
-    by_month: dict[Path, list[dict[str, Any]]] = collections.defaultdict(list)
+    by_month: dict[Path, list[dict[str, Any]]] = {}
     for row in rows:
-        by_month[month_file_for_uts(raw_root, int(row["uts"]))].append(_serialize_row(row))
+        month_file = month_file_for_uts(raw_root, int(row["uts"]))
+        if month_file not in by_month:
+            by_month[month_file] = []
+        by_month[month_file].append(_serialize_row(row))
 
     updated_files = 0
     for month_file, month_rows in by_month.items():
-        merged: dict[tuple[Any, Any, Any, Any], dict[str, Any]] = {}
-
-        if month_file.exists():
-            for existing in iter_jsonl(month_file):
-                existing_uts = extract_uts(existing)
-                if existing_uts is None:
-                    continue
-                existing_for_key = dict(existing)
-                existing_for_key["uts"] = existing_uts
-                existing_for_key["artist"] = _normalize_text(existing.get("artist"))
-                existing_for_key["track"] = _normalize_text(existing.get("track") or existing.get("name"))
-                existing_for_key["album"] = _normalize_text(existing.get("album"))
-                merged[row_key(existing_for_key)] = existing
-
-        for row in month_rows:
-            merged[row_key(row)] = row
-
-        sorted_rows = sorted(merged.values(), key=lambda r: int(extract_uts(r) or 0))
-        tmp_path = month_file.with_suffix(".jsonl.tmp")
-        with tmp_path.open("w", encoding="utf-8") as handle:
+        sorted_rows = sorted(month_rows, key=lambda r: int(extract_uts(r) or 0))
+        with month_file.open("a", encoding="utf-8") as handle:
             for row in sorted_rows:
                 handle.write(json.dumps(row, ensure_ascii=False))
                 handle.write("\n")
-        tmp_path.replace(month_file)
         updated_files += 1
 
     return updated_files
 
 
 def determine_from_uts(raw_root: Path, state_file: Path = STATE_FILE) -> int | None:
-    raw_last = load_last_uts_from_raw(raw_root)
     state_last = load_last_uts(state_file)
+    if state_last is not None:
+        return state_last + 1
 
-    candidates = [value for value in (raw_last, state_last) if value is not None]
-    if not candidates:
+    raw_last = load_last_uts_from_raw(raw_root)
+    if raw_last is None:
         return None
-    return max(candidates) + 1
+
+    # Missing/corrupt state with existing raw data is ambiguous for restarts.
+    # Starting from max(raw)+1 can skip unfinished historical backfills, so
+    # default to a safe full backfill.
+    return None
 
 
 def request_recent_tracks(

@@ -36,6 +36,13 @@ def _read_jsonl(path: Path) -> list[dict]:
         return [json.loads(line) for line in handle if line.strip()]
 
 
+def test_load_checkpoint_returns_none_for_corrupt_json(tmp_path: Path) -> None:
+    checkpoint_file = tmp_path / "lastfm_ingest_checkpoint.json"
+    checkpoint_file.write_text("{bad json", encoding="utf-8")
+
+    assert lastfm_ingest.load_checkpoint(checkpoint_file=checkpoint_file) is None
+
+
 def test_dedupe_rows_removes_duplicates_across_pages() -> None:
     seen_keys: set[tuple[object, object, object, object]] = set()
 
@@ -442,14 +449,14 @@ def test_append_parquet_partitions_dedupes_across_pages_without_shared_seen_keys
     assert total_rows == 2
 
 
-def test_determine_from_uts_prefers_latest_raw_over_state(tmp_path: Path) -> None:
+def test_determine_from_uts_prefers_state_over_raw(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
     _write_jsonl(raw_root / "scrobbles_2026-01.jsonl", [{"uts": 1000}])
     _write_jsonl(raw_root / "scrobbles_2026-02.jsonl", [{"date": {"uts": "1005"}}])
     state_file = tmp_path / "lastfm_last_uts.txt"
     state_file.write_text("1003")
 
-    assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) == 1006
+    assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) == 1004
 
 
 def test_determine_from_uts_falls_back_to_state_when_raw_missing(tmp_path: Path) -> None:
@@ -458,6 +465,14 @@ def test_determine_from_uts_falls_back_to_state_when_raw_missing(tmp_path: Path)
     state_file.write_text("2000")
 
     assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) == 2001
+
+
+def test_determine_from_uts_returns_none_when_state_missing_and_raw_exists(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    _write_jsonl(raw_root / "scrobbles_2026-02.jsonl", [{"uts": 2010}])
+    state_file = tmp_path / "lastfm_last_uts.txt"
+
+    assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) is None
 
 
 def test_merge_raw_monthly_jsonl_only_updates_impacted_month(tmp_path: Path) -> None:
@@ -487,6 +502,41 @@ def test_merge_raw_monthly_jsonl_only_updates_impacted_month(tmp_path: Path) -> 
     assert jan_file.read_text(encoding="utf-8") == jan_before
     feb_rows = _read_jsonl(feb_file)
     assert len(feb_rows) == 2
+
+
+def test_merge_raw_monthly_jsonl_is_append_only(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    feb_file = raw_root / "scrobbles_2026-02.jsonl"
+    _write_jsonl(
+        feb_file,
+        [
+            {"uts": 1738454400, "artist": "B", "track": "Feb", "album": None, "mbid_track": "old"},
+        ],
+    )
+    before = feb_file.read_text(encoding="utf-8")
+
+    updated = lastfm_ingest.merge_raw_monthly_jsonl(
+        rows=[
+            {
+                "uts": 1738454400,
+                "played_at_utc": lastfm_ingest.pd.to_datetime(1738454400, unit="s", utc=True),
+                "artist": "B",
+                "track": "Feb",
+                "album": None,
+                "mbid_track": "new",
+                "source": "lastfm",
+            }
+        ],
+        raw_root=raw_root,
+    )
+
+    assert updated == 1
+    after = feb_file.read_text(encoding="utf-8")
+    assert after.startswith(before)
+    feb_rows = _read_jsonl(feb_file)
+    assert len(feb_rows) == 2
+    assert feb_rows[0]["mbid_track"] == "old"
+    assert feb_rows[1]["mbid_track"] == "new"
 
 
 def test_resolve_user_prefers_explicit_then_env_then_default(monkeypatch) -> None:
