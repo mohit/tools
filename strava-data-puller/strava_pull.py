@@ -136,12 +136,9 @@ def keychain_service_only_candidates() -> list[tuple[str, None]]:
 
 def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str | None:
     # macOS keychain fallback for unattended runs.
-    # Always run account-scoped (including reversed service/account) lookups first,
-    # then append service-only fallback entries when enabled.
-    candidates: list[tuple[str, str | None]] = list(keychain_lookup_candidates(var_name))
-    if allow_service_only:
-        candidates.extend(keychain_service_only_candidates())
-    for service, account in candidates:
+    # Always run account-scoped (including reversed service/account) lookups first.
+    # Service-only lookup is opt-in and runs in a second pass because it can be ambiguous.
+    def query_candidate(service: str, account: str | None) -> str | None:
         cmd = ["security", "find-generic-password", "-w", "-s", service]
         if account is not None:
             cmd.extend(["-a", account])
@@ -156,9 +153,21 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
         except FileNotFoundError:
             return None
         except subprocess.TimeoutExpired:
-            continue
+            return None
         if result.returncode == 0:
             secret = result.stdout.strip()
+            if secret:
+                return secret
+        return None
+
+    for service, account in keychain_lookup_candidates(var_name):
+        secret = query_candidate(service, account)
+        if secret:
+            return secret
+
+    if allow_service_only:
+        for service, account in keychain_service_only_candidates():
+            secret = query_candidate(service, account)
             if secret:
                 return secret
     return None
