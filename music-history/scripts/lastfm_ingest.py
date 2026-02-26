@@ -43,10 +43,11 @@ def parse_since(value: str) -> int:
         raise argparse.ArgumentTypeError(
             "Invalid --since value. Use YYYY-MM-DD or ISO-8601 UTC like 2026-01-01T00:00:00Z."
         ) from exc
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=dt.UTC)
-    else:
-        parsed = parsed.astimezone(dt.UTC)
+    parsed = (
+        parsed.replace(tzinfo=dt.UTC)
+        if parsed.tzinfo is None
+        else parsed.astimezone(dt.UTC)
+    )
     return int(parsed.timestamp())
 
 
