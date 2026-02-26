@@ -110,7 +110,7 @@ def write_credentials_env_file(path: Path, credentials: dict[str, str]) -> None:
     path.chmod(0o600)
 
 
-def keychain_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
+def keychain_account_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
     namespaced_service = "com.mohit.tools.strava-data-puller"
     legacy_service = "strava-data-puller"
 
@@ -118,6 +118,14 @@ def keychain_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
         # Account-scoped lookups first.
         (namespaced_service, var_name),
         (legacy_service, var_name),
+    ]
+
+
+def keychain_reversed_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
+    namespaced_service = "com.mohit.tools.strava-data-puller"
+    legacy_service = "strava-data-puller"
+
+    return [
         # Reversed service/account layouts next.
         (var_name, namespaced_service),
         (var_name, legacy_service),
@@ -160,7 +168,13 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    for service, account in keychain_lookup_candidates(var_name):
+    # Keep phases separate so service-only never runs ahead of reversed lookups.
+    for service, account in keychain_account_lookup_candidates(var_name):
+        secret = query_candidate(service, account)
+        if secret:
+            return secret
+
+    for service, account in keychain_reversed_lookup_candidates(var_name):
         secret = query_candidate(service, account)
         if secret:
             return secret
