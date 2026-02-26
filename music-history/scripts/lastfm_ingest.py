@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import collections
 import datetime as dt
 import json
 import os
@@ -30,26 +31,45 @@ STATE_FILE = STATE_DIR / "lastfm_last_uts.txt"
 CHECKPOINT_FILE = STATE_DIR / "lastfm_ingest_checkpoint.json"
 
 
-def parse_date(value: str) -> int:
+def parse_since(value: str) -> int:
     try:
-        parsed = dt.datetime.strptime(value, "%Y-%m-%d")
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
+        parsed = dt.datetime.fromisoformat(value)
     except ValueError as exc:
-        raise argparse.ArgumentTypeError("Dates must be YYYY-MM-DD") from exc
-    return int(parsed.replace(tzinfo=dt.UTC).timestamp())
+        raise argparse.ArgumentTypeError(
+            "Invalid --since value. Use YYYY-MM-DD or ISO-8601 UTC like 2026-01-01T00:00:00Z."
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.UTC)
+    else:
+        parsed = parsed.astimezone(dt.UTC)
+    return int(parsed.timestamp())
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ingest Last.fm scrobbles into raw JSONL and parquet")
     parser.add_argument(
         "--from",
+        "--from-uts",
         dest="from_uts",
         type=int,
         help="Unix timestamp (UTC seconds) to fetch from",
     )
     parser.add_argument(
         "--since",
-        type=parse_date,
-        help="Fetch from this UTC date (YYYY-MM-DD)",
+        type=parse_since,
+        help="Fetch from this UTC timestamp (YYYY-MM-DD or ISO-8601)",
+    )
+    parser.add_argument(
+        "--full-refetch",
+        action="store_true",
+        help="Ignore state/raw history and fetch full Last.fm history",
+    )
+    parser.add_argument(
+        "--user",
+        default=None,
+        help="Last.fm username (overrides LASTFM_USER)",
     )
     parser.add_argument(
         "--no-resume",
@@ -72,13 +92,24 @@ def load_env(var_name: str) -> str:
     return value
 
 
-def load_last_uts(state_file: Path = STATE_FILE) -> int:
+def resolve_user(explicit_user: str | None = None, default_user: str | None = None) -> str:
+    if explicit_user:
+        return explicit_user
+    from_env = os.getenv("LASTFM_USER")
+    if from_env:
+        return from_env
+    if default_user:
+        return default_user
+    raise SystemExit("Missing Last.fm user. Set LASTFM_USER or pass --user.")
+
+
+def load_last_uts(state_file: Path = STATE_FILE) -> int | None:
     if state_file.exists():
         try:
             return int(state_file.read_text().strip())
         except ValueError:
             pass
-    return int(time.time()) - 30 * 24 * 3600
+    return None
 
 
 def save_last_uts(value: int, state_file: Path = STATE_FILE) -> None:
@@ -94,7 +125,7 @@ def load_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> dict[str, Any] |
 
 
 def save_checkpoint(
-    from_uts: int,
+    from_uts: int | None,
     next_page: int,
     run_id: int,
     max_uts_seen: int | None,
@@ -117,10 +148,139 @@ def clear_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> None:
         checkpoint_file.unlink()
 
 
+def extract_uts(row: dict[str, Any]) -> int | None:
+    uts = row.get("uts")
+    if uts is not None:
+        try:
+            return int(uts)
+        except (TypeError, ValueError):
+            return None
+
+    date = row.get("date") or {}
+    nested_uts = date.get("uts")
+    if nested_uts is not None:
+        try:
+            return int(nested_uts)
+        except (TypeError, ValueError):
+            return None
+
+    return None
+
+
+def iter_jsonl(path: Path):
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+
+def load_last_uts_from_raw(raw_root: Path) -> int | None:
+    if not raw_root.exists():
+        return None
+
+    latest: int | None = None
+    for path in raw_root.glob("scrobbles_*.jsonl"):
+        for row in iter_jsonl(path):
+            uts = extract_uts(row)
+            if uts is None:
+                continue
+            if latest is None or uts > latest:
+                latest = uts
+    return latest
+
+
+def _normalize_text(value: Any) -> str:
+    if isinstance(value, dict):
+        value = value.get("#text")
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, sort_keys=True, ensure_ascii=False)
+    return str(value)
+
+
+def row_key(row: dict[str, Any]) -> tuple[Any, Any, Any, Any]:
+    return (
+        int(row["uts"]),
+        _normalize_text(row.get("artist")),
+        _normalize_text(row.get("track") or row.get("name")),
+        _normalize_text(row.get("album")),
+    )
+
+
+def month_file_for_uts(raw_root: Path, uts: int) -> Path:
+    parsed = pd.to_datetime(uts, unit="s", utc=True)
+    return raw_root / f"scrobbles_{parsed.year:04d}-{parsed.month:02d}.jsonl"
+
+
+def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
+    out = dict(row)
+    played_at = out.get("played_at_utc")
+    if isinstance(played_at, pd.Timestamp):
+        out["played_at_utc"] = played_at.isoformat()
+    return out
+
+
+def merge_raw_monthly_jsonl(rows: list[dict[str, Any]], raw_root: Path) -> int:
+    if not rows:
+        return 0
+
+    raw_root.mkdir(parents=True, exist_ok=True)
+
+    by_month: dict[Path, list[dict[str, Any]]] = collections.defaultdict(list)
+    for row in rows:
+        by_month[month_file_for_uts(raw_root, int(row["uts"]))].append(_serialize_row(row))
+
+    updated_files = 0
+    for month_file, month_rows in by_month.items():
+        merged: dict[tuple[Any, Any, Any, Any], dict[str, Any]] = {}
+
+        if month_file.exists():
+            for existing in iter_jsonl(month_file):
+                existing_uts = extract_uts(existing)
+                if existing_uts is None:
+                    continue
+                existing_for_key = dict(existing)
+                existing_for_key["uts"] = existing_uts
+                existing_for_key["artist"] = _normalize_text(existing.get("artist"))
+                existing_for_key["track"] = _normalize_text(existing.get("track") or existing.get("name"))
+                existing_for_key["album"] = _normalize_text(existing.get("album"))
+                merged[row_key(existing_for_key)] = existing
+
+        for row in month_rows:
+            merged[row_key(row)] = row
+
+        sorted_rows = sorted(merged.values(), key=lambda r: int(extract_uts(r) or 0))
+        tmp_path = month_file.with_suffix(".jsonl.tmp")
+        with tmp_path.open("w", encoding="utf-8") as handle:
+            for row in sorted_rows:
+                handle.write(json.dumps(row, ensure_ascii=False))
+                handle.write("\n")
+        tmp_path.replace(month_file)
+        updated_files += 1
+
+    return updated_files
+
+
+def determine_from_uts(raw_root: Path, state_file: Path = STATE_FILE) -> int | None:
+    raw_last = load_last_uts_from_raw(raw_root)
+    state_last = load_last_uts(state_file)
+
+    candidates = [value for value in (raw_last, state_last) if value is not None]
+    if not candidates:
+        return None
+    return max(candidates) + 1
+
+
 def request_recent_tracks(
     user: str,
     api_key: str,
-    from_uts: int,
+    from_uts: int | None,
     page: int,
     max_retries: int = MAX_RETRIES,
     base_delay_seconds: int = BASE_DELAY_SECONDS,
@@ -130,10 +290,11 @@ def request_recent_tracks(
         "user": user,
         "api_key": api_key,
         "format": "json",
-        "from": from_uts,
         "limit": 200,
         "page": page,
     }
+    if from_uts is not None:
+        params["from"] = from_uts
 
     last_error: Exception | None = None
     for attempt in range(max_retries):
@@ -192,16 +353,6 @@ def normalize(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return rows
-
-
-def write_raw_page(raw_root: Path, run_id: int, page: int, rows: list[dict[str, Any]]) -> Path:
-    raw_root.mkdir(parents=True, exist_ok=True)
-    raw_path = raw_root / f"recent_{run_id}_page_{page:04d}.jsonl"
-    with raw_path.open("w", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row, default=str, sort_keys=True))
-            handle.write("\n")
-    return raw_path
 
 
 def scrobble_key(row: dict[str, Any]) -> tuple[Any, Any, Any, Any]:
@@ -281,10 +432,13 @@ def append_parquet_partitions(
 def resolve_start(
     args: argparse.Namespace,
     checkpoint: dict[str, Any] | None,
-    fallback_from_uts: int,
-) -> tuple[int, int, int, int | None]:
+    fallback_from_uts: int | None,
+) -> tuple[int | None, int, int, int | None]:
     if args.from_uts is not None and args.since is not None:
-        raise SystemExit("Use only one of --from or --since.")
+        raise SystemExit("Use only one of --from/--from-uts or --since.")
+
+    if args.full_refetch:
+        return None, 1, int(time.time()), None
 
     explicit_from = args.from_uts if args.from_uts is not None else args.since
     if explicit_from is not None:
@@ -293,7 +447,7 @@ def resolve_start(
     if checkpoint and not args.no_resume:
         try:
             return (
-                int(checkpoint["from_uts"]),
+                int(checkpoint["from_uts"]) if checkpoint.get("from_uts") is not None else None,
                 int(checkpoint.get("next_page", 1)),
                 int(checkpoint.get("run_id", int(time.time()))),
                 checkpoint.get("max_uts_seen"),
@@ -306,22 +460,23 @@ def resolve_start(
 
 def main() -> None:
     args = parse_args()
-    user = load_env("LASTFM_USER")
+    user = resolve_user(explicit_user=args.user, default_user=os.getenv("LASTFM_USER_DEFAULT"))
     api_key = load_env("LASTFM_API_KEY")
     raw_root = Path(os.getenv("DATALAKE_RAW_ROOT", str(DEFAULT_RAW_ROOT))) / "lastfm"
     curated_root = Path(os.getenv("DATALAKE_CURATED_ROOT", str(DEFAULT_CURATED_ROOT))) / "lastfm" / "scrobbles"
 
-    state_from_uts = load_last_uts()
+    state_from_uts = determine_from_uts(raw_root=raw_root)
     checkpoint = None if args.no_resume else load_checkpoint()
     from_uts, page, run_id, max_uts_seen = resolve_start(args, checkpoint, state_from_uts)
     seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
     print(
-        f"Starting Last.fm ingest: from_uts={from_uts}, start_page={page}, "
+        f"Starting Last.fm ingest: user={user}, from_uts={from_uts}, start_page={page}, "
         f"run_id={run_id}, resume={'yes' if checkpoint and not args.no_resume else 'no'}"
     )
 
     pages_processed = 0
     rows_written = 0
+    raw_files_updated = 0
 
     while True:
         payload = request_recent_tracks(user=user, api_key=api_key, from_uts=from_uts, page=page)
@@ -334,7 +489,7 @@ def main() -> None:
             break
 
         page_rows = rows
-        write_raw_page(raw_root=raw_root, run_id=run_id, page=page, rows=page_rows)
+        raw_files_updated += merge_raw_monthly_jsonl(rows=page_rows, raw_root=raw_root)
         page_rows_written = append_parquet_partitions(
             curated_root=curated_root,
             run_id=run_id,
@@ -378,7 +533,7 @@ def main() -> None:
     save_last_uts(max_uts_seen)
     clear_checkpoint()
     print(
-        f"Ingest complete: pages={pages_processed}, parquet_rows={rows_written}, "
+        f"Ingest complete: pages={pages_processed}, parquet_rows={rows_written}, raw_month_files={raw_files_updated}, "
         f"last_uts={max_uts_seen}"
     )
 

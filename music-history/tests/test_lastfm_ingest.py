@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pyarrow as pa
@@ -20,6 +21,19 @@ def _row(uts: int, artist: str, track: str, album: str | None) -> dict[str, obje
         "track": track,
         "album": album,
     }
+
+
+def _write_jsonl(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row))
+            handle.write("\n")
+
+
+def _read_jsonl(path: Path) -> list[dict]:
+    with path.open("r", encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
 
 
 def test_dedupe_rows_removes_duplicates_across_pages() -> None:
@@ -426,3 +440,70 @@ def test_append_parquet_partitions_dedupes_across_pages_without_shared_seen_keys
     files = sorted(curated_root.rglob(f"scrobbles_{run_id}_p*.parquet"))
     total_rows = sum(pq.read_table(path).num_rows for path in files)
     assert total_rows == 2
+
+
+def test_determine_from_uts_prefers_latest_raw_over_state(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    _write_jsonl(raw_root / "scrobbles_2026-01.jsonl", [{"uts": 1000}])
+    _write_jsonl(raw_root / "scrobbles_2026-02.jsonl", [{"date": {"uts": "1005"}}])
+    state_file = tmp_path / "lastfm_last_uts.txt"
+    state_file.write_text("1003")
+
+    assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) == 1006
+
+
+def test_determine_from_uts_falls_back_to_state_when_raw_missing(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    state_file = tmp_path / "lastfm_last_uts.txt"
+    state_file.write_text("2000")
+
+    assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) == 2001
+
+
+def test_merge_raw_monthly_jsonl_only_updates_impacted_month(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    jan_file = raw_root / "scrobbles_2026-01.jsonl"
+    feb_file = raw_root / "scrobbles_2026-02.jsonl"
+    _write_jsonl(jan_file, [{"uts": 1735776000, "artist": "A", "track": "Jan", "album": None}])
+    _write_jsonl(feb_file, [{"uts": 1738454400, "artist": "B", "track": "Feb", "album": None}])
+
+    jan_before = jan_file.read_text(encoding="utf-8")
+    updated = lastfm_ingest.merge_raw_monthly_jsonl(
+        rows=[
+            {
+                "uts": 1738454401,
+                "played_at_utc": lastfm_ingest.pd.to_datetime(1738454401, unit="s", utc=True),
+                "artist": "C",
+                "track": "Feb New",
+                "album": None,
+                "mbid_track": None,
+                "source": "lastfm",
+            }
+        ],
+        raw_root=raw_root,
+    )
+
+    assert updated == 1
+    assert jan_file.read_text(encoding="utf-8") == jan_before
+    feb_rows = _read_jsonl(feb_file)
+    assert len(feb_rows) == 2
+
+
+def test_resolve_user_prefers_explicit_then_env_then_default(monkeypatch) -> None:
+    monkeypatch.delenv("LASTFM_USER", raising=False)
+    assert lastfm_ingest.resolve_user(explicit_user="explicit", default_user="fallback") == "explicit"
+
+    monkeypatch.setenv("LASTFM_USER", "from-env")
+    assert lastfm_ingest.resolve_user(explicit_user=None, default_user="fallback") == "from-env"
+
+    monkeypatch.delenv("LASTFM_USER", raising=False)
+    assert lastfm_ingest.resolve_user(explicit_user=None, default_user="fallback") == "fallback"
+
+
+def test_resolve_user_errors_when_no_source(monkeypatch) -> None:
+    monkeypatch.delenv("LASTFM_USER", raising=False)
+    try:
+        lastfm_ingest.resolve_user(explicit_user=None, default_user=None)
+        assert False, "Expected SystemExit when user is unavailable"
+    except SystemExit as exc:
+        assert "Missing Last.fm user" in str(exc)
