@@ -10,7 +10,6 @@ from pathlib import Path
 from unittest import mock
 
 import duckdb
-
 import health_auto_export
 
 
