@@ -307,14 +307,14 @@ class HealthAutoExportIngestor:
     def _dedupe_incoming_records_batch(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return HealthAutoExportIngestor._dedupe_incoming_batch(
             records,
-            lambda row: tuple(row[field] for field in HealthAutoExportIngestor.RECORD_DEDUPE_KEY_FIELDS),
+            lambda row: tuple(row.get(field) for field in HealthAutoExportIngestor.RECORD_DEDUPE_KEY_FIELDS),
         )
 
     @staticmethod
     def _dedupe_incoming_workouts_batch(workouts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return HealthAutoExportIngestor._dedupe_incoming_batch(
             workouts,
-            lambda row: tuple(row[field] for field in HealthAutoExportIngestor.WORKOUT_DEDUPE_KEY_FIELDS),
+            lambda row: tuple(row.get(field) for field in HealthAutoExportIngestor.WORKOUT_DEDUPE_KEY_FIELDS),
         )
 
     @staticmethod

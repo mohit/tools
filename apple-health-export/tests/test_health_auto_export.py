@@ -337,6 +337,18 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(deduped_records[0]["metadata_json"], records[0]["metadata_json"])
         self.assertEqual(deduped_workouts[0]["metadata_json"], workouts[0]["metadata_json"])
 
+    def test_dedupe_incoming_batch_handles_missing_key_fields(self):
+        record_a = {"type": "HKQuantityTypeIdentifierStepCount", "sourceName": "iPhone"}
+        record_b = {"type": "HKQuantityTypeIdentifierStepCount", "sourceName": "iPhone"}
+        workout_a = {"workoutActivityType": "HKWorkoutActivityTypeWalking", "sourceName": "Apple Watch"}
+        workout_b = {"workoutActivityType": "HKWorkoutActivityTypeWalking", "sourceName": "Apple Watch"}
+
+        deduped_records = self.ingestor._dedupe_incoming_records_batch([record_a, record_b])
+        deduped_workouts = self.ingestor._dedupe_incoming_workouts_batch([workout_a, workout_b])
+
+        self.assertEqual(len(deduped_records), 1)
+        self.assertEqual(len(deduped_workouts), 1)
+
     def test_ingest_payload_uses_parquet_merge_lock(self):
         payload = self.sample_payload()
         lock = _CountingLock()
