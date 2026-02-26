@@ -19,7 +19,9 @@ API = "https://ws.audioscrobbler.com/2.0/"
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 MAX_RETRIES = 5
 BASE_DELAY_SECONDS = 5
-RAW_PAGE_FILE_PATTERN = re.compile(r"^scrobbles_run-(?P<run_id>\d+)_from-(?P<from_uts>full|\d+)_p(?P<page>\d{4})\.jsonl$")
+RAW_PAGE_FILE_PATTERN = re.compile(
+    r"^scrobbles_run-(?P<run_id>\d+)_from-(?P<from_uts>full|\d+)_p(?P<page>\d{4})(?:_a(?P<attempt>\d{4}))?\.jsonl$"
+)
 
 DEFAULT_RAW_ROOT = Path(
     os.environ.get("DATALAKE_RAW_ROOT", str(Path.home() / "datalake.me/raw"))
@@ -225,9 +227,27 @@ def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _from_uts_token(from_uts: int | None) -> str:
+    return "full" if from_uts is None else str(int(from_uts))
+
+
 def raw_page_file_for_run(raw_root: Path, run_id: int, from_uts: int | None, page: int) -> Path:
     from_token = "full" if from_uts is None else str(int(from_uts))
     return raw_root / f"scrobbles_run-{run_id}_from-{from_token}_p{page:04d}.jsonl"
+
+
+def next_raw_page_file_for_run(raw_root: Path, run_id: int, from_uts: int | None, page: int) -> Path:
+    from_token = _from_uts_token(from_uts)
+    base = raw_root / f"scrobbles_run-{run_id}_from-{from_token}_p{page:04d}.jsonl"
+    if not base.exists():
+        return base
+
+    attempt = 1
+    while True:
+        candidate = raw_root / f"scrobbles_run-{run_id}_from-{from_token}_p{page:04d}_a{attempt:04d}.jsonl"
+        if not candidate.exists():
+            return candidate
+        attempt += 1
 
 
 def append_raw_page_jsonl(
@@ -241,10 +261,10 @@ def append_raw_page_jsonl(
         return 0
 
     raw_root.mkdir(parents=True, exist_ok=True)
-    raw_page_file = raw_page_file_for_run(raw_root=raw_root, run_id=run_id, from_uts=from_uts, page=page)
+    raw_page_file = next_raw_page_file_for_run(raw_root=raw_root, run_id=run_id, from_uts=from_uts, page=page)
 
     sorted_rows = sorted(rows, key=lambda row: int(row["uts"]))
-    with raw_page_file.open("a", encoding="utf-8") as handle:
+    with raw_page_file.open("x", encoding="utf-8") as handle:
         for row in sorted_rows:
             handle.write(json.dumps(_serialize_row(row), ensure_ascii=False))
             handle.write("\n")
@@ -259,39 +279,39 @@ def _state_next_from_uts(state_file: Path) -> int | None:
     return state_last + 1
 
 
-def latest_raw_run_from_uts(raw_root: Path) -> tuple[int | None, float] | None:
+def _list_raw_run_page_files(raw_root: Path) -> list[tuple[int | None, float]]:
     if not raw_root.exists():
-        return None
+        return []
 
-    latest_path: Path | None = None
-    latest_mtime: float | None = None
+    run_files: list[tuple[int | None, float]] = []
     for path in raw_root.glob("scrobbles_run-*_from-*_p*.jsonl"):
         match = RAW_PAGE_FILE_PATTERN.match(path.name)
         if not match:
             continue
-        path_mtime = path.stat().st_mtime
-        if latest_mtime is None or path_mtime > latest_mtime:
-            latest_mtime = path_mtime
-            latest_path = path
+        from_token = match.group("from_uts")
+        from_uts = None if from_token == "full" else int(from_token)
+        run_files.append((from_uts, path.stat().st_mtime))
 
-    if latest_path is None or latest_mtime is None:
-        return None
+    return run_files
 
-    match = RAW_PAGE_FILE_PATTERN.match(latest_path.name)
-    if not match:
+
+def _safe_restart_from_uts(from_uts_values: list[int | None]) -> int | None:
+    if not from_uts_values:
         return None
-    from_token = match.group("from_uts")
-    from_uts = None if from_token == "full" else int(from_token)
-    return from_uts, latest_mtime
+    if any(value is None for value in from_uts_values):
+        return None
+    return min(int(value) for value in from_uts_values if value is not None)
 
 
 def determine_from_uts(raw_root: Path, state_file: Path = STATE_FILE) -> int | None:
     state_next = _state_next_from_uts(state_file=state_file)
-    latest_raw_run = latest_raw_run_from_uts(raw_root=raw_root)
+    raw_run_files = _list_raw_run_page_files(raw_root=raw_root)
 
     if state_next is None:
-        if latest_raw_run is not None:
-            return latest_raw_run[0]
+        run_from_uts = [from_uts for from_uts, _mtime in raw_run_files]
+        safe_run_restart = _safe_restart_from_uts(run_from_uts)
+        if safe_run_restart is not None or run_from_uts:
+            return safe_run_restart
 
         raw_last = load_last_uts_from_raw(raw_root)
         if raw_last is None:
@@ -302,21 +322,22 @@ def determine_from_uts(raw_root: Path, state_file: Path = STATE_FILE) -> int | N
         # default to a safe full backfill.
         return None
 
-    if latest_raw_run is None:
+    if not raw_run_files:
         return state_next
 
-    latest_raw_from_uts, latest_raw_mtime = latest_raw_run
     try:
         state_mtime = state_file.stat().st_mtime
     except OSError:
         state_mtime = 0.0
 
-    # If raw page dumps are newer than state, the most recent run likely did not
-    # complete and update state. Restart from that run's original lower bound.
-    if latest_raw_mtime > state_mtime:
-        if latest_raw_from_uts is None:
+    # If any raw page dumps are newer than state, at least one run likely did not
+    # complete and update state. Restart from the safest lower bound across those runs.
+    newer_run_starts = [from_uts for from_uts, mtime in raw_run_files if mtime > state_mtime]
+    if newer_run_starts:
+        safe_restart = _safe_restart_from_uts(newer_run_starts)
+        if safe_restart is None:
             return None
-        return min(state_next, latest_raw_from_uts)
+        return min(state_next, safe_restart)
 
     return state_next
 

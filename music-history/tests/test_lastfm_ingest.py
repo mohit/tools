@@ -549,11 +549,17 @@ def test_append_raw_page_jsonl_is_append_only_for_same_page_file(tmp_path: Path)
     assert updated_1 == 1
     assert updated_2 == 1
     after = raw_file.read_text(encoding="utf-8")
-    assert after.startswith(before)
-    rows = _read_jsonl(raw_file)
-    assert len(rows) == 2
-    assert rows[0]["mbid_track"] == "old"
-    assert rows[1]["mbid_track"] == "new"
+    assert after == before
+
+    files = sorted(raw_root.glob("scrobbles_run-12345_from-1735689600_p0002*.jsonl"))
+    assert len(files) == 2
+
+    first_rows = _read_jsonl(files[0])
+    second_rows = _read_jsonl(files[1])
+    assert len(first_rows) == 1
+    assert len(second_rows) == 1
+    assert first_rows[0]["mbid_track"] == "old"
+    assert second_rows[0]["mbid_track"] == "new"
 
 
 def test_determine_from_uts_prefers_latest_raw_run_start_when_raw_newer_than_state(tmp_path: Path) -> None:
@@ -567,6 +573,31 @@ def test_determine_from_uts_prefers_latest_raw_run_start_when_raw_newer_than_sta
     os.utime(raw_file, (state_mtime + 10, state_mtime + 10))
 
     assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) == 1000
+
+
+def test_determine_from_uts_uses_safest_lower_bound_across_newer_runs(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    state_file = tmp_path / "lastfm_last_uts.txt"
+    state_file.write_text("2500")
+    state_mtime = state_file.stat().st_mtime
+
+    higher_start = raw_root / "scrobbles_run-777_from-2200_p0001.jsonl"
+    lower_start = raw_root / "scrobbles_run-778_from-1000_p0001.jsonl"
+    _write_jsonl(higher_start, [{"uts": 2200}])
+    _write_jsonl(lower_start, [{"uts": 1000}])
+    os.utime(higher_start, (state_mtime + 5, state_mtime + 5))
+    os.utime(lower_start, (state_mtime + 10, state_mtime + 10))
+
+    assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) == 1000
+
+
+def test_determine_from_uts_avoids_skipping_interrupted_full_run_without_state(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    _write_jsonl(raw_root / "scrobbles_run-100_from-5000_p0001.jsonl", [{"uts": 5000}])
+    _write_jsonl(raw_root / "scrobbles_run-101_from-full_p0001.jsonl", [{"uts": 1}])
+    state_file = tmp_path / "lastfm_last_uts.txt"
+
+    assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) is None
 
 
 def test_resolve_user_prefers_explicit_then_env_then_default(monkeypatch) -> None:
