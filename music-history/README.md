@@ -35,9 +35,10 @@ uv sync
 python scripts/lastfm_ingest.py
 ```
 
-Writes month-partitioned JSONL files:
+Writes immutable append-only per-page raw dumps:
 ```
-$DATALAKE_RAW_ROOT/lastfm/scrobbles/year=2026/month=02/scrobbles.jsonl
+$DATALAKE_RAW_ROOT/lastfm/scrobbles_run-1739680000_from-1735689600_p0001.jsonl
+$DATALAKE_RAW_ROOT/lastfm/scrobbles_run-1739680000_from-1735689600_p0002.jsonl
 ```
 
 Incremental by default — uses the saved state timestamp to fetch only newer scrobbles. If state is missing/corrupt, it falls back to a safe full-history backfill.

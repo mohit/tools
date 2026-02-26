@@ -22,6 +22,9 @@ BASE_DELAY_SECONDS = 5
 RAW_PAGE_FILE_PATTERN = re.compile(
     r"^scrobbles_run-(?P<run_id>\d+)_from-(?P<from_uts>full|\d+)_p(?P<page>\d{4})(?:_a(?P<attempt>\d{4}))?\.jsonl$"
 )
+RAW_RUN_MARKER_PATTERN = re.compile(
+    r"^scrobbles_run-(?P<run_id>\d+)_from-(?P<from_uts>full|\d+)_(?P<kind>started|completed)\.json$"
+)
 
 DEFAULT_RAW_ROOT = Path(
     os.environ.get("DATALAKE_RAW_ROOT", str(Path.home() / "datalake.me/raw"))
@@ -251,6 +254,32 @@ def next_raw_page_file_for_run(raw_root: Path, run_id: int, from_uts: int | None
         attempt += 1
 
 
+def run_marker_file_for_run(raw_root: Path, run_id: int, from_uts: int | None, kind: str) -> Path:
+    from_token = _from_uts_token(from_uts)
+    return raw_root / f"scrobbles_run-{run_id}_from-{from_token}_{kind}.json"
+
+
+def write_run_marker(
+    raw_root: Path,
+    run_id: int,
+    from_uts: int | None,
+    kind: str,
+    payload: dict[str, Any],
+) -> None:
+    raw_root.mkdir(parents=True, exist_ok=True)
+    marker_path = run_marker_file_for_run(
+        raw_root=raw_root,
+        run_id=run_id,
+        from_uts=from_uts,
+        kind=kind,
+    )
+    if marker_path.exists():
+        return
+    with marker_path.open("x", encoding="utf-8") as handle:
+        json.dump(payload, handle, sort_keys=True)
+        handle.write("\n")
+
+
 def append_raw_page_jsonl(
     rows: list[dict[str, Any]],
     raw_root: Path,
@@ -296,6 +325,31 @@ def _list_raw_run_page_files(raw_root: Path) -> list[tuple[int | None, float]]:
     return run_files
 
 
+def _list_incomplete_marked_runs(raw_root: Path) -> list[int | None]:
+    if not raw_root.exists():
+        return []
+
+    started: set[tuple[int, int | None]] = set()
+    completed: set[tuple[int, int | None]] = set()
+
+    for path in raw_root.glob("scrobbles_run-*_from-*_*.json"):
+        match = RAW_RUN_MARKER_PATTERN.match(path.name)
+        if not match:
+            continue
+        run_id = int(match.group("run_id"))
+        from_token = match.group("from_uts")
+        from_uts = None if from_token == "full" else int(from_token)
+        kind = match.group("kind")
+        key = (run_id, from_uts)
+        if kind == "started":
+            started.add(key)
+        elif kind == "completed":
+            completed.add(key)
+
+    incomplete_from_uts = [from_uts for run_id, from_uts in started if (run_id, from_uts) not in completed]
+    return incomplete_from_uts
+
+
 def _safe_restart_from_uts(from_uts_values: list[int | None]) -> int | None:
     if not from_uts_values:
         return None
@@ -305,6 +359,10 @@ def _safe_restart_from_uts(from_uts_values: list[int | None]) -> int | None:
 
 
 def determine_from_uts(raw_root: Path, state_file: Path = STATE_FILE) -> int | None:
+    incomplete_marked_runs = _list_incomplete_marked_runs(raw_root=raw_root)
+    if incomplete_marked_runs:
+        return _safe_restart_from_uts(incomplete_marked_runs)
+
     state_next = _state_next_from_uts(state_file=state_file)
     raw_run_files = _list_raw_run_page_files(raw_root=raw_root)
 
@@ -535,6 +593,18 @@ def main() -> None:
     checkpoint = None if args.no_resume else load_checkpoint()
     from_uts, page, run_id, max_uts_seen = resolve_start(args, checkpoint, state_from_uts)
     seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
+    write_run_marker(
+        raw_root=raw_root,
+        run_id=run_id,
+        from_uts=from_uts,
+        kind="started",
+        payload={
+            "from_uts": from_uts,
+            "run_id": run_id,
+            "started_at": int(time.time()),
+            "user": user,
+        },
+    )
     print(
         f"Starting Last.fm ingest: user={user}, from_uts={from_uts}, start_page={page}, "
         f"run_id={run_id}, resume={'yes' if checkpoint and not args.no_resume else 'no'}"
@@ -598,11 +668,43 @@ def main() -> None:
         page = next_page
 
     if max_uts_seen is None:
+        write_run_marker(
+            raw_root=raw_root,
+            run_id=run_id,
+            from_uts=from_uts,
+            kind="completed",
+            payload={
+                "completed_at": int(time.time()),
+                "from_uts": from_uts,
+                "last_uts": None,
+                "pages_processed": pages_processed,
+                "parquet_rows": rows_written,
+                "raw_page_files": raw_files_updated,
+                "run_id": run_id,
+                "user": user,
+            },
+        )
         clear_checkpoint()
         print("No new rows found.")
         return
 
     save_last_uts(max_uts_seen)
+    write_run_marker(
+        raw_root=raw_root,
+        run_id=run_id,
+        from_uts=from_uts,
+        kind="completed",
+        payload={
+            "completed_at": int(time.time()),
+            "from_uts": from_uts,
+            "last_uts": max_uts_seen,
+            "pages_processed": pages_processed,
+            "parquet_rows": rows_written,
+            "raw_page_files": raw_files_updated,
+            "run_id": run_id,
+            "user": user,
+        },
+    )
     clear_checkpoint()
     print(
         f"Ingest complete: pages={pages_processed}, parquet_rows={rows_written}, raw_page_files={raw_files_updated}, "

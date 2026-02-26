@@ -600,6 +600,56 @@ def test_determine_from_uts_avoids_skipping_interrupted_full_run_without_state(t
     assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) is None
 
 
+def test_determine_from_uts_prefers_incomplete_marked_runs_over_state(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    state_file = tmp_path / "lastfm_last_uts.txt"
+    state_file.write_text("5000")
+
+    started = raw_root / "scrobbles_run-999_from-1200_started.json"
+    _write_jsonl(started, [{"run_id": 999, "from_uts": 1200}])
+
+    assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) == 1200
+
+
+def test_determine_from_uts_ignores_completed_marked_runs(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    state_file = tmp_path / "lastfm_last_uts.txt"
+    state_file.write_text("5000")
+
+    started = raw_root / "scrobbles_run-1000_from-1200_started.json"
+    completed = raw_root / "scrobbles_run-1000_from-1200_completed.json"
+    _write_jsonl(started, [{"run_id": 1000, "from_uts": 1200}])
+    _write_jsonl(completed, [{"run_id": 1000, "from_uts": 1200}])
+
+    assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) == 5001
+
+
+def test_write_run_marker_is_immutable(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+
+    lastfm_ingest.write_run_marker(
+        raw_root=raw_root,
+        run_id=123,
+        from_uts=1000,
+        kind="started",
+        payload={"value": "first"},
+    )
+    marker = raw_root / "scrobbles_run-123_from-1000_started.json"
+    before = marker.read_text(encoding="utf-8")
+
+    lastfm_ingest.write_run_marker(
+        raw_root=raw_root,
+        run_id=123,
+        from_uts=1000,
+        kind="started",
+        payload={"value": "second"},
+    )
+    after = marker.read_text(encoding="utf-8")
+
+    assert before == after
+    assert "first" in after
+
+
 def test_resolve_user_prefers_explicit_then_env_then_default(monkeypatch) -> None:
     monkeypatch.delenv("LASTFM_USER", raising=False)
     assert lastfm_ingest.resolve_user(explicit_user="explicit", default_user="fallback") == "explicit"
