@@ -215,6 +215,68 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(len(records), 2)
         self.assertEqual(len(workouts), 1)
 
+    def test_normalize_payload_deduplicates_within_nested_data_batch(self):
+        payload = {
+            "data": {
+                "records": [
+                    {
+                        "type": "HKQuantityTypeIdentifierStepCount",
+                        "sourceName": "iPhone",
+                        "unit": "count",
+                        "value": 777,
+                        "startDate": "2026-02-24T10:00:00Z",
+                        "endDate": "2026-02-24T10:15:00Z",
+                        "metadata": {"variant": "first"},
+                    },
+                    {
+                        "type": "HKQuantityTypeIdentifierStepCount",
+                        "sourceName": "iPhone",
+                        "unit": "count",
+                        "value": 777,
+                        "startDate": "2026-02-24T10:00:00Z",
+                        "endDate": "2026-02-24T10:15:00Z",
+                        "metadata": {"variant": "second"},
+                    },
+                ],
+                "workouts": [
+                    {
+                        "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                        "duration": 35,
+                        "durationUnit": "min",
+                        "totalDistance": 2.2,
+                        "totalDistanceUnit": "km",
+                        "totalEnergyBurned": 130,
+                        "totalEnergyBurnedUnit": "kcal",
+                        "sourceName": "Apple Watch",
+                        "startDate": "2026-02-24T11:00:00Z",
+                        "endDate": "2026-02-24T11:35:00Z",
+                        "metadata": {"variant": "first"},
+                    },
+                    {
+                        "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                        "duration": 35,
+                        "durationUnit": "min",
+                        "totalDistance": 2.2,
+                        "totalDistanceUnit": "km",
+                        "totalEnergyBurned": 130,
+                        "totalEnergyBurnedUnit": "kcal",
+                        "sourceName": "Apple Watch",
+                        "startDate": "2026-02-24T11:00:00Z",
+                        "endDate": "2026-02-24T11:35:00Z",
+                        "metadata": {"variant": "second"},
+                    },
+                ],
+            }
+        }
+
+        records, workouts, errors = self.ingestor._normalize_payload(payload)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(records), 1)
+        self.assertEqual(len(workouts), 1)
+        self.assertEqual(json.loads(records[0]["metadata_json"]), {"variant": "first"})
+        self.assertEqual(json.loads(workouts[0]["metadata_json"]), {"variant": "first"})
+
     def test_normalize_payload_deduplicates_invalid_rows_before_error_counting(self):
         payload = {
             "records": [
