@@ -227,8 +227,7 @@ class HealthAutoExportIngestor:
             self.curated_dir.mkdir(parents=True, exist_ok=True)
             # Defensive dedupe: keep merge behavior safe even if future callers
             # bypass _normalize_payload.
-            records = self._dedupe_incoming_records_batch(records)
-            workouts = self._dedupe_incoming_workouts_batch(workouts)
+            records, workouts = self._dedupe_normalized_batches(records, workouts)
             ingested_at = datetime.now(UTC).isoformat()
 
             records_with_lineage = [
