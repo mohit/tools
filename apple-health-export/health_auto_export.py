@@ -325,12 +325,18 @@ class HealthAutoExportIngestor:
         deduped_rows: list[dict[str, Any]] = []
         seen_keys: set[tuple[Any, ...]] = set()
         for row in rows:
-            key = key_builder(row)
+            key = tuple(HealthAutoExportIngestor._canonicalize_dedupe_value(value) for value in key_builder(row))
             if key in seen_keys:
                 continue
             seen_keys.add(key)
             deduped_rows.append(row)
         return deduped_rows
+
+    @staticmethod
+    def _canonicalize_dedupe_value(value: Any) -> Any:
+        if isinstance(value, (dict, list)):
+            return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+        return value
 
     def _promote_parquet_outputs(self, records_tmp_path: Path, workouts_tmp_path: Path) -> None:
         records_backup_path = self.records_parquet.with_name(

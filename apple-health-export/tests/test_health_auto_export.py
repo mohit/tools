@@ -1,5 +1,6 @@
 """Tests for health_auto_export.py."""
 
+import contextlib
 import json
 import os
 import tempfile
@@ -496,6 +497,74 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
 
         self.assertEqual(len(deduped_records), 1)
         self.assertEqual(len(deduped_workouts), 1)
+
+    def test_dedupe_incoming_batch_handles_non_hashable_key_values(self):
+        record_a = {
+            "type": "HKCategoryTypeIdentifierSleepAnalysis",
+            "sourceName": "iPhone",
+            "unit": "min",
+            "value": {"minutes": 45},
+            "startDate": "2026-02-21T22:00:00Z",
+            "endDate": "2026-02-21T22:45:00Z",
+            "metadata_json": '{"source":"first"}',
+        }
+        record_b = dict(record_a)
+        record_b["value"] = {"minutes": 45}
+        record_b["metadata_json"] = '{"source":"second"}'
+
+        workout_a = {
+            "workoutActivityType": "HKWorkoutActivityTypeOther",
+            "sourceName": "Apple Watch",
+            "startDate": "2026-02-21T18:00:00Z",
+            "endDate": "2026-02-21T18:30:00Z",
+            "duration": [30],
+            "totalDistance": [5.0],
+            "totalEnergyBurned": [250],
+            "metadata_json": '{"source":"first"}',
+        }
+        workout_b = dict(workout_a)
+        workout_b["duration"] = [30]
+        workout_b["totalDistance"] = [5.0]
+        workout_b["totalEnergyBurned"] = [250]
+        workout_b["metadata_json"] = '{"source":"second"}'
+
+        deduped_records = self.ingestor._dedupe_incoming_records_batch([record_a, record_b])
+        deduped_workouts = self.ingestor._dedupe_incoming_workouts_batch([workout_a, workout_b])
+
+        self.assertEqual(len(deduped_records), 1)
+        self.assertEqual(len(deduped_workouts), 1)
+        self.assertEqual(deduped_records[0]["metadata_json"], '{"source":"first"}')
+        self.assertEqual(deduped_workouts[0]["metadata_json"], '{"source":"first"}')
+
+    def test_acquire_merge_lock_uses_thread_and_process_locks(self):
+        events: list[str] = []
+
+        @contextlib.contextmanager
+        def fake_process_lock():
+            events.append("process_enter")
+            try:
+                yield
+            finally:
+                events.append("process_exit")
+
+        class _InlineLock:
+            def __enter__(self):
+                events.append("thread_enter")
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                events.append("thread_exit")
+                return False
+
+        self.ingestor._parquet_merge_lock = _InlineLock()
+        with mock.patch.object(self.ingestor, "_acquire_process_merge_lock", fake_process_lock):
+            with self.ingestor._acquire_merge_lock():
+                events.append("inside")
+
+        self.assertEqual(
+            events,
+            ["thread_enter", "process_enter", "inside", "process_exit", "thread_exit"],
+        )
 
     def test_ingest_payload_uses_parquet_merge_lock(self):
         payload = self.sample_payload()
