@@ -186,7 +186,7 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    for service, account in keychain_lookup_candidates(var_name):
+    for service, account in keychain_lookup_sequence(var_name, allow_service_only=False):
         secret = query_candidate(service, account)
         if secret:
             return secret
