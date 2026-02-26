@@ -110,13 +110,11 @@ def write_credentials_env_file(path: Path, credentials: dict[str, str]) -> None:
     path.chmod(0o600)
 
 
-def keychain_lookup_candidates(
-    var_name: str, allow_service_only: bool = False
-) -> list[tuple[str, str | None]]:
+def keychain_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
     namespaced_service = "com.mohit.tools.strava-data-puller"
     legacy_service = "strava-data-puller"
 
-    candidates: list[tuple[str, str | None]] = [
+    return [
         # Account-scoped lookups first.
         (namespaced_service, var_name),
         (legacy_service, var_name),
@@ -124,34 +122,25 @@ def keychain_lookup_candidates(
         (var_name, namespaced_service),
         (var_name, legacy_service),
     ]
-    if allow_service_only:
+
+
+def keychain_service_only_candidates() -> list[tuple[str, None]]:
+    namespaced_service = "com.mohit.tools.strava-data-puller"
+    legacy_service = "strava-data-puller"
+    return [
         # Service-only lookup is last resort because it can be ambiguous.
-        candidates.extend(
-            [
-                (namespaced_service, None),
-                (legacy_service, None),
-            ]
-        )
-    return candidates
+        (namespaced_service, None),
+        (legacy_service, None),
+    ]
 
 
 def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str | None:
     # macOS keychain fallback for unattended runs.
-    # Always run account-scoped (including reversed service/account) lookups first.
-    account_scoped_candidates = [
-        candidate
-        for candidate in keychain_lookup_candidates(var_name, allow_service_only=False)
-        if candidate[1] is not None
-    ]
-    candidates = account_scoped_candidates
-    # Append service-only fallback entries only after all account-scoped attempts.
+    # Always run account-scoped (including reversed service/account) lookups first,
+    # then append service-only fallback entries when enabled.
+    candidates: list[tuple[str, str | None]] = list(keychain_lookup_candidates(var_name))
     if allow_service_only:
-        service_only_candidates = [
-            candidate
-            for candidate in keychain_lookup_candidates(var_name, allow_service_only=True)
-            if candidate[1] is None
-        ]
-        candidates.extend(service_only_candidates)
+        candidates.extend(keychain_service_only_candidates())
     for service, account in candidates:
         cmd = ["security", "find-generic-password", "-w", "-s", service]
         if account is not None:

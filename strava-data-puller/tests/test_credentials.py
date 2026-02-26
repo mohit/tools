@@ -23,14 +23,17 @@ strava_pull = load_module()
 class TestCredentials(TestCase):
     def test_keychain_lookup_candidates_keeps_service_only_last(self):
         self.assertEqual(
-            strava_pull.keychain_lookup_candidates(
-                "STRAVA_CLIENT_SECRET", allow_service_only=True
-            ),
+            strava_pull.keychain_lookup_candidates("STRAVA_CLIENT_SECRET"),
             [
                 ("com.mohit.tools.strava-data-puller", "STRAVA_CLIENT_SECRET"),
                 ("strava-data-puller", "STRAVA_CLIENT_SECRET"),
                 ("STRAVA_CLIENT_SECRET", "com.mohit.tools.strava-data-puller"),
                 ("STRAVA_CLIENT_SECRET", "strava-data-puller"),
+            ],
+        )
+        self.assertEqual(
+            strava_pull.keychain_service_only_candidates(),
+            [
                 ("com.mohit.tools.strava-data-puller", None),
                 ("strava-data-puller", None),
             ],
@@ -595,16 +598,18 @@ class TestCredentials(TestCase):
         self.assertNotIn(namespaced_service_only, called_cmds)
 
     @patch("subprocess.run")
+    @patch.object(strava_pull, "keychain_service_only_candidates")
     @patch.object(strava_pull, "keychain_lookup_candidates")
-    def test_load_keychain_secret_reorders_candidates_to_keep_service_only_last(
-        self, mock_candidates, mock_run
+    def test_load_keychain_secret_appends_service_only_after_specific_candidates(
+        self, mock_candidates, mock_service_only_candidates, mock_run
     ):
-        # Simulate accidental regression where service-only appears before reversed lookup.
         mock_candidates.return_value = [
             ("com.mohit.tools.strava-data-puller", "STRAVA_CLIENT_SECRET"),
             ("strava-data-puller", "STRAVA_CLIENT_SECRET"),
-            ("com.mohit.tools.strava-data-puller", None),
             ("STRAVA_CLIENT_SECRET", "com.mohit.tools.strava-data-puller"),
+        ]
+        mock_service_only_candidates.return_value = [
+            ("com.mohit.tools.strava-data-puller", None),
         ]
         reversed_match = [
             "security",
