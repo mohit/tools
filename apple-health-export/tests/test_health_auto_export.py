@@ -814,6 +814,150 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual([row[0] for row in rows], ["300", "400"])
         self.assertEqual([row[0] for row in workout_rows], ["30", "40"])
 
+    def test_concurrent_ingests_preserve_unique_rows_when_each_payload_has_duplicates(self):
+        other_ingestor = health_auto_export.HealthAutoExportIngestor(
+            raw_dir=self.raw_dir / "other",
+            curated_dir=self.curated_dir,
+        )
+
+        payload_a = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 510,
+                    "startDate": "2026-02-21T10:00:00Z",
+                    "endDate": "2026-02-21T10:10:00Z",
+                    "metadata": {"variant": "first"},
+                },
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 510,
+                    "startDate": "2026-02-21T10:00:00Z",
+                    "endDate": "2026-02-21T10:10:00Z",
+                    "metadata": {"variant": "second"},
+                },
+            ],
+            "workouts": [
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 51,
+                    "durationUnit": "min",
+                    "totalDistance": 3.1,
+                    "totalDistanceUnit": "km",
+                    "totalEnergyBurned": 210,
+                    "totalEnergyBurnedUnit": "kcal",
+                    "startDate": "2026-02-21T10:00:00Z",
+                    "endDate": "2026-02-21T10:51:00Z",
+                    "metadata": {"variant": "first"},
+                },
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 51,
+                    "durationUnit": "min",
+                    "totalDistance": 3.1,
+                    "totalDistanceUnit": "km",
+                    "totalEnergyBurned": 210,
+                    "totalEnergyBurnedUnit": "kcal",
+                    "startDate": "2026-02-21T10:00:00Z",
+                    "endDate": "2026-02-21T10:51:00Z",
+                    "metadata": {"variant": "second"},
+                },
+            ],
+        }
+        payload_b = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 520,
+                    "startDate": "2026-02-21T11:00:00Z",
+                    "endDate": "2026-02-21T11:10:00Z",
+                    "metadata": {"variant": "first"},
+                },
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 520,
+                    "startDate": "2026-02-21T11:00:00Z",
+                    "endDate": "2026-02-21T11:10:00Z",
+                    "metadata": {"variant": "second"},
+                },
+            ],
+            "workouts": [
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 52,
+                    "durationUnit": "min",
+                    "totalDistance": 3.2,
+                    "totalDistanceUnit": "km",
+                    "totalEnergyBurned": 220,
+                    "totalEnergyBurnedUnit": "kcal",
+                    "startDate": "2026-02-21T11:00:00Z",
+                    "endDate": "2026-02-21T11:52:00Z",
+                    "metadata": {"variant": "first"},
+                },
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 52,
+                    "durationUnit": "min",
+                    "totalDistance": 3.2,
+                    "totalDistanceUnit": "km",
+                    "totalEnergyBurned": 220,
+                    "totalEnergyBurnedUnit": "kcal",
+                    "startDate": "2026-02-21T11:00:00Z",
+                    "endDate": "2026-02-21T11:52:00Z",
+                    "metadata": {"variant": "second"},
+                },
+            ],
+        }
+
+        errors: list[Exception] = []
+
+        def _ingest_with_capture(ingestor, payload):
+            try:
+                ingestor.ingest_payload(payload)
+            except Exception as exc:  # pragma: no cover - defensive in thread
+                errors.append(exc)
+
+        thread_a = threading.Thread(target=_ingest_with_capture, args=(self.ingestor, payload_a))
+        thread_b = threading.Thread(target=_ingest_with_capture, args=(other_ingestor, payload_b))
+        thread_a.start()
+        thread_b.start()
+        thread_a.join()
+        thread_b.join()
+
+        self.assertEqual(errors, [])
+
+        con = duckdb.connect(":memory:")
+        record_rows = con.execute(
+            """
+            SELECT value
+            FROM read_parquet(?)
+            WHERE type = 'HKQuantityTypeIdentifierStepCount'
+            ORDER BY startDate
+            """,
+            [str(self.curated_dir / "health_records.parquet")],
+        ).fetchall()
+        workout_rows = con.execute(
+            """
+            SELECT duration
+            FROM read_parquet(?)
+            WHERE workoutActivityType = 'HKWorkoutActivityTypeWalking'
+            ORDER BY startDate
+            """,
+            [str(self.curated_dir / "health_workouts.parquet")],
+        ).fetchall()
+        con.close()
+
+        self.assertEqual([row[0] for row in record_rows], ["510", "520"])
+        self.assertEqual([row[0] for row in workout_rows], ["51", "52"])
+
     def test_concurrent_ingests_same_ingestor_preserve_rows(self):
         payload_a = {
             "records": [
