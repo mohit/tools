@@ -73,6 +73,26 @@ def _parse_datetime(value: str | None) -> str | None:
 class HealthAutoExportIngestor:
     """Persist Health Auto Export payloads to raw and curated parquet."""
 
+    # Incoming record duplicates are identified using only these fields.
+    RECORD_DEDUPE_KEY_FIELDS: tuple[str, ...] = (
+        "type",
+        "sourceName",
+        "unit",
+        "value",
+        "startDate",
+        "endDate",
+    )
+    # Incoming workout duplicates are identified using only these fields.
+    WORKOUT_DEDUPE_KEY_FIELDS: tuple[str, ...] = (
+        "workoutActivityType",
+        "sourceName",
+        "startDate",
+        "endDate",
+        "duration",
+        "totalDistance",
+        "totalEnergyBurned",
+    )
+
     def __init__(self, raw_dir: Path = DEFAULT_RAW_DIR, curated_dir: Path = DEFAULT_CURATED_DIR):
         self.raw_dir = Path(raw_dir)
         self.curated_dir = Path(curated_dir).expanduser().resolve()
@@ -287,29 +307,14 @@ class HealthAutoExportIngestor:
     def _dedupe_incoming_records_batch(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return HealthAutoExportIngestor._dedupe_incoming_batch(
             records,
-            lambda row: (
-                row["type"],
-                row["sourceName"],
-                row["unit"],
-                row["value"],
-                row["startDate"],
-                row["endDate"],
-            ),
+            lambda row: tuple(row[field] for field in HealthAutoExportIngestor.RECORD_DEDUPE_KEY_FIELDS),
         )
 
     @staticmethod
     def _dedupe_incoming_workouts_batch(workouts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return HealthAutoExportIngestor._dedupe_incoming_batch(
             workouts,
-            lambda row: (
-                row["workoutActivityType"],
-                row["sourceName"],
-                row["startDate"],
-                row["endDate"],
-                row["duration"],
-                row["totalDistance"],
-                row["totalEnergyBurned"],
-            ),
+            lambda row: tuple(row[field] for field in HealthAutoExportIngestor.WORKOUT_DEDUPE_KEY_FIELDS),
         )
 
     @staticmethod
@@ -374,7 +379,7 @@ class HealthAutoExportIngestor:
             )
 
         con.execute(
-            """
+            f"""
             CREATE TEMP TABLE deduped_incoming_records AS
             SELECT * EXCLUDE (row_num)
             FROM (
@@ -382,12 +387,7 @@ class HealthAutoExportIngestor:
                     *,
                     ROW_NUMBER() OVER (
                         PARTITION BY
-                            type,
-                            sourceName,
-                            unit,
-                            value,
-                            startDate,
-                            endDate
+                            {", ".join(self.RECORD_DEDUPE_KEY_FIELDS)}
                         ORDER BY ingestOrdinal ASC
                     ) AS row_num
                 FROM incoming_records
@@ -408,7 +408,7 @@ class HealthAutoExportIngestor:
             con.execute("CREATE TEMP TABLE merged_records AS SELECT * FROM deduped_incoming_records")
 
         con.execute(
-            """
+            f"""
             CREATE TEMP TABLE deduped_records AS
             SELECT * EXCLUDE (row_num)
             FROM (
@@ -416,12 +416,7 @@ class HealthAutoExportIngestor:
                     *,
                     ROW_NUMBER() OVER (
                         PARTITION BY
-                            type,
-                            sourceName,
-                            unit,
-                            value,
-                            startDate,
-                            endDate
+                            {", ".join(self.RECORD_DEDUPE_KEY_FIELDS)}
                         ORDER BY ingestedAt DESC
                     ) AS row_num
                 FROM merged_records
@@ -491,7 +486,7 @@ class HealthAutoExportIngestor:
             )
 
         con.execute(
-            """
+            f"""
             CREATE TEMP TABLE deduped_incoming_workouts AS
             SELECT * EXCLUDE (row_num)
             FROM (
@@ -499,13 +494,7 @@ class HealthAutoExportIngestor:
                     *,
                     ROW_NUMBER() OVER (
                         PARTITION BY
-                            workoutActivityType,
-                            sourceName,
-                            startDate,
-                            endDate,
-                            duration,
-                            totalDistance,
-                            totalEnergyBurned
+                            {", ".join(self.WORKOUT_DEDUPE_KEY_FIELDS)}
                         ORDER BY ingestOrdinal ASC
                     ) AS row_num
                 FROM incoming_workouts
@@ -526,7 +515,7 @@ class HealthAutoExportIngestor:
             con.execute("CREATE TEMP TABLE merged_workouts AS SELECT * FROM deduped_incoming_workouts")
 
         con.execute(
-            """
+            f"""
             CREATE TEMP TABLE deduped_workouts AS
             SELECT * EXCLUDE (row_num)
             FROM (
@@ -534,13 +523,7 @@ class HealthAutoExportIngestor:
                     *,
                     ROW_NUMBER() OVER (
                         PARTITION BY
-                            workoutActivityType,
-                            sourceName,
-                            startDate,
-                            endDate,
-                            duration,
-                            totalDistance,
-                            totalEnergyBurned
+                            {", ".join(self.WORKOUT_DEDUPE_KEY_FIELDS)}
                         ORDER BY ingestedAt DESC
                     ) AS row_num
                 FROM merged_workouts

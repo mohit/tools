@@ -649,6 +649,53 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(ingested[0][0], "1234")
         self.assertEqual(json.loads(ingested[0][1]), {"dedupe": "first"})
 
+    def test_ingest_payload_deduplicates_record_batch_when_only_non_key_fields_differ(self):
+        payload = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "sourceVersion": "1.0",
+                    "unit": "count",
+                    "value": 4321,
+                    "startDate": "2026-02-22T12:00:00Z",
+                    "endDate": "2026-02-22T12:15:00Z",
+                    "creationDate": "2026-02-22T12:15:01Z",
+                    "metadata": {"variant": "first"},
+                },
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "sourceVersion": "2.0",
+                    "unit": "count",
+                    "value": 4321,
+                    "startDate": "2026-02-22T12:00:00Z",
+                    "endDate": "2026-02-22T12:15:00Z",
+                    "creationDate": "2026-02-22T12:15:59Z",
+                    "metadata": {"variant": "second"},
+                },
+            ]
+        }
+
+        result = self.ingestor.ingest_payload(payload)
+        self.assertEqual(result["records_ingested"], 1)
+        self.assertEqual(result["workouts_ingested"], 0)
+
+        con = duckdb.connect(":memory:")
+        ingested = con.execute(
+            """
+            SELECT sourceVersion, metadata_json
+            FROM read_parquet(?)
+            WHERE type = 'HKQuantityTypeIdentifierStepCount'
+            """,
+            [str(self.curated_dir / "health_records.parquet")],
+        ).fetchall()
+        con.close()
+
+        self.assertEqual(len(ingested), 1)
+        self.assertEqual(ingested[0][0], "1.0")
+        self.assertEqual(json.loads(ingested[0][1]), {"variant": "first"})
+
     def test_ingest_payload_deduplicates_workout_batch_when_only_metadata_differs(self):
         payload = {
             "workouts": [
@@ -699,6 +746,61 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(len(ingested), 1)
         self.assertEqual(ingested[0][0], "45")
         self.assertEqual(json.loads(ingested[0][1]), {"dedupe": "first"})
+
+    def test_ingest_payload_deduplicates_workout_batch_when_only_non_key_fields_differ(self):
+        payload = {
+            "workouts": [
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 50,
+                    "durationUnit": "min",
+                    "totalDistance": 4.0,
+                    "totalDistanceUnit": "km",
+                    "totalEnergyBurned": 250,
+                    "totalEnergyBurnedUnit": "kcal",
+                    "sourceName": "Apple Watch",
+                    "startDate": "2026-02-22T18:00:00Z",
+                    "endDate": "2026-02-22T18:50:00Z",
+                    "creationDate": "2026-02-22T18:50:01Z",
+                    "metadata": {"variant": "first"},
+                },
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 50,
+                    "durationUnit": "minutes",
+                    "totalDistance": 4.0,
+                    "totalDistanceUnit": "mi",
+                    "totalEnergyBurned": 250,
+                    "totalEnergyBurnedUnit": "kilocalorie",
+                    "sourceName": "Apple Watch",
+                    "startDate": "2026-02-22T18:00:00Z",
+                    "endDate": "2026-02-22T18:50:00Z",
+                    "creationDate": "2026-02-22T18:50:59Z",
+                    "metadata": {"variant": "second"},
+                },
+            ]
+        }
+
+        result = self.ingestor.ingest_payload(payload)
+        self.assertEqual(result["records_ingested"], 0)
+        self.assertEqual(result["workouts_ingested"], 1)
+
+        con = duckdb.connect(":memory:")
+        ingested = con.execute(
+            """
+            SELECT durationUnit, totalDistanceUnit, totalEnergyBurnedUnit, metadata_json
+            FROM read_parquet(?)
+            WHERE workoutActivityType = 'HKWorkoutActivityTypeWalking'
+            """,
+            [str(self.curated_dir / "health_workouts.parquet")],
+        ).fetchall()
+        con.close()
+
+        self.assertEqual(len(ingested), 1)
+        self.assertEqual(ingested[0][0], "min")
+        self.assertEqual(ingested[0][1], "km")
+        self.assertEqual(ingested[0][2], "kcal")
+        self.assertEqual(json.loads(ingested[0][3]), {"variant": "first"})
 
     @unittest.skipIf(health_auto_export.fcntl is None, "fcntl not available")
     def test_ingest_payload_uses_process_file_lock(self):

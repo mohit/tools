@@ -179,6 +179,13 @@ python3 health_auto_export.py ingest-file \
   --curated-dir ~/datalake.me/curated/apple-health
 ```
 
+Health Auto Export merge behavior:
+
+- Parquet merges are serialized with an in-process mutex plus a cross-process file lock at `<curated-dir>/.parquet_merge.lock`, preventing concurrent read-modify-write races.
+- Incoming record batch dedupe key: `type`, `sourceName`, `unit`, `value`, `startDate`, `endDate`.
+- Incoming workout batch dedupe key: `workoutActivityType`, `sourceName`, `startDate`, `endDate`, `duration`, `totalDistance`, `totalEnergyBurned`.
+- For duplicates inside one payload batch, the first row is kept. Fields outside the dedupe key (for example metadata or creation timestamp) do not create a new row.
+
 ## Common Data Types
 
 Here are some commonly used health data types:
