@@ -215,11 +215,22 @@ def resolve_strava_credentials() -> tuple[dict[str, str], dict[str, str], list[P
                 values[var_name] = env_value
                 sources[var_name] = f"dotenv:{env_file}"
 
-    for var_name in REQUIRED_STRAVA_VARS:
-        if var_name in values:
-            continue
-        # Keep lookups account-scoped/reversed-only to avoid ambiguous service-only matches.
+    missing_after_env = [var_name for var_name in REQUIRED_STRAVA_VARS if var_name not in values]
+
+    for var_name in missing_after_env:
+        # Keep lookups account-scoped/reversed-only first to avoid ambiguous service-only matches.
         keychain_value = load_keychain_secret(var_name, allow_service_only=False)
+        if keychain_value:
+            values[var_name] = keychain_value
+            sources[var_name] = "keychain"
+
+    # Service-only lookup can return an unrelated account secret.
+    # Use it only when exactly one variable is still missing, so it cannot cross-populate
+    # all STRAVA_* fields with the same wrong value.
+    missing_after_strict = [var_name for var_name in REQUIRED_STRAVA_VARS if var_name not in values]
+    if len(missing_after_strict) == 1:
+        var_name = missing_after_strict[0]
+        keychain_value = load_keychain_secret(var_name, allow_service_only=True)
         if keychain_value:
             values[var_name] = keychain_value
             sources[var_name] = "keychain"
