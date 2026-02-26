@@ -626,6 +626,45 @@ class TestCredentials(TestCase):
 
     @patch("subprocess.run")
     @patch.object(strava_pull, "keychain_service_only_candidates")
+    @patch.object(strava_pull, "keychain_lookup_candidates")
+    def test_load_keychain_secret_service_only_enabled_uses_strict_first_pass(
+        self, mock_lookup_candidates, mock_service_only_candidates, mock_run
+    ):
+        mock_lookup_candidates.return_value = [
+            ("STRAVA_CLIENT_SECRET", "com.mohit.tools.strava-data-puller"),
+        ]
+        mock_service_only_candidates.return_value = [
+            ("com.mohit.tools.strava-data-puller", None),
+        ]
+        reversed_match = [
+            "security",
+            "find-generic-password",
+            "-w",
+            "-s",
+            "STRAVA_CLIENT_SECRET",
+            "-a",
+            "com.mohit.tools.strava-data-puller",
+        ]
+
+        def fake_run(cmd, check, capture_output, text, timeout):
+            if cmd == reversed_match:
+                return types.SimpleNamespace(returncode=0, stdout="correct-client-secret\n")
+            return types.SimpleNamespace(returncode=44, stdout="")
+
+        mock_run.side_effect = fake_run
+
+        value = strava_pull.load_keychain_secret(
+            "STRAVA_CLIENT_SECRET", allow_service_only=True
+        )
+
+        self.assertEqual(value, "correct-client-secret")
+        mock_lookup_candidates.assert_called_once_with(
+            "STRAVA_CLIENT_SECRET", allow_service_only=False
+        )
+        mock_service_only_candidates.assert_not_called()
+
+    @patch("subprocess.run")
+    @patch.object(strava_pull, "keychain_service_only_candidates")
     @patch.object(strava_pull, "keychain_reversed_lookup_candidates")
     @patch.object(strava_pull, "keychain_account_lookup_candidates")
     def test_load_keychain_secret_appends_service_only_after_specific_candidates(

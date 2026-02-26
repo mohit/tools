@@ -179,13 +179,20 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    # Build lookup order in one place so service-only can never precede reversed lookups.
+    # First pass: account-scoped (normal + reversed) lookups only.
     for service, account in keychain_lookup_candidates(
-        var_name, allow_service_only=allow_service_only
+        var_name, allow_service_only=False
     ):
         secret = query_candidate(service, account)
         if secret:
             return secret
+
+    # Second pass: service-only lookups, if explicitly enabled.
+    if allow_service_only:
+        for service, account in keychain_service_only_candidates():
+            secret = query_candidate(service, account)
+            if secret:
+                return secret
     return None
 
 
