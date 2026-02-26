@@ -21,7 +21,7 @@ strava_pull = load_module()
 
 
 class TestCredentials(TestCase):
-    def test_keychain_lookup_candidates_keep_service_only_last(self):
+    def test_keychain_lookup_candidates_exclude_service_only(self):
         self.assertEqual(
             strava_pull.keychain_account_lookup_candidates("STRAVA_CLIENT_SECRET"),
             [
@@ -50,19 +50,6 @@ class TestCredentials(TestCase):
                 ("strava-data-puller", "STRAVA_CLIENT_SECRET"),
                 ("STRAVA_CLIENT_SECRET", "com.mohit.tools.strava-data-puller"),
                 ("STRAVA_CLIENT_SECRET", "strava-data-puller"),
-            ],
-        )
-        self.assertEqual(
-            strava_pull.keychain_lookup_candidates(
-                "STRAVA_CLIENT_SECRET", allow_service_only=True
-            ),
-            [
-                ("com.mohit.tools.strava-data-puller", "STRAVA_CLIENT_SECRET"),
-                ("strava-data-puller", "STRAVA_CLIENT_SECRET"),
-                ("STRAVA_CLIENT_SECRET", "com.mohit.tools.strava-data-puller"),
-                ("STRAVA_CLIENT_SECRET", "strava-data-puller"),
-                ("com.mohit.tools.strava-data-puller", None),
-                ("strava-data-puller", None),
             ],
         )
 
@@ -658,9 +645,7 @@ class TestCredentials(TestCase):
         )
 
         self.assertEqual(value, "correct-client-secret")
-        mock_lookup_candidates.assert_called_once_with(
-            "STRAVA_CLIENT_SECRET", allow_service_only=False
-        )
+        mock_lookup_candidates.assert_called_once_with("STRAVA_CLIENT_SECRET")
         mock_service_only_candidates.assert_not_called()
 
     @patch("subprocess.run")
