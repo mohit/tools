@@ -381,6 +381,92 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(record_metadata, '{"source":"first"}')
         self.assertEqual(workout_metadata, '{"source":"first"}')
 
+    def test_merge_to_parquet_rolls_back_if_second_promote_fails(self):
+        baseline_payload = self.sample_payload()
+        self.ingestor.ingest_payload(baseline_payload)
+
+        update_payload = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 999,
+                    "startDate": "2026-02-25T10:00:00Z",
+                    "endDate": "2026-02-25T10:10:00Z",
+                }
+            ],
+            "workouts": [
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 99,
+                    "durationUnit": "min",
+                    "totalDistance": 9.9,
+                    "totalDistanceUnit": "km",
+                    "totalEnergyBurned": 999,
+                    "totalEnergyBurnedUnit": "kcal",
+                    "startDate": "2026-02-25T10:00:00Z",
+                    "endDate": "2026-02-25T11:39:00Z",
+                }
+            ],
+        }
+        records, workouts, errors = self.ingestor._normalize_payload(update_payload)
+        self.assertEqual(errors, [])
+
+        original_replace = Path.replace
+
+        def flaky_replace(path_obj: Path, target: Path):
+            if Path(path_obj) == self.ingestor.workouts_parquet.with_name("health_workouts.parquet.fail.tmp"):
+                raise OSError("simulated promote failure")
+            return original_replace(path_obj, target)
+
+        records_tmp = self.ingestor.records_parquet.with_name("health_records.parquet.ok.tmp")
+        workouts_tmp = self.ingestor.workouts_parquet.with_name("health_workouts.parquet.fail.tmp")
+
+        with (
+            mock.patch.object(
+                self.ingestor,
+                "_write_records_parquet",
+                return_value=records_tmp,
+            ),
+            mock.patch.object(
+                self.ingestor,
+                "_write_workouts_parquet",
+                return_value=workouts_tmp,
+            ),
+            mock.patch.object(Path, "replace", autospec=True, side_effect=flaky_replace),
+        ):
+            records_tmp.write_text("records tmp", encoding="utf-8")
+            workouts_tmp.write_text("workouts tmp", encoding="utf-8")
+            with self.assertRaises(OSError):
+                self.ingestor._merge_to_parquet(records, workouts, self.raw_dir / "test_raw.json")
+
+        self.assertFalse(records_tmp.exists())
+        self.assertFalse(workouts_tmp.exists())
+
+        con = duckdb.connect(":memory:")
+        record_values = con.execute(
+            """
+            SELECT value
+            FROM read_parquet(?)
+            WHERE type = 'HKQuantityTypeIdentifierStepCount'
+            ORDER BY startDate
+            """,
+            [str(self.curated_dir / "health_records.parquet")],
+        ).fetchall()
+        workout_durations = con.execute(
+            """
+            SELECT duration
+            FROM read_parquet(?)
+            WHERE workoutActivityType = 'HKWorkoutActivityTypeRunning'
+            """,
+            [str(self.curated_dir / "health_workouts.parquet")],
+        ).fetchall()
+        con.close()
+
+        self.assertEqual([row[0] for row in record_values], ["1234"])
+        self.assertEqual([row[0] for row in workout_durations], ["30"])
+
     def test_dedupe_incoming_batch_keeps_first_record_and_workout(self):
         payload = self.sample_payload()
         records, workouts, errors = self.ingestor._normalize_payload(payload)

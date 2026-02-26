@@ -253,12 +253,13 @@ class HealthAutoExportIngestor:
             with duckdb.connect(":memory:") as con:
                 con.execute("BEGIN TRANSACTION")
                 try:
-                    self._write_records_parquet(con, records_with_lineage)
-                    self._write_workouts_parquet(con, workouts_with_lineage)
+                    records_tmp_path = self._write_records_parquet(con, records_with_lineage)
+                    workouts_tmp_path = self._write_workouts_parquet(con, workouts_with_lineage)
                     con.execute("COMMIT")
                 except Exception:
                     con.execute("ROLLBACK")
                     raise
+            self._promote_parquet_outputs(records_tmp_path, workouts_tmp_path)
 
         return {
             "records_ingested": len(records_with_lineage),
@@ -331,7 +332,54 @@ class HealthAutoExportIngestor:
             deduped_rows.append(row)
         return deduped_rows
 
-    def _write_records_parquet(self, con: duckdb.DuckDBPyConnection, records: list[dict[str, Any]]) -> None:
+    def _promote_parquet_outputs(self, records_tmp_path: Path, workouts_tmp_path: Path) -> None:
+        records_backup_path = self.records_parquet.with_name(
+            f"{self.records_parquet.name}.{uuid.uuid4().hex}.bak"
+        )
+        workouts_backup_path = self.workouts_parquet.with_name(
+            f"{self.workouts_parquet.name}.{uuid.uuid4().hex}.bak"
+        )
+
+        had_records_backup = False
+        had_workouts_backup = False
+        records_promoted = False
+        workouts_promoted = False
+
+        try:
+            if self.records_parquet.exists():
+                self.records_parquet.replace(records_backup_path)
+                had_records_backup = True
+
+            if self.workouts_parquet.exists():
+                self.workouts_parquet.replace(workouts_backup_path)
+                had_workouts_backup = True
+
+            records_tmp_path.replace(self.records_parquet)
+            records_promoted = True
+            workouts_tmp_path.replace(self.workouts_parquet)
+            workouts_promoted = True
+        except Exception:
+            if records_promoted and self.records_parquet.exists():
+                self.records_parquet.unlink()
+            if workouts_promoted and self.workouts_parquet.exists():
+                self.workouts_parquet.unlink()
+
+            if had_records_backup and records_backup_path.exists():
+                records_backup_path.replace(self.records_parquet)
+            if had_workouts_backup and workouts_backup_path.exists():
+                workouts_backup_path.replace(self.workouts_parquet)
+            raise
+        finally:
+            if records_tmp_path.exists():
+                records_tmp_path.unlink()
+            if workouts_tmp_path.exists():
+                workouts_tmp_path.unlink()
+            if had_records_backup and records_backup_path.exists():
+                records_backup_path.unlink()
+            if had_workouts_backup and workouts_backup_path.exists():
+                workouts_backup_path.unlink()
+
+    def _write_records_parquet(self, con: duckdb.DuckDBPyConnection, records: list[dict[str, Any]]) -> Path:
         con.execute(
             """
             CREATE TEMP TABLE incoming_records (
@@ -430,9 +478,9 @@ class HealthAutoExportIngestor:
             "COPY deduped_records TO ? (FORMAT PARQUET, COMPRESSION ZSTD)",
             [str(records_tmp_path)],
         )
-        records_tmp_path.replace(self.records_parquet)
+        return records_tmp_path
 
-    def _write_workouts_parquet(self, con: duckdb.DuckDBPyConnection, workouts: list[dict[str, Any]]) -> None:
+    def _write_workouts_parquet(self, con: duckdb.DuckDBPyConnection, workouts: list[dict[str, Any]]) -> Path:
         con.execute(
             """
             CREATE TEMP TABLE incoming_workouts (
@@ -537,7 +585,7 @@ class HealthAutoExportIngestor:
             "COPY deduped_workouts TO ? (FORMAT PARQUET, COMPRESSION ZSTD)",
             [str(workouts_tmp_path)],
         )
-        workouts_tmp_path.replace(self.workouts_parquet)
+        return workouts_tmp_path
 
 
 def create_app(ingestor: HealthAutoExportIngestor, token: str | None = None) -> Flask:
