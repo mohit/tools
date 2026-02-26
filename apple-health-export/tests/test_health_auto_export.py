@@ -515,7 +515,20 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
                     "startDate": "2026-02-20T10:00:00Z",
                     "endDate": "2026-02-20T10:10:00Z",
                 }
-            ]
+            ],
+            "workouts": [
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 30,
+                    "durationUnit": "min",
+                    "totalDistance": 2.5,
+                    "totalDistanceUnit": "km",
+                    "totalEnergyBurned": 180,
+                    "totalEnergyBurnedUnit": "kcal",
+                    "startDate": "2026-02-20T10:00:00Z",
+                    "endDate": "2026-02-20T10:30:00Z",
+                }
+            ],
         }
         payload_b = {
             "records": [
@@ -527,7 +540,20 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
                     "startDate": "2026-02-20T11:00:00Z",
                     "endDate": "2026-02-20T11:10:00Z",
                 }
-            ]
+            ],
+            "workouts": [
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 40,
+                    "durationUnit": "min",
+                    "totalDistance": 3.0,
+                    "totalDistanceUnit": "km",
+                    "totalEnergyBurned": 220,
+                    "totalEnergyBurnedUnit": "kcal",
+                    "startDate": "2026-02-20T11:00:00Z",
+                    "endDate": "2026-02-20T11:40:00Z",
+                }
+            ],
         }
 
         errors: list[Exception] = []
@@ -557,9 +583,19 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
             """,
             [str(self.curated_dir / "health_records.parquet")],
         ).fetchall()
+        workout_rows = con.execute(
+            """
+            SELECT duration
+            FROM read_parquet(?)
+            WHERE workoutActivityType = 'HKWorkoutActivityTypeWalking'
+            ORDER BY startDate
+            """,
+            [str(self.curated_dir / "health_workouts.parquet")],
+        ).fetchall()
         con.close()
 
         self.assertEqual([row[0] for row in rows], ["300", "400"])
+        self.assertEqual([row[0] for row in workout_rows], ["30", "40"])
 
     def test_concurrent_ingests_same_ingestor_preserve_rows(self):
         payload_a = {
@@ -916,6 +952,64 @@ class TestHealthAutoExportAPI(unittest.TestCase):
         self.assertEqual(body["records_ingested"], 1)
         self.assertEqual(body["workouts_ingested"], 0)
         self.assertTrue(Path(body["raw_path"]).exists())
+
+    def test_api_deduplicates_duplicates_within_single_payload(self):
+        payload = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 111,
+                    "startDate": "2026-02-23T09:00:00Z",
+                    "endDate": "2026-02-23T09:15:00Z",
+                },
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 111,
+                    "startDate": "2026-02-23T09:00:00Z",
+                    "endDate": "2026-02-23T09:15:00Z",
+                },
+            ],
+            "workouts": [
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 25,
+                    "durationUnit": "min",
+                    "totalDistance": 1.8,
+                    "totalDistanceUnit": "km",
+                    "totalEnergyBurned": 140,
+                    "totalEnergyBurnedUnit": "kcal",
+                    "startDate": "2026-02-23T09:30:00Z",
+                    "endDate": "2026-02-23T09:55:00Z",
+                },
+                {
+                    "workoutActivityType": "HKWorkoutActivityTypeWalking",
+                    "duration": 25,
+                    "durationUnit": "min",
+                    "totalDistance": 1.8,
+                    "totalDistanceUnit": "km",
+                    "totalEnergyBurned": 140,
+                    "totalEnergyBurnedUnit": "kcal",
+                    "startDate": "2026-02-23T09:30:00Z",
+                    "endDate": "2026-02-23T09:55:00Z",
+                },
+            ],
+        }
+
+        response = self.client.post(
+            "/v1/health/auto-export",
+            data=json.dumps(payload),
+            content_type="application/json",
+            headers={"Authorization": "Bearer secret-token"},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        body = response.get_json()
+        self.assertEqual(body["records_ingested"], 1)
+        self.assertEqual(body["workouts_ingested"], 1)
 
 
 class TestHealthAutoExportCLI(unittest.TestCase):
