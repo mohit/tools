@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 import pyarrow as pa
@@ -475,15 +476,9 @@ def test_determine_from_uts_returns_none_when_state_missing_and_raw_exists(tmp_p
     assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) is None
 
 
-def test_merge_raw_monthly_jsonl_only_updates_impacted_month(tmp_path: Path) -> None:
+def test_append_raw_page_jsonl_writes_immutable_page_file(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
-    jan_file = raw_root / "scrobbles_2026-01.jsonl"
-    feb_file = raw_root / "scrobbles_2026-02.jsonl"
-    _write_jsonl(jan_file, [{"uts": 1735776000, "artist": "A", "track": "Jan", "album": None}])
-    _write_jsonl(feb_file, [{"uts": 1738454400, "artist": "B", "track": "Feb", "album": None}])
-
-    jan_before = jan_file.read_text(encoding="utf-8")
-    updated = lastfm_ingest.merge_raw_monthly_jsonl(
+    updated = lastfm_ingest.append_raw_page_jsonl(
         rows=[
             {
                 "uts": 1738454401,
@@ -496,26 +491,44 @@ def test_merge_raw_monthly_jsonl_only_updates_impacted_month(tmp_path: Path) -> 
             }
         ],
         raw_root=raw_root,
+        run_id=12345,
+        from_uts=1735689600,
+        page=1,
     )
 
     assert updated == 1
-    assert jan_file.read_text(encoding="utf-8") == jan_before
-    feb_rows = _read_jsonl(feb_file)
-    assert len(feb_rows) == 2
+    files = sorted(raw_root.glob("scrobbles_run-*_from-*_p*.jsonl"))
+    assert len(files) == 1
+    rows = _read_jsonl(files[0])
+    assert len(rows) == 1
 
 
-def test_merge_raw_monthly_jsonl_is_append_only(tmp_path: Path) -> None:
+def test_append_raw_page_jsonl_is_append_only_for_same_page_file(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
-    feb_file = raw_root / "scrobbles_2026-02.jsonl"
-    _write_jsonl(
-        feb_file,
-        [
-            {"uts": 1738454400, "artist": "B", "track": "Feb", "album": None, "mbid_track": "old"},
-        ],
-    )
-    before = feb_file.read_text(encoding="utf-8")
+    run_id = 12345
+    from_uts = 1735689600
+    page = 2
 
-    updated = lastfm_ingest.merge_raw_monthly_jsonl(
+    updated_1 = lastfm_ingest.append_raw_page_jsonl(
+        rows=[
+            {
+                "uts": 1738454400,
+                "played_at_utc": lastfm_ingest.pd.to_datetime(1738454400, unit="s", utc=True),
+                "artist": "B",
+                "track": "Feb",
+                "album": None,
+                "mbid_track": "old",
+                "source": "lastfm",
+            }
+        ],
+        raw_root=raw_root,
+        run_id=run_id,
+        from_uts=from_uts,
+        page=page,
+    )
+    raw_file = raw_root / "scrobbles_run-12345_from-1735689600_p0002.jsonl"
+    before = raw_file.read_text(encoding="utf-8")
+    updated_2 = lastfm_ingest.append_raw_page_jsonl(
         rows=[
             {
                 "uts": 1738454400,
@@ -528,15 +541,32 @@ def test_merge_raw_monthly_jsonl_is_append_only(tmp_path: Path) -> None:
             }
         ],
         raw_root=raw_root,
+        run_id=run_id,
+        from_uts=from_uts,
+        page=page,
     )
 
-    assert updated == 1
-    after = feb_file.read_text(encoding="utf-8")
+    assert updated_1 == 1
+    assert updated_2 == 1
+    after = raw_file.read_text(encoding="utf-8")
     assert after.startswith(before)
-    feb_rows = _read_jsonl(feb_file)
-    assert len(feb_rows) == 2
-    assert feb_rows[0]["mbid_track"] == "old"
-    assert feb_rows[1]["mbid_track"] == "new"
+    rows = _read_jsonl(raw_file)
+    assert len(rows) == 2
+    assert rows[0]["mbid_track"] == "old"
+    assert rows[1]["mbid_track"] == "new"
+
+
+def test_determine_from_uts_prefers_latest_raw_run_start_when_raw_newer_than_state(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    state_file = tmp_path / "lastfm_last_uts.txt"
+    state_file.write_text("2000")
+
+    state_mtime = state_file.stat().st_mtime
+    raw_file = raw_root / "scrobbles_run-555_from-1000_p0001.jsonl"
+    _write_jsonl(raw_file, [{"uts": 1000}])
+    os.utime(raw_file, (state_mtime + 10, state_mtime + 10))
+
+    assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) == 1000
 
 
 def test_resolve_user_prefers_explicit_then_env_then_default(monkeypatch) -> None:

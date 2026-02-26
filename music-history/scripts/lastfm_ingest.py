@@ -5,6 +5,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ API = "https://ws.audioscrobbler.com/2.0/"
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 MAX_RETRIES = 5
 BASE_DELAY_SECONDS = 5
+RAW_PAGE_FILE_PATTERN = re.compile(r"^scrobbles_run-(?P<run_id>\d+)_from-(?P<from_uts>full|\d+)_p(?P<page>\d{4})\.jsonl$")
 
 DEFAULT_RAW_ROOT = Path(
     os.environ.get("DATALAKE_RAW_ROOT", str(Path.home() / "datalake.me/raw"))
@@ -215,11 +217,6 @@ def row_key(row: dict[str, Any]) -> tuple[Any, Any, Any, Any]:
     )
 
 
-def month_file_for_uts(raw_root: Path, uts: int) -> Path:
-    parsed = pd.to_datetime(uts, unit="s", utc=True)
-    return raw_root / f"scrobbles_{parsed.year:04d}-{parsed.month:02d}.jsonl"
-
-
 def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
     out = dict(row)
     played_at = out.get("played_at_utc")
@@ -228,44 +225,100 @@ def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def merge_raw_monthly_jsonl(rows: list[dict[str, Any]], raw_root: Path) -> int:
+def raw_page_file_for_run(raw_root: Path, run_id: int, from_uts: int | None, page: int) -> Path:
+    from_token = "full" if from_uts is None else str(int(from_uts))
+    return raw_root / f"scrobbles_run-{run_id}_from-{from_token}_p{page:04d}.jsonl"
+
+
+def append_raw_page_jsonl(
+    rows: list[dict[str, Any]],
+    raw_root: Path,
+    run_id: int,
+    from_uts: int | None,
+    page: int,
+) -> int:
     if not rows:
         return 0
 
     raw_root.mkdir(parents=True, exist_ok=True)
+    raw_page_file = raw_page_file_for_run(raw_root=raw_root, run_id=run_id, from_uts=from_uts, page=page)
 
-    by_month: dict[Path, list[dict[str, Any]]] = {}
-    for row in rows:
-        month_file = month_file_for_uts(raw_root, int(row["uts"]))
-        if month_file not in by_month:
-            by_month[month_file] = []
-        by_month[month_file].append(_serialize_row(row))
+    sorted_rows = sorted(rows, key=lambda row: int(row["uts"]))
+    with raw_page_file.open("a", encoding="utf-8") as handle:
+        for row in sorted_rows:
+            handle.write(json.dumps(_serialize_row(row), ensure_ascii=False))
+            handle.write("\n")
 
-    updated_files = 0
-    for month_file, month_rows in by_month.items():
-        sorted_rows = sorted(month_rows, key=lambda r: int(extract_uts(r) or 0))
-        with month_file.open("a", encoding="utf-8") as handle:
-            for row in sorted_rows:
-                handle.write(json.dumps(row, ensure_ascii=False))
-                handle.write("\n")
-        updated_files += 1
+    return 1
 
-    return updated_files
+
+def _state_next_from_uts(state_file: Path) -> int | None:
+    state_last = load_last_uts(state_file)
+    if state_last is None:
+        return None
+    return state_last + 1
+
+
+def latest_raw_run_from_uts(raw_root: Path) -> tuple[int | None, float] | None:
+    if not raw_root.exists():
+        return None
+
+    latest_path: Path | None = None
+    latest_mtime: float | None = None
+    for path in raw_root.glob("scrobbles_run-*_from-*_p*.jsonl"):
+        match = RAW_PAGE_FILE_PATTERN.match(path.name)
+        if not match:
+            continue
+        path_mtime = path.stat().st_mtime
+        if latest_mtime is None or path_mtime > latest_mtime:
+            latest_mtime = path_mtime
+            latest_path = path
+
+    if latest_path is None or latest_mtime is None:
+        return None
+
+    match = RAW_PAGE_FILE_PATTERN.match(latest_path.name)
+    if not match:
+        return None
+    from_token = match.group("from_uts")
+    from_uts = None if from_token == "full" else int(from_token)
+    return from_uts, latest_mtime
 
 
 def determine_from_uts(raw_root: Path, state_file: Path = STATE_FILE) -> int | None:
-    state_last = load_last_uts(state_file)
-    if state_last is not None:
-        return state_last + 1
+    state_next = _state_next_from_uts(state_file=state_file)
+    latest_raw_run = latest_raw_run_from_uts(raw_root=raw_root)
 
-    raw_last = load_last_uts_from_raw(raw_root)
-    if raw_last is None:
+    if state_next is None:
+        if latest_raw_run is not None:
+            return latest_raw_run[0]
+
+        raw_last = load_last_uts_from_raw(raw_root)
+        if raw_last is None:
+            return None
+
+        # Missing/corrupt state with existing raw data is ambiguous for restarts.
+        # Starting from max(raw)+1 can skip unfinished historical backfills, so
+        # default to a safe full backfill.
         return None
 
-    # Missing/corrupt state with existing raw data is ambiguous for restarts.
-    # Starting from max(raw)+1 can skip unfinished historical backfills, so
-    # default to a safe full backfill.
-    return None
+    if latest_raw_run is None:
+        return state_next
+
+    latest_raw_from_uts, latest_raw_mtime = latest_raw_run
+    try:
+        state_mtime = state_file.stat().st_mtime
+    except OSError:
+        state_mtime = 0.0
+
+    # If raw page dumps are newer than state, the most recent run likely did not
+    # complete and update state. Restart from that run's original lower bound.
+    if latest_raw_mtime > state_mtime:
+        if latest_raw_from_uts is None:
+            return None
+        return min(state_next, latest_raw_from_uts)
+
+    return state_next
 
 
 def request_recent_tracks(
@@ -480,7 +533,13 @@ def main() -> None:
             break
 
         page_rows = rows
-        raw_files_updated += merge_raw_monthly_jsonl(rows=page_rows, raw_root=raw_root)
+        raw_files_updated += append_raw_page_jsonl(
+            rows=page_rows,
+            raw_root=raw_root,
+            run_id=run_id,
+            from_uts=from_uts,
+            page=page,
+        )
         page_rows_written = append_parquet_partitions(
             curated_root=curated_root,
             run_id=run_id,
@@ -524,7 +583,7 @@ def main() -> None:
     save_last_uts(max_uts_seen)
     clear_checkpoint()
     print(
-        f"Ingest complete: pages={pages_processed}, parquet_rows={rows_written}, raw_month_files={raw_files_updated}, "
+        f"Ingest complete: pages={pages_processed}, parquet_rows={rows_written}, raw_page_files={raw_files_updated}, "
         f"last_uts={max_uts_seen}"
     )
 
