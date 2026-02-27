@@ -500,6 +500,36 @@ def test_main_requires_lastfm_user_and_fails_before_api_call(monkeypatch, tmp_pa
     assert call_counter["count"] == 0
 
 
+def test_main_uses_lastfm_user_from_env_for_api_requests(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("LASTFM_USER", "expected_user")
+    monkeypatch.setenv("LASTFM_API_KEY", "api_key")
+    monkeypatch.setenv("DATALAKE_RAW_ROOT", str(tmp_path / "raw"))
+    monkeypatch.setenv("DATALAKE_CURATED_ROOT", str(tmp_path / "curated"))
+
+    monkeypatch.setattr(
+        lastfm_ingest,
+        "parse_args",
+        lambda: lastfm_ingest.argparse.Namespace(
+            from_uts=None,
+            since=None,
+            no_resume=False,
+            max_pages=None,
+            full_refresh=False,
+        ),
+    )
+
+    captured = {"user": None}
+
+    def fake_request_recent_tracks(*, user, api_key, from_uts, page):
+        captured["user"] = user
+        return {"recenttracks": {"track": [], "@attr": {"totalPages": "1"}}}
+
+    monkeypatch.setattr(lastfm_ingest, "request_recent_tracks", fake_request_recent_tracks)
+
+    lastfm_ingest.main()
+    assert captured["user"] == "expected_user"
+
+
 def test_resolve_start_full_refresh_overrides_incremental_defaults() -> None:
     args = lastfm_ingest.argparse.Namespace(
         from_uts=None,
