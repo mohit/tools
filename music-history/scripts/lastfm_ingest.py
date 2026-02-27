@@ -28,7 +28,6 @@ DEFAULT_CURATED_ROOT = Path(
 STATE_DIR = Path.home() / ".local" / "share" / "datalake"
 STATE_FILE = STATE_DIR / "lastfm_last_uts.txt"
 CHECKPOINT_FILE = STATE_DIR / "lastfm_ingest_checkpoint.json"
-DEFAULT_LASTFM_USER = "clakesnapster"
 
 
 def parse_date(value: str) -> int:
@@ -79,15 +78,7 @@ def load_env(var_name: str) -> str | None:
 
 
 def resolve_lastfm_user() -> str:
-    # Prefer explicit runtime env. Keep the historical username as a fallback
-    # for existing unattended jobs that have not set LASTFM_USER yet.
-    user = load_env("LASTFM_USER")
-    if user:
-        return user
-    legacy_user = load_env("LASTFM_DEFAULT_USER")
-    if legacy_user:
-        return legacy_user
-    return DEFAULT_LASTFM_USER
+    return load_required_env("LASTFM_USER")
 
 
 def load_required_env(var_name: str) -> str:
