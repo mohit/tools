@@ -275,7 +275,7 @@ class HealthAutoExportIngestor:
     @contextlib.contextmanager
     def _acquire_process_merge_lock(self):
         self._parquet_merge_lock_file.parent.mkdir(parents=True, exist_ok=True)
-        with self._parquet_merge_lock_file.open("a+", encoding="utf-8") as lock_file:
+        with self._parquet_merge_lock_file.open("a+b") as lock_file:
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
                 try:
@@ -287,9 +287,9 @@ class HealthAutoExportIngestor:
             if msvcrt is not None:
                 # Lock a single byte for cross-process serialization on Windows.
                 lock_file.seek(0)
-                if lock_file.read(1) == "":
+                if lock_file.read(1) == b"":
                     lock_file.seek(0)
-                    lock_file.write("\0")
+                    lock_file.write(b"\0")
                     lock_file.flush()
                 lock_file.seek(0)
                 msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
@@ -343,9 +343,28 @@ class HealthAutoExportIngestor:
 
     @staticmethod
     def _canonicalize_dedupe_value(value: Any) -> Any:
-        if isinstance(value, (dict, list)):
+        if isinstance(value, dict):
+            return tuple(
+                (key, HealthAutoExportIngestor._canonicalize_dedupe_value(nested_value))
+                for key, nested_value in sorted(value.items(), key=lambda item: str(item[0]))
+            )
+
+        if isinstance(value, (list, tuple)):
+            return tuple(HealthAutoExportIngestor._canonicalize_dedupe_value(item) for item in value)
+
+        if isinstance(value, set):
+            return tuple(
+                sorted(
+                    (HealthAutoExportIngestor._canonicalize_dedupe_value(item) for item in value),
+                    key=repr,
+                )
+            )
+
+        try:
+            hash(value)
+            return value
+        except TypeError:
             return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
-        return value
 
     def _promote_parquet_outputs(self, records_tmp_path: Path, workouts_tmp_path: Path) -> None:
         records_backup_path = self.records_parquet.with_name(

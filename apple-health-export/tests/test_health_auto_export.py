@@ -535,6 +535,25 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(deduped_records[0]["metadata_json"], '{"source":"first"}')
         self.assertEqual(deduped_workouts[0]["metadata_json"], '{"source":"first"}')
 
+    def test_dedupe_incoming_batch_handles_set_key_values(self):
+        record_a = {
+            "type": "HKQuantityTypeIdentifierStepCount",
+            "sourceName": "iPhone",
+            "unit": "count",
+            "value": {1, 2, 3},
+            "startDate": "2026-02-22T09:00:00Z",
+            "endDate": "2026-02-22T09:10:00Z",
+            "metadata_json": '{"source":"first"}',
+        }
+        record_b = dict(record_a)
+        record_b["value"] = {3, 2, 1}
+        record_b["metadata_json"] = '{"source":"second"}'
+
+        deduped_records = self.ingestor._dedupe_incoming_records_batch([record_a, record_b])
+
+        self.assertEqual(len(deduped_records), 1)
+        self.assertEqual(deduped_records[0]["metadata_json"], '{"source":"first"}')
+
     def test_acquire_merge_lock_uses_thread_and_process_locks(self):
         events: list[str] = []
 
