@@ -453,17 +453,13 @@ def test_load_last_uts_from_raw_prefers_max_uts_and_supports_nested_uts(tmp_path
 
 def test_resolve_lastfm_user_prefers_env_var(monkeypatch) -> None:
     monkeypatch.setenv("LASTFM_USER", "env_user")
-    monkeypatch.delenv("LASTFM_DEFAULT_USER", raising=False)
     assert lastfm_ingest.resolve_lastfm_user() == "env_user"
 
 
-def test_resolve_lastfm_user_uses_legacy_fallback_then_default(monkeypatch) -> None:
+def test_resolve_lastfm_user_requires_env_var(monkeypatch) -> None:
     monkeypatch.delenv("LASTFM_USER", raising=False)
-    monkeypatch.setenv("LASTFM_DEFAULT_USER", "legacy_user")
-    assert lastfm_ingest.resolve_lastfm_user() == "legacy_user"
-
-    monkeypatch.delenv("LASTFM_DEFAULT_USER", raising=False)
-    assert lastfm_ingest.resolve_lastfm_user() == "clakesnapster"
+    with pytest.raises(SystemExit, match="Missing required env var: LASTFM_USER"):
+        lastfm_ingest.resolve_lastfm_user()
 
 
 def test_resolve_start_full_refresh_overrides_incremental_defaults() -> None:
