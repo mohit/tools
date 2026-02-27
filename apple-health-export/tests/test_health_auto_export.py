@@ -1322,12 +1322,12 @@ class TestHealthAutoExportAPI(unittest.TestCase):
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
-        root = Path(self.temp_dir.name)
-        ingestor = health_auto_export.HealthAutoExportIngestor(
-            raw_dir=root / "raw",
-            curated_dir=root / "curated",
+        self.root = Path(self.temp_dir.name)
+        self.ingestor = health_auto_export.HealthAutoExportIngestor(
+            raw_dir=self.root / "raw",
+            curated_dir=self.root / "curated",
         )
-        self.app = health_auto_export.create_app(ingestor, token="secret-token")
+        self.app = health_auto_export.create_app(self.ingestor, token="secret-token")
         self.client = self.app.test_client()
 
     def tearDown(self):
@@ -1423,6 +1423,72 @@ class TestHealthAutoExportAPI(unittest.TestCase):
         body = response.get_json()
         self.assertEqual(body["records_ingested"], 1)
         self.assertEqual(body["workouts_ingested"], 1)
+
+    def test_api_parallel_requests_preserve_rows(self):
+        payload_a = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 901,
+                    "startDate": "2026-02-26T09:00:00Z",
+                    "endDate": "2026-02-26T09:15:00Z",
+                }
+            ]
+        }
+        payload_b = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 902,
+                    "startDate": "2026-02-26T10:00:00Z",
+                    "endDate": "2026-02-26T10:15:00Z",
+                }
+            ]
+        }
+
+        errors: list[Exception] = []
+        statuses: list[int] = []
+
+        def _post(payload):
+            try:
+                with self.app.test_client() as thread_client:
+                    response = thread_client.post(
+                        "/v1/health/auto-export",
+                        data=json.dumps(payload),
+                        content_type="application/json",
+                        headers={"Authorization": "Bearer secret-token"},
+                    )
+                statuses.append(response.status_code)
+            except Exception as exc:  # pragma: no cover - defensive in thread
+                errors.append(exc)
+
+        thread_a = threading.Thread(target=_post, args=(payload_a,))
+        thread_b = threading.Thread(target=_post, args=(payload_b,))
+        thread_a.start()
+        thread_b.start()
+        thread_a.join()
+        thread_b.join()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(sorted(statuses), [201, 201])
+
+        con = duckdb.connect(":memory:")
+        rows = con.execute(
+            """
+            SELECT value
+            FROM read_parquet(?)
+            WHERE type = 'HKQuantityTypeIdentifierStepCount'
+            ORDER BY startDate
+            """,
+            [str(self.root / "curated" / "health_records.parquet")],
+        ).fetchall()
+        con.close()
+
+        self.assertEqual([row[0] for row in rows], ["901", "902"])
 
 
 class TestHealthAutoExportCLI(unittest.TestCase):
