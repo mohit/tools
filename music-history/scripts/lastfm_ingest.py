@@ -225,18 +225,17 @@ def raw_page_file_for_run(raw_root: Path, run_id: int, from_uts: int | None, pag
     return raw_root / f"scrobbles_run-{run_id}_from-{from_token}_p{page:04d}.jsonl"
 
 
-def next_raw_page_file_for_run(raw_root: Path, run_id: int, from_uts: int | None, page: int) -> Path:
+def _raw_page_file_candidate_for_attempt(
+    raw_root: Path,
+    run_id: int,
+    from_uts: int | None,
+    page: int,
+    attempt: int,
+) -> Path:
+    if attempt == 0:
+        return raw_page_file_for_run(raw_root=raw_root, run_id=run_id, from_uts=from_uts, page=page)
     from_token = _from_uts_token(from_uts)
-    base = raw_root / f"scrobbles_run-{run_id}_from-{from_token}_p{page:04d}.jsonl"
-    if not base.exists():
-        return base
-
-    attempt = 1
-    while True:
-        candidate = raw_root / f"scrobbles_run-{run_id}_from-{from_token}_p{page:04d}_a{attempt:04d}.jsonl"
-        if not candidate.exists():
-            return candidate
-        attempt += 1
+    return raw_root / f"scrobbles_run-{run_id}_from-{from_token}_p{page:04d}_a{attempt:04d}.jsonl"
 
 
 def run_marker_file_for_run(raw_root: Path, run_id: int, from_uts: int | None, kind: str) -> Path:
@@ -276,8 +275,7 @@ def append_raw_page_jsonl(
         return 0
 
     raw_root.mkdir(parents=True, exist_ok=True)
-    raw_page_file = next_raw_page_file_for_run(raw_root=raw_root, run_id=run_id, from_uts=from_uts, page=page)
-    temp_file = raw_page_file.with_name(f"{raw_page_file.name}.tmp-{os.getpid()}-{int(time.time() * 1000)}")
+    temp_file = raw_root / f".scrobbles_tmp_{run_id}_{page}_{os.getpid()}_{int(time.time() * 1000)}.jsonl"
 
     sorted_rows = sorted(rows, key=lambda row: int(row["uts"]))
     with temp_file.open("x", encoding="utf-8") as handle:
@@ -287,7 +285,23 @@ def append_raw_page_jsonl(
         handle.flush()
         os.fsync(handle.fileno())
 
-    temp_file.replace(raw_page_file)
+    attempt = 0
+    while True:
+        raw_page_file = _raw_page_file_candidate_for_attempt(
+            raw_root=raw_root,
+            run_id=run_id,
+            from_uts=from_uts,
+            page=page,
+            attempt=attempt,
+        )
+        try:
+            # Publish without overwrite. If a path already exists, write a new attempt file.
+            os.link(temp_file, raw_page_file)
+            break
+        except FileExistsError:
+            attempt += 1
+
+    temp_file.unlink(missing_ok=True)
 
     return 1
 
