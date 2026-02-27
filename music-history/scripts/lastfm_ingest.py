@@ -77,10 +77,6 @@ def load_env(var_name: str) -> str | None:
     return value.strip() if value else None
 
 
-def resolve_lastfm_user() -> str:
-    return load_required_env("LASTFM_USER")
-
-
 def load_required_env(var_name: str) -> str:
     value = load_env(var_name)
     if not value:
@@ -367,7 +363,7 @@ def resolve_start(
 
 def main() -> None:
     args = parse_args()
-    user = resolve_lastfm_user()
+    user = load_required_env("LASTFM_USER")
     api_key = load_required_env("LASTFM_API_KEY")
     raw_root = Path(os.getenv("DATALAKE_RAW_ROOT", str(DEFAULT_RAW_ROOT))) / "lastfm"
     curated_root = Path(os.getenv("DATALAKE_CURATED_ROOT", str(DEFAULT_CURATED_ROOT))) / "lastfm" / "scrobbles"
