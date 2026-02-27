@@ -186,7 +186,11 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    for service, account in keychain_lookup_sequence(var_name, allow_service_only=False):
+    # Strict candidates are always queried first:
+    # 1) expected service/account
+    # 2) reversed account/service
+    # Service-only candidates are intentionally excluded from this pass.
+    for service, account in keychain_lookup_candidates(var_name):
         secret = query_candidate(service, account)
         if secret:
             return secret
