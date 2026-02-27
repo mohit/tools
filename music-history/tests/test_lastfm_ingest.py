@@ -634,6 +634,33 @@ def test_resolve_start_ignores_checkpoint_without_matching_raw_pages(tmp_path: P
     assert max_uts_seen == 1003
 
 
+def test_resolve_start_drops_unsupported_checkpoint_when_no_raw_resume_exists(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    args = lastfm_ingest.argparse.Namespace(
+        from_uts=None,
+        since=None,
+        full_refetch=False,
+        no_resume=False,
+    )
+    checkpoint = {
+        "from_uts": 9000,  # stale/corrupt range with no matching raw page dumps
+        "next_page": 999,
+        "run_id": 7777,
+        "max_uts_seen": 9999999,
+    }
+
+    from_uts, page, _run_id, max_uts_seen = lastfm_ingest.resolve_start(
+        args=args,
+        checkpoint=checkpoint,
+        fallback_from_uts=1234,
+        raw_root=raw_root,
+    )
+
+    assert from_uts == 1234
+    assert page == 1
+    assert max_uts_seen is None
+
+
 def test_infer_resume_from_raw_prefers_oldest_unmarked_run_to_avoid_backfill_skip(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
     _write_jsonl(raw_root / "scrobbles_run-3001_from-9000_p0001.jsonl", [{"uts": 9001}])

@@ -753,12 +753,9 @@ def resolve_start(
             if inferred_resume is not None:
                 return inferred_resume
 
-            return (
-                checkpoint_from_uts,
-                max(1, checkpoint_next_page),
-                checkpoint_run_id,
-                checkpoint_max_uts_seen,
-            )
+            # If no raw evidence supports this checkpoint range, do not trust it.
+            # Falling back to it can skip historical pages after interrupted runs.
+            return fallback_from_uts, 1, int(time.time()), None
         except (TypeError, ValueError, KeyError):
             pass
 
