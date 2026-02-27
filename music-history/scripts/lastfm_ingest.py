@@ -475,7 +475,11 @@ def infer_resume_from_raw(
         from_uts = min(int(value) for value in from_candidates if value is not None)
 
     matching_runs = [key for key in candidate_pool if key[1] == from_uts]
-    run_id = max(matching_runs, key=lambda key: key[0])[0]
+    run_ids_with_pages = _list_run_ids_for_from_uts(raw_root=raw_root, from_uts=from_uts)
+    if run_ids_with_pages:
+        run_id = run_ids_with_pages[-1]
+    else:
+        run_id = max(matching_runs, key=lambda key: key[0])[0]
 
     # Compute the missing page using all raw files for the chosen from_uts range,
     # not just one run_id. This avoids max(page)+1 style skips after interrupted
