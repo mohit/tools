@@ -378,6 +378,7 @@ def infer_resume_from_raw(
 
     started: list[tuple[int, int | None]] = []
     completed: set[tuple[int, int | None]] = set()
+    page_runs: set[tuple[int, int | None]] = set()
     for path in raw_root.glob("scrobbles_run-*_from-*_*.json"):
         match = RAW_RUN_MARKER_PATTERN.match(path.name)
         if not match:
@@ -391,16 +392,32 @@ def infer_resume_from_raw(
         else:
             completed.add(key)
 
+    for path in raw_root.glob("scrobbles_run-*_from-*_p*.jsonl"):
+        match = RAW_PAGE_FILE_PATTERN.match(path.name)
+        if not match:
+            continue
+        run_id = int(match.group("run_id"))
+        from_token = match.group("from_uts")
+        from_uts = None if from_token == "full" else int(from_token)
+        page_runs.add((run_id, from_uts))
+
     incomplete_runs = [key for key in started if key not in completed]
-    if not incomplete_runs:
+    if incomplete_runs:
+        candidate_pool = incomplete_runs
+    else:
+        # Safety fallback for legacy/incomplete runs without markers:
+        # prefer replaying from raw page files over skipping forward via state.
+        candidate_pool = [key for key in page_runs if key not in completed]
+
+    if not candidate_pool:
         return None
 
     # Pick the safest historical lower bound to avoid skipping unfinished backfills.
-    if any(from_uts is None for _run_id, from_uts in incomplete_runs):
-        candidate_run = max((key for key in incomplete_runs if key[1] is None), key=lambda key: key[0])
+    if any(from_uts is None for _run_id, from_uts in candidate_pool):
+        candidate_run = max((key for key in candidate_pool if key[1] is None), key=lambda key: key[0])
     else:
-        lowest_from = min(int(from_uts) for _run_id, from_uts in incomplete_runs if from_uts is not None)
-        matching = [key for key in incomplete_runs if key[1] == lowest_from]
+        lowest_from = min(int(from_uts) for _run_id, from_uts in candidate_pool if from_uts is not None)
+        matching = [key for key in candidate_pool if key[1] == lowest_from]
         candidate_run = max(matching, key=lambda key: key[0])
 
     run_id, from_uts = candidate_run
