@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "lastfm_ingest.py"
 SPEC = importlib.util.spec_from_file_location("lastfm_ingest", MODULE_PATH)
@@ -460,6 +461,37 @@ def test_load_required_env_requires_value(monkeypatch) -> None:
     monkeypatch.delenv("LASTFM_USER", raising=False)
     with pytest.raises(SystemExit, match="Missing required env var: LASTFM_USER"):
         lastfm_ingest.load_required_env("LASTFM_USER")
+
+
+def test_main_requires_lastfm_user_and_fails_before_api_call(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("LASTFM_USER", raising=False)
+    monkeypatch.setenv("LASTFM_API_KEY", "api_key")
+    monkeypatch.setenv("DATALAKE_RAW_ROOT", str(tmp_path / "raw"))
+    monkeypatch.setenv("DATALAKE_CURATED_ROOT", str(tmp_path / "curated"))
+
+    monkeypatch.setattr(
+        lastfm_ingest,
+        "parse_args",
+        lambda: lastfm_ingest.argparse.Namespace(
+            from_uts=None,
+            since=None,
+            no_resume=False,
+            max_pages=None,
+            full_refresh=False,
+        ),
+    )
+
+    call_counter = {"count": 0}
+
+    def fake_request_recent_tracks(*args, **kwargs):
+        call_counter["count"] += 1
+        return {}
+
+    monkeypatch.setattr(lastfm_ingest, "request_recent_tracks", fake_request_recent_tracks)
+
+    with pytest.raises(SystemExit, match="Missing required env var: LASTFM_USER"):
+        lastfm_ingest.main()
+    assert call_counter["count"] == 0
 
 
 def test_resolve_start_full_refresh_overrides_incremental_defaults() -> None:
