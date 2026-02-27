@@ -310,10 +310,10 @@ def _list_raw_run_page_files(raw_root: Path) -> list[tuple[int | None, float]]:
     return run_files
 
 
-def _list_pages_for_run(raw_root: Path, run_id: int, from_uts: int | None) -> list[int]:
+def _list_pages_for_from_uts(raw_root: Path, from_uts: int | None) -> list[int]:
     from_token = _from_uts_token(from_uts)
     pages: list[int] = []
-    for path in raw_root.glob(f"scrobbles_run-{run_id}_from-{from_token}_p*.jsonl"):
+    for path in raw_root.glob(f"scrobbles_run-*_from-{from_token}_p*.jsonl"):
         match = RAW_PAGE_FILE_PATTERN.match(path.name)
         if not match:
             continue
@@ -331,10 +331,10 @@ def _next_missing_page(pages: list[int]) -> int:
     return candidate
 
 
-def _max_uts_for_run(raw_root: Path, run_id: int, from_uts: int | None) -> int | None:
+def _max_uts_for_from_uts(raw_root: Path, from_uts: int | None) -> int | None:
     from_token = _from_uts_token(from_uts)
     latest: int | None = None
-    for path in raw_root.glob(f"scrobbles_run-{run_id}_from-{from_token}_p*.jsonl"):
+    for path in raw_root.glob(f"scrobbles_run-*_from-{from_token}_p*.jsonl"):
         if not RAW_PAGE_FILE_PATTERN.match(path.name):
             continue
         for row in iter_jsonl(path):
@@ -413,17 +413,21 @@ def infer_resume_from_raw(
         return None
 
     # Pick the safest historical lower bound to avoid skipping unfinished backfills.
-    if any(from_uts is None for _run_id, from_uts in candidate_pool):
-        candidate_run = max((key for key in candidate_pool if key[1] is None), key=lambda key: key[0])
+    from_candidates = {from_uts for _run_id, from_uts in candidate_pool}
+    if None in from_candidates:
+        from_uts = None
     else:
-        lowest_from = min(int(from_uts) for _run_id, from_uts in candidate_pool if from_uts is not None)
-        matching = [key for key in candidate_pool if key[1] == lowest_from]
-        candidate_run = max(matching, key=lambda key: key[0])
+        from_uts = min(int(value) for value in from_candidates if value is not None)
 
-    run_id, from_uts = candidate_run
-    pages = _list_pages_for_run(raw_root=raw_root, run_id=run_id, from_uts=from_uts)
+    matching_runs = [key for key in candidate_pool if key[1] == from_uts]
+    run_id = max(matching_runs, key=lambda key: key[0])[0]
+
+    # Compute the missing page using all raw files for the chosen from_uts range,
+    # not just one run_id. This avoids max(page)+1 style skips after interrupted
+    # no-checkpoint restarts that created multiple run_ids for the same backfill.
+    pages = _list_pages_for_from_uts(raw_root=raw_root, from_uts=from_uts)
     next_page = _next_missing_page(pages)
-    max_uts_seen = _max_uts_for_run(raw_root=raw_root, run_id=run_id, from_uts=from_uts)
+    max_uts_seen = _max_uts_for_from_uts(raw_root=raw_root, from_uts=from_uts)
     return from_uts, next_page, run_id, max_uts_seen
 
 

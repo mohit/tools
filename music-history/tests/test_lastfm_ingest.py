@@ -556,6 +556,26 @@ def test_infer_resume_from_raw_prefers_oldest_unmarked_run_to_avoid_backfill_ski
     assert max_uts_seen == 1001
 
 
+def test_infer_resume_from_raw_uses_union_of_pages_for_same_from_uts(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+
+    # First interrupted run wrote pages 1 and 3.
+    _write_jsonl(raw_root / "scrobbles_run-5001_from-1000_p0001.jsonl", [{"uts": 1001}])
+    _write_jsonl(raw_root / "scrobbles_run-5001_from-1000_p0003.jsonl", [{"uts": 1003}])
+
+    # Later restart without checkpoint started a new run_id and wrote page 4.
+    _write_jsonl(raw_root / "scrobbles_run-5002_from-1000_p0004.jsonl", [{"uts": 1004}])
+
+    inferred = lastfm_ingest.infer_resume_from_raw(raw_root=raw_root)
+
+    assert inferred is not None
+    from_uts, next_page, run_id, max_uts_seen = inferred
+    assert from_uts == 1000
+    assert next_page == 2
+    assert run_id == 5002
+    assert max_uts_seen == 1004
+
+
 def test_infer_resume_from_raw_includes_legacy_unmarked_runs_with_marked_incomplete(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
     _write_jsonl(raw_root / "scrobbles_run-4001_from-5000_started.json", [{"run_id": 4001, "from_uts": 5000}])
