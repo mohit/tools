@@ -794,6 +794,56 @@ def test_append_raw_page_jsonl_is_append_only_for_same_page_file(tmp_path: Path)
     assert tmp_files == []
 
 
+def test_append_parquet_partitions_is_append_only_for_same_month_file(tmp_path: Path) -> None:
+    curated_root = tmp_path / "curated"
+    run_id = 3333
+    page = 4
+    row_old = {
+        "uts": 1738454400,
+        "played_at_utc": lastfm_ingest.pd.to_datetime(1738454400, unit="s", utc=True),
+        "artist": "A",
+        "track": "Song",
+        "album": None,
+        "mbid_track": "old",
+        "source": "lastfm",
+    }
+    row_new = {
+        "uts": 1738454401,
+        "played_at_utc": lastfm_ingest.pd.to_datetime(1738454401, unit="s", utc=True),
+        "artist": "A",
+        "track": "Song 2",
+        "album": None,
+        "mbid_track": "new",
+        "source": "lastfm",
+    }
+
+    written_1 = lastfm_ingest.append_parquet_partitions(
+        curated_root=curated_root,
+        run_id=run_id,
+        page=page,
+        rows=[row_old],
+    )
+    month_dir = curated_root / "year=2025" / "month=02"
+    first_file = month_dir / "scrobbles_3333_p0004.parquet"
+    before_rows = pq.read_table(first_file).to_pylist()
+
+    written_2 = lastfm_ingest.append_parquet_partitions(
+        curated_root=curated_root,
+        run_id=run_id,
+        page=page,
+        rows=[row_new],
+    )
+    after_rows = pq.read_table(first_file).to_pylist()
+
+    assert written_1 == 1
+    assert written_2 == 1
+    assert after_rows == before_rows
+
+    files = sorted(month_dir.glob("scrobbles_3333_p0004*.parquet"))
+    assert len(files) == 2
+    assert files[1].name == "scrobbles_3333_p0004_a0001.parquet"
+
+
 def test_determine_from_uts_prefers_latest_raw_run_start_when_raw_newer_than_state(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
     state_file = tmp_path / "lastfm_last_uts.txt"
@@ -821,6 +871,32 @@ def test_determine_from_uts_uses_safest_lower_bound_across_newer_runs(tmp_path: 
     os.utime(lower_start, (state_mtime + 10, state_mtime + 10))
 
     assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) == 1000
+
+
+def test_resolve_start_no_checkpoint_uses_first_missing_page_not_max_plus_one(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    _write_jsonl(raw_root / "scrobbles_run-8201_from-1000_p0001.jsonl", [{"uts": 1001}])
+    _write_jsonl(raw_root / "scrobbles_run-8202_from-1000_p0003.jsonl", [{"uts": 1003}])
+    _write_jsonl(raw_root / "scrobbles_run-8202_from-1000_p0004.jsonl", [{"uts": 1004}])
+
+    args = lastfm_ingest.argparse.Namespace(
+        from_uts=None,
+        since=None,
+        full_refetch=False,
+        no_resume=False,
+    )
+
+    from_uts, page, run_id, max_uts_seen = lastfm_ingest.resolve_start(
+        args=args,
+        checkpoint=None,
+        fallback_from_uts=9001,
+        raw_root=raw_root,
+    )
+
+    assert from_uts == 1000
+    assert page == 2
+    assert run_id == 8202
+    assert max_uts_seen == 1004
 
 
 def test_determine_from_uts_avoids_skipping_interrupted_full_run_without_state(tmp_path: Path) -> None:

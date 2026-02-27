@@ -238,6 +238,17 @@ def _raw_page_file_candidate_for_attempt(
     return raw_root / f"scrobbles_run-{run_id}_from-{from_token}_p{page:04d}_a{attempt:04d}.jsonl"
 
 
+def _parquet_file_candidate_for_attempt(
+    part_dir: Path,
+    run_id: int,
+    page: int,
+    attempt: int,
+) -> Path:
+    if attempt == 0:
+        return part_dir / f"scrobbles_{run_id}_p{page:04d}.parquet"
+    return part_dir / f"scrobbles_{run_id}_p{page:04d}_a{attempt:04d}.parquet"
+
+
 def run_marker_file_for_run(raw_root: Path, run_id: int, from_uts: int | None, kind: str) -> Path:
     from_token = _from_uts_token(from_uts)
     return raw_root / f"scrobbles_run-{run_id}_from-{from_token}_{kind}.json"
@@ -663,9 +674,22 @@ def append_parquet_partitions(
     for (year, month), group in df.groupby(["year", "month"]):
         part_dir = curated_root / f"year={year:04d}" / f"month={month:02d}"
         part_dir.mkdir(parents=True, exist_ok=True)
-        out_file = part_dir / f"scrobbles_{run_id}_p{page:04d}.parquet"
         table = pa.Table.from_pandas(group.drop(columns=["year", "month"]), preserve_index=False)
-        pq.write_table(table, out_file)
+        attempt = 0
+        while True:
+            out_file = _parquet_file_candidate_for_attempt(
+                part_dir=part_dir,
+                run_id=run_id,
+                page=page,
+                attempt=attempt,
+            )
+            try:
+                # Keep curated page partitions immutable, mirroring raw page dump behavior.
+                with out_file.open("xb") as handle:
+                    pq.write_table(table, handle)
+                break
+            except FileExistsError:
+                attempt += 1
         written += len(group)
     return written
 
@@ -702,6 +726,7 @@ def resolve_start(
                 from_uts=checkpoint_from_uts,
             )
             if pages_for_from_uts:
+                # Always resume from the first missing page to avoid max(page)+1 skips.
                 safe_next_page = _next_missing_page(pages_for_from_uts)
                 checkpoint_next_page = max(1, min(checkpoint_next_page, safe_next_page))
                 run_ids_for_from_uts = _list_run_ids_for_from_uts(
