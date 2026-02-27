@@ -714,6 +714,26 @@ def test_infer_resume_from_raw_prefers_latest_run_with_pages_not_marker_only(tmp
     assert max_uts_seen == 1001
 
 
+def test_infer_resume_from_raw_uses_latest_page_writer_not_max_run_id(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    older_run_page = raw_root / "scrobbles_run-9999_from-1000_p0001.jsonl"
+    newer_run_page = raw_root / "scrobbles_run-1000_from-1000_p0002.jsonl"
+    _write_jsonl(older_run_page, [{"uts": 1001}])
+    _write_jsonl(newer_run_page, [{"uts": 1002}])
+
+    older_mtime = older_run_page.stat().st_mtime
+    os.utime(newer_run_page, (older_mtime + 10, older_mtime + 10))
+
+    inferred = lastfm_ingest.infer_resume_from_raw(raw_root=raw_root)
+
+    assert inferred is not None
+    from_uts, next_page, run_id, max_uts_seen = inferred
+    assert from_uts == 1000
+    assert next_page == 3
+    assert run_id == 1000
+    assert max_uts_seen == 1002
+
+
 def test_infer_resume_from_raw_does_not_treat_empty_or_invalid_page_files_as_complete(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
     _write_jsonl(raw_root / "scrobbles_run-6001_from-1500_started.json", [{"run_id": 6001, "from_uts": 1500}])

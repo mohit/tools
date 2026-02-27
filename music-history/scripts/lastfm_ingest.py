@@ -400,6 +400,35 @@ def _list_run_ids_for_from_uts(raw_root: Path, from_uts: int | None) -> list[int
     return sorted(run_ids)
 
 
+def _latest_run_id_with_pages_for_from_uts(raw_root: Path, from_uts: int | None) -> int | None:
+    from_token = _from_uts_token(from_uts)
+    latest: tuple[float, int] | None = None
+
+    for path in raw_root.glob(f"scrobbles_run-*_from-{from_token}_p*.jsonl"):
+        match = RAW_PAGE_FILE_PATTERN.match(path.name)
+        if not match:
+            continue
+
+        has_valid_uts = False
+        for row in iter_jsonl(path):
+            if extract_uts(row) is not None:
+                has_valid_uts = True
+                break
+        if not has_valid_uts:
+            continue
+
+        run_id = int(match.group("run_id"))
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+
+        if latest is None or mtime > latest[0] or (mtime == latest[0] and run_id > latest[1]):
+            latest = (mtime, run_id)
+
+    return None if latest is None else latest[1]
+
+
 def _list_incomplete_marked_runs(raw_root: Path) -> list[int | None]:
     if not raw_root.exists():
         return []
@@ -475,9 +504,9 @@ def infer_resume_from_raw(
         from_uts = min(int(value) for value in from_candidates if value is not None)
 
     matching_runs = [key for key in candidate_pool if key[1] == from_uts]
-    run_ids_with_pages = _list_run_ids_for_from_uts(raw_root=raw_root, from_uts=from_uts)
-    if run_ids_with_pages:
-        run_id = run_ids_with_pages[-1]
+    latest_run_id = _latest_run_id_with_pages_for_from_uts(raw_root=raw_root, from_uts=from_uts)
+    if latest_run_id is not None:
+        run_id = latest_run_id
     else:
         run_id = max(matching_runs, key=lambda key: key[0])[0]
 
@@ -738,7 +767,12 @@ def resolve_start(
                     from_uts=checkpoint_from_uts,
                 )
                 if run_ids_for_from_uts and checkpoint_run_id not in run_ids_for_from_uts:
-                    checkpoint_run_id = run_ids_for_from_uts[-1]
+                    latest_run_id = _latest_run_id_with_pages_for_from_uts(
+                        raw_root=raw_root,
+                        from_uts=checkpoint_from_uts,
+                    )
+                    if latest_run_id is not None:
+                        checkpoint_run_id = latest_run_id
                 if checkpoint_max_uts_seen is None:
                     checkpoint_max_uts_seen = _max_uts_for_from_uts(
                         raw_root=raw_root,
