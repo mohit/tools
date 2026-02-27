@@ -189,21 +189,6 @@ def iter_jsonl(path: Path):
                 continue
 
 
-def load_last_uts_from_raw(raw_root: Path) -> int | None:
-    if not raw_root.exists():
-        return None
-
-    latest: int | None = None
-    for path in raw_root.glob("scrobbles_*.jsonl"):
-        for row in iter_jsonl(path):
-            uts = extract_uts(row)
-            if uts is None:
-                continue
-            if latest is None or uts > latest:
-                latest = uts
-    return latest
-
-
 def _normalize_text(value: Any) -> str:
     if isinstance(value, dict):
         value = value.get("#text")
@@ -325,6 +310,41 @@ def _list_raw_run_page_files(raw_root: Path) -> list[tuple[int | None, float]]:
     return run_files
 
 
+def _list_pages_for_run(raw_root: Path, run_id: int, from_uts: int | None) -> list[int]:
+    from_token = _from_uts_token(from_uts)
+    pages: list[int] = []
+    for path in raw_root.glob(f"scrobbles_run-{run_id}_from-{from_token}_p*.jsonl"):
+        match = RAW_PAGE_FILE_PATTERN.match(path.name)
+        if not match:
+            continue
+        pages.append(int(match.group("page")))
+    return pages
+
+
+def _next_missing_page(pages: list[int]) -> int:
+    if not pages:
+        return 1
+    existing = set(pages)
+    candidate = 1
+    while candidate in existing:
+        candidate += 1
+    return candidate
+
+
+def _max_uts_for_run(raw_root: Path, run_id: int, from_uts: int | None) -> int | None:
+    from_token = _from_uts_token(from_uts)
+    latest: int | None = None
+    for path in raw_root.glob(f"scrobbles_run-{run_id}_from-{from_token}_p*.jsonl"):
+        if not RAW_PAGE_FILE_PATTERN.match(path.name):
+            continue
+        for row in iter_jsonl(path):
+            uts = extract_uts(row)
+            if uts is None:
+                continue
+            latest = uts if latest is None else max(latest, uts)
+    return latest
+
+
 def _list_incomplete_marked_runs(raw_root: Path) -> list[int | None]:
     if not raw_root.exists():
         return []
@@ -350,6 +370,46 @@ def _list_incomplete_marked_runs(raw_root: Path) -> list[int | None]:
     return incomplete_from_uts
 
 
+def infer_resume_from_raw(
+    raw_root: Path,
+) -> tuple[int | None, int, int, int | None] | None:
+    if not raw_root.exists():
+        return None
+
+    started: list[tuple[int, int | None]] = []
+    completed: set[tuple[int, int | None]] = set()
+    for path in raw_root.glob("scrobbles_run-*_from-*_*.json"):
+        match = RAW_RUN_MARKER_PATTERN.match(path.name)
+        if not match:
+            continue
+        run_id = int(match.group("run_id"))
+        from_token = match.group("from_uts")
+        from_uts = None if from_token == "full" else int(from_token)
+        key = (run_id, from_uts)
+        if match.group("kind") == "started":
+            started.append(key)
+        else:
+            completed.add(key)
+
+    incomplete_runs = [key for key in started if key not in completed]
+    if not incomplete_runs:
+        return None
+
+    # Pick the safest historical lower bound to avoid skipping unfinished backfills.
+    if any(from_uts is None for _run_id, from_uts in incomplete_runs):
+        candidate_run = max((key for key in incomplete_runs if key[1] is None), key=lambda key: key[0])
+    else:
+        lowest_from = min(int(from_uts) for _run_id, from_uts in incomplete_runs if from_uts is not None)
+        matching = [key for key in incomplete_runs if key[1] == lowest_from]
+        candidate_run = max(matching, key=lambda key: key[0])
+
+    run_id, from_uts = candidate_run
+    pages = _list_pages_for_run(raw_root=raw_root, run_id=run_id, from_uts=from_uts)
+    next_page = _next_missing_page(pages)
+    max_uts_seen = _max_uts_for_run(raw_root=raw_root, run_id=run_id, from_uts=from_uts)
+    return from_uts, next_page, run_id, max_uts_seen
+
+
 def _safe_restart_from_uts(from_uts_values: list[int | None]) -> int | None:
     if not from_uts_values:
         return None
@@ -371,14 +431,6 @@ def determine_from_uts(raw_root: Path, state_file: Path = STATE_FILE) -> int | N
         safe_run_restart = _safe_restart_from_uts(run_from_uts)
         if safe_run_restart is not None or run_from_uts:
             return safe_run_restart
-
-        raw_last = load_last_uts_from_raw(raw_root)
-        if raw_last is None:
-            return None
-
-        # Missing/corrupt state with existing raw data is ambiguous for restarts.
-        # Starting from max(raw)+1 can skip unfinished historical backfills, so
-        # default to a safe full backfill.
         return None
 
     if not raw_run_files:
@@ -557,6 +609,7 @@ def resolve_start(
     args: argparse.Namespace,
     checkpoint: dict[str, Any] | None,
     fallback_from_uts: int | None,
+    raw_root: Path,
 ) -> tuple[int | None, int, int, int | None]:
     if args.from_uts is not None and args.since is not None:
         raise SystemExit("Use only one of --from/--from-uts or --since.")
@@ -579,6 +632,11 @@ def resolve_start(
         except (TypeError, ValueError, KeyError):
             pass
 
+    if not args.no_resume:
+        inferred_resume = infer_resume_from_raw(raw_root=raw_root)
+        if inferred_resume is not None:
+            return inferred_resume
+
     return fallback_from_uts, 1, int(time.time()), None
 
 
@@ -591,7 +649,12 @@ def main() -> None:
 
     state_from_uts = determine_from_uts(raw_root=raw_root)
     checkpoint = None if args.no_resume else load_checkpoint()
-    from_uts, page, run_id, max_uts_seen = resolve_start(args, checkpoint, state_from_uts)
+    from_uts, page, run_id, max_uts_seen = resolve_start(
+        args=args,
+        checkpoint=checkpoint,
+        fallback_from_uts=state_from_uts,
+        raw_root=raw_root,
+    )
     seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
     write_run_marker(
         raw_root=raw_root,

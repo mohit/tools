@@ -476,6 +476,47 @@ def test_determine_from_uts_returns_none_when_state_missing_and_raw_exists(tmp_p
     assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) is None
 
 
+def test_infer_resume_from_raw_uses_first_missing_page_and_preserves_run(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    _write_jsonl(raw_root / "scrobbles_run-1001_from-1200_started.json", [{"run_id": 1001, "from_uts": 1200}])
+    _write_jsonl(raw_root / "scrobbles_run-1001_from-1200_p0001.jsonl", [{"uts": 1201}])
+    _write_jsonl(raw_root / "scrobbles_run-1001_from-1200_p0003.jsonl", [{"uts": 1203}])
+
+    inferred = lastfm_ingest.infer_resume_from_raw(raw_root=raw_root)
+
+    assert inferred is not None
+    from_uts, next_page, run_id, max_uts_seen = inferred
+    assert from_uts == 1200
+    assert next_page == 2
+    assert run_id == 1001
+    assert max_uts_seen == 1203
+
+
+def test_resolve_start_prefers_inferred_raw_resume_when_checkpoint_missing(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    _write_jsonl(raw_root / "scrobbles_run-1002_from-1100_started.json", [{"run_id": 1002, "from_uts": 1100}])
+    _write_jsonl(raw_root / "scrobbles_run-1002_from-1100_p0001.jsonl", [{"uts": 1101}])
+
+    args = lastfm_ingest.argparse.Namespace(
+        from_uts=None,
+        since=None,
+        full_refetch=False,
+        no_resume=False,
+    )
+
+    from_uts, page, run_id, max_uts_seen = lastfm_ingest.resolve_start(
+        args=args,
+        checkpoint=None,
+        fallback_from_uts=9000,
+        raw_root=raw_root,
+    )
+
+    assert from_uts == 1100
+    assert page == 2
+    assert run_id == 1002
+    assert max_uts_seen == 1101
+
+
 def test_append_raw_page_jsonl_writes_immutable_page_file(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
     updated = lastfm_ingest.append_raw_page_jsonl(
