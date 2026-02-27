@@ -1362,6 +1362,15 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(lock_call.args[1], mock_msvcrt.LK_LOCK)
         self.assertEqual(unlock_call.args[1], mock_msvcrt.LK_UNLCK)
 
+    def test_acquire_process_merge_lock_raises_without_lock_backend(self):
+        with (
+            mock.patch.object(health_auto_export, "fcntl", None),
+            mock.patch.object(health_auto_export, "msvcrt", None),
+        ):
+            with self.assertRaises(RuntimeError):
+                with self.ingestor._acquire_process_merge_lock():
+                    pass
+
 
 @unittest.skipUnless(health_auto_export.HAS_FLASK, "flask not installed")
 class TestHealthAutoExportAPI(unittest.TestCase):

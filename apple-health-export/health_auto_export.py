@@ -304,7 +304,10 @@ class HealthAutoExportIngestor:
                     msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
                 return
 
-            yield
+            raise RuntimeError(
+                "unable to serialize parquet merges: no supported process-lock backend "
+                "(expected fcntl on POSIX or msvcrt on Windows)"
+            )
 
     @staticmethod
     def _dedupe_incoming_records_batch(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
