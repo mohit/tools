@@ -180,7 +180,11 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    for service, account in keychain_lookup_candidates(var_name):
+    strict_candidates: list[tuple[str, str | None]] = []
+    strict_candidates.extend(keychain_account_lookup_candidates(var_name))
+    strict_candidates.extend(keychain_reversed_lookup_candidates(var_name))
+
+    for service, account in strict_candidates:
         secret = query_candidate(service, account)
         if secret:
             return secret
