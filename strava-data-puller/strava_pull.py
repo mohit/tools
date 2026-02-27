@@ -177,7 +177,13 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
         return None
 
     # Pass 1: strict account-scoped + reversed candidates only.
-    for service, account in keychain_lookup_candidates(var_name):
+    # Build this list explicitly so service-only lookup cannot run before strict
+    # lookups, even if helper ordering changes in the future.
+    strict_candidates = [
+        *keychain_account_lookup_candidates(var_name),
+        *keychain_reversed_lookup_candidates(var_name),
+    ]
+    for service, account in strict_candidates:
         secret = query_candidate(service, account)
         if secret:
             return secret
