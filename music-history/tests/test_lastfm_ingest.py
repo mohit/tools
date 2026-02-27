@@ -576,6 +576,26 @@ def test_infer_resume_from_raw_uses_union_of_pages_for_same_from_uts(tmp_path: P
     assert max_uts_seen == 1004
 
 
+def test_infer_resume_from_raw_does_not_treat_empty_or_invalid_page_files_as_complete(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    _write_jsonl(raw_root / "scrobbles_run-6001_from-1500_started.json", [{"run_id": 6001, "from_uts": 1500}])
+    _write_jsonl(raw_root / "scrobbles_run-6001_from-1500_p0001.jsonl", [{"uts": 1501}])
+
+    # Simulate crash-corrupted page file: path exists but has no valid JSONL rows.
+    bad_page = raw_root / "scrobbles_run-6001_from-1500_p0002.jsonl"
+    bad_page.parent.mkdir(parents=True, exist_ok=True)
+    bad_page.write_text("{not-json}\n", encoding="utf-8")
+
+    inferred = lastfm_ingest.infer_resume_from_raw(raw_root=raw_root)
+
+    assert inferred is not None
+    from_uts, next_page, run_id, max_uts_seen = inferred
+    assert from_uts == 1500
+    assert next_page == 2
+    assert run_id == 6001
+    assert max_uts_seen == 1501
+
+
 def test_infer_resume_from_raw_includes_legacy_unmarked_runs_with_marked_incomplete(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
     _write_jsonl(raw_root / "scrobbles_run-4001_from-5000_started.json", [{"run_id": 4001, "from_uts": 5000}])
@@ -676,6 +696,9 @@ def test_append_raw_page_jsonl_is_append_only_for_same_page_file(tmp_path: Path)
     assert len(second_rows) == 1
     assert first_rows[0]["mbid_track"] == "old"
     assert second_rows[0]["mbid_track"] == "new"
+
+    tmp_files = list(raw_root.glob("*.tmp-*"))
+    assert tmp_files == []
 
 
 def test_determine_from_uts_prefers_latest_raw_run_start_when_raw_newer_than_state(tmp_path: Path) -> None:

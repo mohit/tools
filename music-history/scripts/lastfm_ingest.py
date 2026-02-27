@@ -277,12 +277,17 @@ def append_raw_page_jsonl(
 
     raw_root.mkdir(parents=True, exist_ok=True)
     raw_page_file = next_raw_page_file_for_run(raw_root=raw_root, run_id=run_id, from_uts=from_uts, page=page)
+    temp_file = raw_page_file.with_name(f"{raw_page_file.name}.tmp-{os.getpid()}-{int(time.time() * 1000)}")
 
     sorted_rows = sorted(rows, key=lambda row: int(row["uts"]))
-    with raw_page_file.open("x", encoding="utf-8") as handle:
+    with temp_file.open("x", encoding="utf-8") as handle:
         for row in sorted_rows:
             handle.write(json.dumps(_serialize_row(row), ensure_ascii=False))
             handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+
+    temp_file.replace(raw_page_file)
 
     return 1
 
@@ -316,6 +321,13 @@ def _list_pages_for_from_uts(raw_root: Path, from_uts: int | None) -> list[int]:
     for path in raw_root.glob(f"scrobbles_run-*_from-{from_token}_p*.jsonl"):
         match = RAW_PAGE_FILE_PATTERN.match(path.name)
         if not match:
+            continue
+        has_valid_uts = False
+        for row in iter_jsonl(path):
+            if extract_uts(row) is not None:
+                has_valid_uts = True
+                break
+        if not has_valid_uts:
             continue
         pages.append(int(match.group("page")))
     return pages
