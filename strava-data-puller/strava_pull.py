@@ -186,8 +186,10 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    # Pass 1: strict account-scoped candidates only.
-    for service, account in keychain_lookup_candidates(var_name):
+    # Pass 1: strict account-scoped + reversed candidates only.
+    for service, account in keychain_lookup_sequence(
+        var_name, allow_service_only=False
+    ):
         secret = query_candidate(service, account)
         if secret:
             return secret

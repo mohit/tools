@@ -515,6 +515,74 @@ class TestCredentials(TestCase):
         self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
 
     @patch("subprocess.run")
+    def test_load_keychain_secret_service_only_success_still_runs_after_strict(
+        self, mock_run
+    ):
+        strict_calls = [
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "com.mohit.tools.strava-data-puller",
+                "-a",
+                "STRAVA_CLIENT_ID",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "strava-data-puller",
+                "-a",
+                "STRAVA_CLIENT_ID",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "STRAVA_CLIENT_ID",
+                "-a",
+                "com.mohit.tools.strava-data-puller",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "STRAVA_CLIENT_ID",
+                "-a",
+                "strava-data-puller",
+            ],
+        ]
+        namespaced_service_only = [
+            "security",
+            "find-generic-password",
+            "-w",
+            "-s",
+            "com.mohit.tools.strava-data-puller",
+        ]
+
+        def fake_run(cmd, check, capture_output, text, timeout):
+            if cmd in strict_calls:
+                return types.SimpleNamespace(returncode=44, stdout="")
+            if cmd == namespaced_service_only:
+                return types.SimpleNamespace(returncode=0, stdout="fallback-client-id\n")
+            return types.SimpleNamespace(returncode=44, stdout="")
+
+        mock_run.side_effect = fake_run
+
+        value = strava_pull.load_keychain_secret(
+            "STRAVA_CLIENT_ID", allow_service_only=True
+        )
+
+        self.assertEqual(value, "fallback-client-id")
+        called_cmds = [call.args[0] for call in mock_run.call_args_list]
+        self.assertEqual(called_cmds[:4], strict_calls)
+        self.assertEqual(called_cmds[4], namespaced_service_only)
+
+    @patch("subprocess.run")
     def test_load_keychain_secret_prefers_namespaced_specific_match_over_legacy(
         self, mock_run
     ):
