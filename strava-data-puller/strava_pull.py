@@ -186,20 +186,16 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    # Query only strict candidates in deterministic order:
+    # Build a single deterministic sequence:
     # 1) expected service/account
     # 2) reversed account/service
-    for service, account in keychain_lookup_candidates(var_name):
+    # 3) (optional) service-only last resort
+    for service, account in keychain_lookup_sequence(
+        var_name, allow_service_only=allow_service_only
+    ):
         secret = query_candidate(service, account)
         if secret:
             return secret
-
-    # Only use service-only lookup as explicit last resort.
-    if allow_service_only:
-        for service, account in keychain_service_only_candidates():
-            secret = query_candidate(service, account)
-            if secret:
-                return secret
 
     return None
 
