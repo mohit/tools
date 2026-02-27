@@ -28,6 +28,7 @@ DEFAULT_CURATED_ROOT = Path(
 STATE_DIR = Path.home() / ".local" / "share" / "datalake"
 STATE_FILE = STATE_DIR / "lastfm_last_uts.txt"
 CHECKPOINT_FILE = STATE_DIR / "lastfm_ingest_checkpoint.json"
+DEFAULT_LASTFM_USER = "clakesnapster"
 
 
 def parse_date(value: str) -> int:
@@ -42,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ingest Last.fm scrobbles into raw JSONL and parquet")
     parser.add_argument(
         "--from",
+        "--from-uts",
         dest="from_uts",
         type=int,
         help="Unix timestamp (UTC seconds) to fetch from",
@@ -62,23 +64,86 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional page limit for debugging",
     )
+    parser.add_argument(
+        "--full-refresh",
+        "--full-refetch",
+        action="store_true",
+        help="Ignore state/checkpoint and fetch full history from page 1",
+    )
     return parser.parse_args()
 
 
-def load_env(var_name: str) -> str:
+def load_env(var_name: str) -> str | None:
     value = os.getenv(var_name)
+    return value.strip() if value else None
+
+
+def resolve_lastfm_user() -> str:
+    # Prefer explicit runtime env. Keep the historical username as a fallback
+    # for existing unattended jobs that have not set LASTFM_USER yet.
+    user = load_env("LASTFM_USER")
+    if user:
+        return user
+    legacy_user = load_env("LASTFM_DEFAULT_USER")
+    if legacy_user:
+        return legacy_user
+    return DEFAULT_LASTFM_USER
+
+
+def load_required_env(var_name: str) -> str:
+    value = load_env(var_name)
     if not value:
         raise SystemExit(f"Missing required env var: {var_name}")
     return value
 
 
-def load_last_uts(state_file: Path = STATE_FILE) -> int:
+def extract_uts(row: dict[str, Any]) -> int | None:
+    uts = row.get("uts")
+    if uts is not None:
+        try:
+            return int(uts)
+        except (TypeError, ValueError):
+            return None
+    date = row.get("date")
+    if isinstance(date, dict):
+        nested_uts = date.get("uts")
+        if nested_uts is not None:
+            try:
+                return int(nested_uts)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def load_last_uts_from_raw(raw_root: Path) -> int | None:
+    if not raw_root.exists():
+        return None
+
+    latest: int | None = None
+    for jsonl_path in raw_root.rglob("*.jsonl"):
+        with jsonl_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                uts = extract_uts(row)
+                if uts is None:
+                    continue
+                latest = uts if latest is None else max(latest, uts)
+    return latest
+
+
+def load_last_uts(state_file: Path = STATE_FILE) -> int | None:
     if state_file.exists():
         try:
             return int(state_file.read_text().strip())
         except ValueError:
             pass
-    return int(time.time()) - 30 * 24 * 3600
+    return None
 
 
 def save_last_uts(value: int, state_file: Path = STATE_FILE) -> None:
@@ -94,7 +159,7 @@ def load_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> dict[str, Any] |
 
 
 def save_checkpoint(
-    from_uts: int,
+    from_uts: int | None,
     next_page: int,
     run_id: int,
     max_uts_seen: int | None,
@@ -120,7 +185,7 @@ def clear_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> None:
 def request_recent_tracks(
     user: str,
     api_key: str,
-    from_uts: int,
+    from_uts: int | None,
     page: int,
     max_retries: int = MAX_RETRIES,
     base_delay_seconds: int = BASE_DELAY_SECONDS,
@@ -130,10 +195,11 @@ def request_recent_tracks(
         "user": user,
         "api_key": api_key,
         "format": "json",
-        "from": from_uts,
         "limit": 200,
         "page": page,
     }
+    if from_uts is not None:
+        params["from"] = from_uts
 
     last_error: Exception | None = None
     for attempt in range(max_retries):
@@ -281,10 +347,13 @@ def append_parquet_partitions(
 def resolve_start(
     args: argparse.Namespace,
     checkpoint: dict[str, Any] | None,
-    fallback_from_uts: int,
-) -> tuple[int, int, int, int | None]:
+    fallback_from_uts: int | None,
+) -> tuple[int | None, int, int, int | None]:
     if args.from_uts is not None and args.since is not None:
         raise SystemExit("Use only one of --from or --since.")
+
+    if args.full_refresh:
+        return None, 1, int(time.time()), None
 
     explicit_from = args.from_uts if args.from_uts is not None else args.since
     if explicit_from is not None:
@@ -292,8 +361,9 @@ def resolve_start(
 
     if checkpoint and not args.no_resume:
         try:
+            checkpoint_from = checkpoint["from_uts"]
             return (
-                int(checkpoint["from_uts"]),
+                None if checkpoint_from is None else int(checkpoint_from),
                 int(checkpoint.get("next_page", 1)),
                 int(checkpoint.get("run_id", int(time.time()))),
                 checkpoint.get("max_uts_seen"),
@@ -306,14 +376,21 @@ def resolve_start(
 
 def main() -> None:
     args = parse_args()
-    user = load_env("LASTFM_USER")
-    api_key = load_env("LASTFM_API_KEY")
+    user = resolve_lastfm_user()
+    api_key = load_required_env("LASTFM_API_KEY")
     raw_root = Path(os.getenv("DATALAKE_RAW_ROOT", str(DEFAULT_RAW_ROOT))) / "lastfm"
     curated_root = Path(os.getenv("DATALAKE_CURATED_ROOT", str(DEFAULT_CURATED_ROOT))) / "lastfm" / "scrobbles"
 
+    raw_last_uts = load_last_uts_from_raw(raw_root=raw_root)
     state_from_uts = load_last_uts()
-    checkpoint = None if args.no_resume else load_checkpoint()
-    from_uts, page, run_id, max_uts_seen = resolve_start(args, checkpoint, state_from_uts)
+    fallback_from_uts = None
+    if raw_last_uts is not None:
+        fallback_from_uts = raw_last_uts + 1
+    elif state_from_uts is not None:
+        fallback_from_uts = state_from_uts + 1
+
+    checkpoint = None if args.no_resume or args.full_refresh else load_checkpoint()
+    from_uts, page, run_id, max_uts_seen = resolve_start(args, checkpoint, fallback_from_uts)
     seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
     print(
         f"Starting Last.fm ingest: from_uts={from_uts}, start_page={page}, "

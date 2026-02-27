@@ -52,7 +52,7 @@ python scripts/lastfm_ingest.py --from-uts 1735689600
 python scripts/lastfm_ingest.py --since 2026-01-01T00:00:00Z
 
 # Force full historical re-fetch
-python scripts/lastfm_ingest.py --full-refetch
+python scripts/lastfm_ingest.py --full-refresh
 ```
 
 ## Apple Music

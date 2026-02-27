@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pyarrow as pa
@@ -426,3 +427,58 @@ def test_append_parquet_partitions_dedupes_across_pages_without_shared_seen_keys
     files = sorted(curated_root.rglob(f"scrobbles_{run_id}_p*.parquet"))
     total_rows = sum(pq.read_table(path).num_rows for path in files)
     assert total_rows == 2
+
+
+def test_load_last_uts_from_raw_prefers_max_uts_and_supports_nested_uts(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    raw_root.mkdir(parents=True)
+
+    file_a = raw_root / "recent_a.jsonl"
+    file_b = raw_root / "legacy.jsonl"
+    file_a.write_text(
+        "\n".join(
+            [
+                json.dumps({"uts": 100}),
+                json.dumps({"date": {"uts": "220"}}),
+                "{bad json}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    file_b.write_text(json.dumps({"uts": 180}) + "\n", encoding="utf-8")
+
+    assert lastfm_ingest.load_last_uts_from_raw(raw_root) == 220
+
+
+def test_resolve_lastfm_user_prefers_env_var(monkeypatch) -> None:
+    monkeypatch.setenv("LASTFM_USER", "env_user")
+    monkeypatch.delenv("LASTFM_DEFAULT_USER", raising=False)
+    assert lastfm_ingest.resolve_lastfm_user() == "env_user"
+
+
+def test_resolve_lastfm_user_uses_legacy_fallback_then_default(monkeypatch) -> None:
+    monkeypatch.delenv("LASTFM_USER", raising=False)
+    monkeypatch.setenv("LASTFM_DEFAULT_USER", "legacy_user")
+    assert lastfm_ingest.resolve_lastfm_user() == "legacy_user"
+
+    monkeypatch.delenv("LASTFM_DEFAULT_USER", raising=False)
+    assert lastfm_ingest.resolve_lastfm_user() == "clakesnapster"
+
+
+def test_resolve_start_full_refresh_overrides_incremental_defaults() -> None:
+    args = lastfm_ingest.argparse.Namespace(
+        from_uts=None,
+        since=None,
+        no_resume=False,
+        max_pages=None,
+        full_refresh=True,
+    )
+    from_uts, page, _run_id, max_uts_seen = lastfm_ingest.resolve_start(
+        args=args,
+        checkpoint={"from_uts": 123, "next_page": 2, "run_id": 99, "max_uts_seen": 123},
+        fallback_from_uts=456,
+    )
+    assert from_uts is None
+    assert page == 1
+    assert max_uts_seen is None
