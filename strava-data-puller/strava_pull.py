@@ -142,10 +142,14 @@ def keychain_service_only_candidates() -> list[tuple[str, None]]:
     ]
 
 
-def keychain_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
-    candidates: list[tuple[str, str]] = []
+def keychain_lookup_candidates(
+    var_name: str, allow_service_only: bool = False
+) -> list[tuple[str, str | None]]:
+    candidates: list[tuple[str, str | None]] = []
     candidates.extend(keychain_account_lookup_candidates(var_name))
     candidates.extend(keychain_reversed_lookup_candidates(var_name))
+    if allow_service_only:
+        candidates.extend(keychain_service_only_candidates())
     return candidates
 
 
@@ -176,19 +180,11 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    # Pass 1: strict account-scoped + reversed candidates only.
-    # Build this list explicitly so service-only lookup cannot run before strict
-    # lookups, even if helper ordering changes in the future.
-    strict_candidates = [
-        *keychain_account_lookup_candidates(var_name),
-        *keychain_reversed_lookup_candidates(var_name),
-    ]
-    for service, account in strict_candidates:
+    for service, account in keychain_lookup_candidates(var_name):
         secret = query_candidate(service, account)
         if secret:
             return secret
 
-    # Pass 2: service-only is optional and always runs after strict candidates.
     if allow_service_only:
         for service, account in keychain_service_only_candidates():
             secret = query_candidate(service, account)
