@@ -162,8 +162,9 @@ def keychain_lookup_sequence(
 def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str | None:
     # macOS keychain fallback for unattended runs.
     # Always run account-scoped (including reversed service/account) lookups first.
-    # Service-only lookup is opt-in and always appended after strict candidates because it can
-    # be ambiguous and may return a credential for the wrong variable.
+    # Service-only lookup is intentionally disabled for Strava credentials because it is
+    # ambiguous when multiple accounts share a service and can return the wrong STRAVA_* value.
+    # Keep `allow_service_only` for backward-compatible function signature only.
     def query_candidate(service: str, account: str | None) -> str | None:
         cmd = ["security", "find-generic-password", "-w", "-s", service]
         if account is not None:
@@ -186,22 +187,16 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    # Strict candidates are always queried first:
+    # Query only strict candidates in deterministic order:
     # 1) expected service/account
     # 2) reversed account/service
-    # Service-only candidates are intentionally excluded from this pass.
     for service, account in keychain_lookup_candidates(var_name):
         secret = query_candidate(service, account)
         if secret:
             return secret
 
-    if not allow_service_only:
-        return None
-
-    for service, account in keychain_service_only_candidates():
-        secret = query_candidate(service, account)
-        if secret:
-            return secret
+    # Deliberately do not run service-only fallback, even if allow_service_only is True.
+    _ = allow_service_only
     return None
 
 

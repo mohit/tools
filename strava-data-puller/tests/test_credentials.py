@@ -444,7 +444,7 @@ class TestCredentials(TestCase):
         self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
 
     @patch("subprocess.run")
-    def test_load_keychain_secret_uses_service_only_after_specific_lookups_when_enabled(
+    def test_load_keychain_secret_does_not_use_service_only_when_enabled(
         self, mock_run
     ):
         expected_calls = [
@@ -484,20 +484,11 @@ class TestCredentials(TestCase):
                 "-a",
                 "strava-data-puller",
             ],
-            [
-                "security",
-                "find-generic-password",
-                "-w",
-                "-s",
-                "com.mohit.tools.strava-data-puller",
-            ],
         ]
 
         def fake_run(cmd, check, capture_output, text, timeout):
             call_index = len(mock_run.call_args_list) - 1
             self.assertEqual(cmd, expected_calls[call_index])
-            if cmd == expected_calls[-1]:
-                return types.SimpleNamespace(returncode=0, stdout="client-from-service-only\n")
             return types.SimpleNamespace(returncode=44, stdout="")
 
         mock_run.side_effect = fake_run
@@ -506,7 +497,7 @@ class TestCredentials(TestCase):
             "STRAVA_CLIENT_ID", allow_service_only=True
         )
 
-        self.assertEqual(value, "client-from-service-only")
+        self.assertIsNone(value)
         self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
 
     @patch("subprocess.run")
@@ -548,7 +539,7 @@ class TestCredentials(TestCase):
         self.assertNotIn(legacy_match, called_cmds)
 
     @patch("subprocess.run")
-    def test_load_keychain_secret_prefers_namespaced_service_only_over_legacy(self, mock_run):
+    def test_load_keychain_secret_ignores_service_only_even_when_enabled(self, mock_run):
         namespaced_service_only = [
             "security",
             "find-generic-password",
@@ -564,21 +555,15 @@ class TestCredentials(TestCase):
             "strava-data-puller",
         ]
 
-        def fake_run(cmd, check, capture_output, text, timeout):
-            if cmd == namespaced_service_only:
-                return types.SimpleNamespace(returncode=0, stdout="correct-client-id\n")
-            if cmd == legacy_service_only:
-                return types.SimpleNamespace(returncode=0, stdout="wrong-refresh-token\n")
-            return types.SimpleNamespace(returncode=44, stdout="")
-
-        mock_run.side_effect = fake_run
+        mock_run.return_value = types.SimpleNamespace(returncode=44, stdout="")
 
         value = strava_pull.load_keychain_secret(
             "STRAVA_CLIENT_ID", allow_service_only=True
         )
 
-        self.assertEqual(value, "correct-client-id")
+        self.assertIsNone(value)
         called_cmds = [call.args[0] for call in mock_run.call_args_list]
+        self.assertNotIn(namespaced_service_only, called_cmds)
         self.assertNotIn(legacy_service_only, called_cmds)
 
     @patch("subprocess.run")
