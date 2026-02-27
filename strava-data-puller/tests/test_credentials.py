@@ -444,7 +444,7 @@ class TestCredentials(TestCase):
         self.assertEqual(len(mock_run.call_args_list), len(expected_calls))
 
     @patch("subprocess.run")
-    def test_load_keychain_secret_does_not_use_service_only_when_enabled(
+    def test_load_keychain_secret_uses_service_only_last_when_enabled(
         self, mock_run
     ):
         expected_calls = [
@@ -482,6 +482,20 @@ class TestCredentials(TestCase):
                 "-s",
                 "STRAVA_CLIENT_ID",
                 "-a",
+                "strava-data-puller",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
+                "com.mohit.tools.strava-data-puller",
+            ],
+            [
+                "security",
+                "find-generic-password",
+                "-w",
+                "-s",
                 "strava-data-puller",
             ],
         ]
@@ -539,7 +553,9 @@ class TestCredentials(TestCase):
         self.assertNotIn(legacy_match, called_cmds)
 
     @patch("subprocess.run")
-    def test_load_keychain_secret_ignores_service_only_even_when_enabled(self, mock_run):
+    def test_load_keychain_secret_tries_service_only_after_specific_when_enabled(
+        self, mock_run
+    ):
         namespaced_service_only = [
             "security",
             "find-generic-password",
@@ -563,8 +579,8 @@ class TestCredentials(TestCase):
 
         self.assertIsNone(value)
         called_cmds = [call.args[0] for call in mock_run.call_args_list]
-        self.assertNotIn(namespaced_service_only, called_cmds)
-        self.assertNotIn(legacy_service_only, called_cmds)
+        self.assertIn(namespaced_service_only, called_cmds)
+        self.assertIn(legacy_service_only, called_cmds)
 
     @patch("subprocess.run")
     def test_load_keychain_secret_prefers_reversed_specific_match_over_service_only(
