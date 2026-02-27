@@ -541,6 +541,68 @@ def test_resolve_start_prefers_unmarked_raw_resume_over_state_fallback(tmp_path:
     assert max_uts_seen == 1201
 
 
+def test_resolve_start_checkpoint_next_page_is_clamped_to_first_missing_raw_page(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    _write_jsonl(raw_root / "scrobbles_run-7001_from-1000_p0001.jsonl", [{"uts": 1001}])
+    _write_jsonl(raw_root / "scrobbles_run-7001_from-1000_p0003.jsonl", [{"uts": 1003}])
+
+    args = lastfm_ingest.argparse.Namespace(
+        from_uts=None,
+        since=None,
+        full_refetch=False,
+        no_resume=False,
+    )
+    checkpoint = {
+        "from_uts": 1000,
+        "next_page": 999,  # stale/corrupt high watermark must not skip missing page 2
+        "run_id": 7001,
+        "max_uts_seen": 1003,
+    }
+
+    from_uts, page, run_id, max_uts_seen = lastfm_ingest.resolve_start(
+        args=args,
+        checkpoint=checkpoint,
+        fallback_from_uts=9001,
+        raw_root=raw_root,
+    )
+
+    assert from_uts == 1000
+    assert page == 2
+    assert run_id == 7001
+    assert max_uts_seen == 1003
+
+
+def test_resolve_start_checkpoint_bad_run_id_uses_latest_run_for_range(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    _write_jsonl(raw_root / "scrobbles_run-7101_from-1000_p0001.jsonl", [{"uts": 1001}])
+    _write_jsonl(raw_root / "scrobbles_run-7102_from-1000_p0002.jsonl", [{"uts": 1002}])
+
+    args = lastfm_ingest.argparse.Namespace(
+        from_uts=None,
+        since=None,
+        full_refetch=False,
+        no_resume=False,
+    )
+    checkpoint = {
+        "from_uts": 1000,
+        "next_page": 3,
+        "run_id": 9999,  # not present in raw files
+        "max_uts_seen": None,
+    }
+
+    from_uts, page, run_id, max_uts_seen = lastfm_ingest.resolve_start(
+        args=args,
+        checkpoint=checkpoint,
+        fallback_from_uts=9001,
+        raw_root=raw_root,
+    )
+
+    assert from_uts == 1000
+    assert page == 3
+    assert run_id == 7102
+    assert max_uts_seen == 1002
+
+
 def test_infer_resume_from_raw_prefers_oldest_unmarked_run_to_avoid_backfill_skip(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
     _write_jsonl(raw_root / "scrobbles_run-3001_from-9000_p0001.jsonl", [{"uts": 9001}])

@@ -371,6 +371,24 @@ def _max_uts_for_from_uts(raw_root: Path, from_uts: int | None) -> int | None:
     return latest
 
 
+def _list_run_ids_for_from_uts(raw_root: Path, from_uts: int | None) -> list[int]:
+    from_token = _from_uts_token(from_uts)
+    run_ids: set[int] = set()
+    for path in raw_root.glob(f"scrobbles_run-*_from-{from_token}_p*.jsonl"):
+        match = RAW_PAGE_FILE_PATTERN.match(path.name)
+        if not match:
+            continue
+        has_valid_uts = False
+        for row in iter_jsonl(path):
+            if extract_uts(row) is not None:
+                has_valid_uts = True
+                break
+        if not has_valid_uts:
+            continue
+        run_ids.add(int(match.group("run_id")))
+    return sorted(run_ids)
+
+
 def _list_incomplete_marked_runs(raw_root: Path) -> list[int | None]:
     if not raw_root.exists():
         return []
@@ -670,11 +688,37 @@ def resolve_start(
 
     if checkpoint and not args.no_resume:
         try:
+            checkpoint_from_uts = (
+                int(checkpoint["from_uts"]) if checkpoint.get("from_uts") is not None else None
+            )
+            checkpoint_next_page = int(checkpoint.get("next_page", 1))
+            checkpoint_run_id = int(checkpoint.get("run_id", int(time.time())))
+            checkpoint_max_uts_seen = checkpoint.get("max_uts_seen")
+
+            pages_for_from_uts = _list_pages_for_from_uts(
+                raw_root=raw_root,
+                from_uts=checkpoint_from_uts,
+            )
+            if pages_for_from_uts:
+                safe_next_page = _next_missing_page(pages_for_from_uts)
+                checkpoint_next_page = max(1, min(checkpoint_next_page, safe_next_page))
+                run_ids_for_from_uts = _list_run_ids_for_from_uts(
+                    raw_root=raw_root,
+                    from_uts=checkpoint_from_uts,
+                )
+                if run_ids_for_from_uts and checkpoint_run_id not in run_ids_for_from_uts:
+                    checkpoint_run_id = run_ids_for_from_uts[-1]
+                if checkpoint_max_uts_seen is None:
+                    checkpoint_max_uts_seen = _max_uts_for_from_uts(
+                        raw_root=raw_root,
+                        from_uts=checkpoint_from_uts,
+                    )
+
             return (
-                int(checkpoint["from_uts"]) if checkpoint.get("from_uts") is not None else None,
-                int(checkpoint.get("next_page", 1)),
-                int(checkpoint.get("run_id", int(time.time()))),
-                checkpoint.get("max_uts_seen"),
+                checkpoint_from_uts,
+                checkpoint_next_page,
+                checkpoint_run_id,
+                checkpoint_max_uts_seen,
             )
         except (TypeError, ValueError, KeyError):
             pass
