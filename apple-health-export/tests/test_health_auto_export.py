@@ -575,6 +575,18 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(lock.enter_count, 1)
         self.assertEqual(lock.exit_count, 1)
 
+    def test_merge_to_parquet_uses_parquet_merge_lock(self):
+        payload = self.sample_payload()
+        records, workouts, errors = self.ingestor._normalize_payload(payload)
+        self.assertEqual(errors, [])
+        lock = _CountingLock()
+        self.ingestor._parquet_merge_lock = lock
+
+        self.ingestor._merge_to_parquet(records, workouts, self.raw_dir / "test_raw.json")
+
+        self.assertEqual(lock.enter_count, 1)
+        self.assertEqual(lock.exit_count, 1)
+
     def test_ingestors_share_merge_lock_for_same_curated_dir(self):
         other_ingestor = health_auto_export.HealthAutoExportIngestor(
             raw_dir=self.raw_dir / "other",
@@ -1154,6 +1166,47 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(len(ingested), 1)
         self.assertEqual(ingested[0][0], "45")
         self.assertEqual(json.loads(ingested[0][1]), {"dedupe": "first"})
+
+    def test_ingest_payload_list_batch_deduplicates_when_only_metadata_fields_differ(self):
+        payload = [
+            {
+                "type": "HKQuantityTypeIdentifierStepCount",
+                "sourceName": "iPhone",
+                "unit": "count",
+                "value": 2000,
+                "startDate": "2026-02-23T10:00:00Z",
+                "endDate": "2026-02-23T10:15:00Z",
+                "metadata_steps_mode": "walking",
+            },
+            {
+                "type": "HKQuantityTypeIdentifierStepCount",
+                "sourceName": "iPhone",
+                "unit": "count",
+                "value": 2000,
+                "startDate": "2026-02-23T10:00:00Z",
+                "endDate": "2026-02-23T10:15:00Z",
+                "metadata_steps_mode": "running",
+            },
+        ]
+
+        result = self.ingestor.ingest_payload(payload)
+        self.assertEqual(result["records_ingested"], 1)
+        self.assertEqual(result["workouts_ingested"], 0)
+
+        con = duckdb.connect(":memory:")
+        ingested = con.execute(
+            """
+            SELECT value, metadata_json
+            FROM read_parquet(?)
+            WHERE type = 'HKQuantityTypeIdentifierStepCount'
+            """,
+            [str(self.curated_dir / "health_records.parquet")],
+        ).fetchall()
+        con.close()
+
+        self.assertEqual(len(ingested), 1)
+        self.assertEqual(ingested[0][0], "2000")
+        self.assertEqual(json.loads(ingested[0][1]), {"metadata_steps_mode": "walking"})
 
     def test_ingest_payload_deduplicates_workout_batch_when_only_non_key_fields_differ(self):
         payload = {
