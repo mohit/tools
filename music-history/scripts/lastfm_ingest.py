@@ -694,6 +694,8 @@ def resolve_start(
             checkpoint_next_page = int(checkpoint.get("next_page", 1))
             checkpoint_run_id = int(checkpoint.get("run_id", int(time.time())))
             checkpoint_max_uts_seen = checkpoint.get("max_uts_seen")
+            if checkpoint_max_uts_seen is not None:
+                checkpoint_max_uts_seen = int(checkpoint_max_uts_seen)
 
             pages_for_from_uts = _list_pages_for_from_uts(
                 raw_root=raw_root,
@@ -713,10 +715,22 @@ def resolve_start(
                         raw_root=raw_root,
                         from_uts=checkpoint_from_uts,
                     )
+                return (
+                    checkpoint_from_uts,
+                    checkpoint_next_page,
+                    checkpoint_run_id,
+                    checkpoint_max_uts_seen,
+                )
+
+            # A checkpoint without matching raw pages is likely stale/corrupt.
+            # Prefer raw-page inference so unfinished backfills are not skipped.
+            inferred_resume = infer_resume_from_raw(raw_root=raw_root)
+            if inferred_resume is not None:
+                return inferred_resume
 
             return (
                 checkpoint_from_uts,
-                checkpoint_next_page,
+                max(1, checkpoint_next_page),
                 checkpoint_run_id,
                 checkpoint_max_uts_seen,
             )
