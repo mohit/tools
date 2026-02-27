@@ -212,20 +212,16 @@ class TestCredentials(TestCase):
     @patch.object(strava_pull, "discover_env_files")
     @patch.object(strava_pull, "load_keychain_secret")
     @patch.dict("os.environ", {}, clear=True)
-    def test_resolve_uses_service_only_for_single_remaining_missing_value(
+    def test_resolve_does_not_use_service_only_for_single_remaining_missing_value(
         self, mock_keychain_secret, mock_discover_env_files
     ):
         mock_discover_env_files.return_value = []
 
         def fake_keychain_lookup(var_name, allow_service_only=False):
-            if not allow_service_only:
-                if var_name == "STRAVA_CLIENT_ID":
-                    return "strict-client-id"
-                if var_name == "STRAVA_CLIENT_SECRET":
-                    return "strict-client-secret"
-                return None
-            if var_name == "STRAVA_REFRESH_TOKEN":
-                return "service-only-refresh-token"
+            if var_name == "STRAVA_CLIENT_ID":
+                return "strict-client-id"
+            if var_name == "STRAVA_CLIENT_SECRET":
+                return "strict-client-secret"
             return None
 
         mock_keychain_secret.side_effect = fake_keychain_lookup
@@ -234,14 +230,14 @@ class TestCredentials(TestCase):
 
         self.assertEqual(values["STRAVA_CLIENT_ID"], "strict-client-id")
         self.assertEqual(values["STRAVA_CLIENT_SECRET"], "strict-client-secret")
-        self.assertEqual(values["STRAVA_REFRESH_TOKEN"], "service-only-refresh-token")
+        self.assertNotIn("STRAVA_REFRESH_TOKEN", values)
+        self.assertNotIn("STRAVA_REFRESH_TOKEN", sources)
         self.assertEqual(
             mock_keychain_secret.call_args_list,
             [
                 call("STRAVA_CLIENT_ID", allow_service_only=False),
                 call("STRAVA_CLIENT_SECRET", allow_service_only=False),
                 call("STRAVA_REFRESH_TOKEN", allow_service_only=False),
-                call("STRAVA_REFRESH_TOKEN", allow_service_only=True),
             ],
         )
 
