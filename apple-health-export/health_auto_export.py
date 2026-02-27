@@ -107,6 +107,10 @@ class HealthAutoExportIngestor:
         if errors:
             raise ValueError("; ".join(errors))
 
+        # Keep per-payload batch dedupe explicit at the merge boundary so
+        # read-modify-write parquet merges only process unique incoming rows.
+        records, workouts = self._dedupe_normalized_batches(records, workouts)
+
         raw_path = self._write_raw_payload(payload, request_metadata=request_metadata)
         result = self._merge_to_parquet(records, workouts, raw_path)
         result["raw_path"] = str(raw_path)

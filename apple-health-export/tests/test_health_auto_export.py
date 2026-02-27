@@ -171,6 +171,34 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(record_count, 2)
         self.assertEqual(workout_count, 1)
 
+    def test_ingest_payload_deduplicates_batch_before_merge(self):
+        payload = self.sample_payload()
+        payload["records"].append(dict(payload["records"][0]))
+        payload["workouts"].append(dict(payload["workouts"][0]))
+
+        with (
+            mock.patch.object(
+                self.ingestor,
+                "_write_raw_payload",
+                return_value=self.raw_dir / "test_raw.json",
+            ),
+            mock.patch.object(
+                self.ingestor,
+                "_merge_to_parquet",
+                return_value={
+                    "records_ingested": 2,
+                    "workouts_ingested": 1,
+                    "records_parquet": str(self.curated_dir / "health_records.parquet"),
+                    "workouts_parquet": str(self.curated_dir / "health_workouts.parquet"),
+                },
+            ) as mock_merge,
+        ):
+            self.ingestor.ingest_payload(payload)
+
+        merge_records, merge_workouts, _ = mock_merge.call_args.args
+        self.assertEqual(len(merge_records), 2)
+        self.assertEqual(len(merge_workouts), 1)
+
     def test_ingest_payload_list_input_deduplicates_within_single_batch(self):
         payload = [
             {
