@@ -402,12 +402,12 @@ def infer_resume_from_raw(
         page_runs.add((run_id, from_uts))
 
     incomplete_runs = [key for key in started if key not in completed]
-    if incomplete_runs:
-        candidate_pool = incomplete_runs
-    else:
-        # Safety fallback for legacy/incomplete runs without markers:
-        # prefer replaying from raw page files over skipping forward via state.
-        candidate_pool = [key for key in page_runs if key not in completed]
+    legacy_unmarked_runs = [key for key in page_runs if key not in completed and key not in started]
+
+    # Always include legacy unmarked page runs, even when started markers exist.
+    # This avoids skipping historical backfills if an interrupted full run exists
+    # without marker files alongside other incomplete runs.
+    candidate_pool = list({*incomplete_runs, *legacy_unmarked_runs})
 
     if not candidate_pool:
         return None
