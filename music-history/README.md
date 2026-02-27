@@ -35,6 +35,8 @@ uv sync
 python scripts/lastfm_ingest.py
 ```
 
+`LASTFM_USER` is required and there is no default fallback account.
+
 Writes month-partitioned JSONL files:
 ```
 $DATALAKE_RAW_ROOT/lastfm/scrobbles/year=2026/month=02/scrobbles.jsonl

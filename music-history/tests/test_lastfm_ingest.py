@@ -463,6 +463,12 @@ def test_load_required_env_requires_value(monkeypatch) -> None:
         lastfm_ingest.load_required_env("LASTFM_USER")
 
 
+def test_load_required_env_rejects_whitespace_only_value(monkeypatch) -> None:
+    monkeypatch.setenv("LASTFM_USER", "   ")
+    with pytest.raises(SystemExit, match="Missing required env var: LASTFM_USER"):
+        lastfm_ingest.load_required_env("LASTFM_USER")
+
+
 def test_main_requires_lastfm_user_and_fails_before_api_call(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("LASTFM_USER", raising=False)
     monkeypatch.setenv("LASTFM_API_KEY", "api_key")
