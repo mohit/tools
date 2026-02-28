@@ -176,16 +176,17 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    for service, account in keychain_lookup_candidates(var_name):
+    # Preserve strict ordering: account-scoped and reversed lookups first,
+    # with optional service-only lookups appended as a last resort.
+    candidates: list[tuple[str, str | None]] = []
+    candidates.extend(keychain_lookup_candidates(var_name))
+    if allow_service_only:
+        candidates.extend(keychain_service_only_candidates())
+
+    for service, account in candidates:
         secret = query_candidate(service, account)
         if secret:
             return secret
-
-    if allow_service_only:
-        for service, account in keychain_service_only_candidates():
-            secret = query_candidate(service, account)
-            if secret:
-                return secret
 
     return None
 
