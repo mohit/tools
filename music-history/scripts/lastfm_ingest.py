@@ -527,6 +527,27 @@ def _safe_restart_from_uts(from_uts_values: list[int | None]) -> int | None:
     return min(int(value) for value in from_uts_values if value is not None)
 
 
+def _resume_is_safer(
+    candidate: tuple[int | None, int, int, int | None],
+    baseline: tuple[int | None, int, int, int | None],
+) -> bool:
+    candidate_from_uts, candidate_next_page, _candidate_run_id, _candidate_max_uts_seen = candidate
+    baseline_from_uts, baseline_next_page, _baseline_run_id, _baseline_max_uts_seen = baseline
+
+    if candidate_from_uts is None and baseline_from_uts is not None:
+        return True
+    if candidate_from_uts is not None and baseline_from_uts is None:
+        return False
+    if candidate_from_uts is not None and baseline_from_uts is not None:
+        if candidate_from_uts < baseline_from_uts:
+            return True
+        if candidate_from_uts > baseline_from_uts:
+            return False
+
+    # Same from_uts: earlier missing page is safer than a later checkpoint page.
+    return candidate_next_page < baseline_next_page
+
+
 def determine_from_uts(raw_root: Path, state_file: Path = STATE_FILE) -> int | None:
     incomplete_marked_runs = _list_incomplete_marked_runs(raw_root=raw_root)
     if incomplete_marked_runs:
@@ -778,12 +799,19 @@ def resolve_start(
                         raw_root=raw_root,
                         from_uts=checkpoint_from_uts,
                     )
-                return (
+                checkpoint_resume = (
                     checkpoint_from_uts,
                     checkpoint_next_page,
                     checkpoint_run_id,
                     checkpoint_max_uts_seen,
                 )
+                inferred_resume = infer_resume_from_raw(raw_root=raw_root)
+                if inferred_resume is not None and _resume_is_safer(
+                    candidate=inferred_resume,
+                    baseline=checkpoint_resume,
+                ):
+                    return inferred_resume
+                return checkpoint_resume
 
             # A checkpoint without matching raw pages is likely stale/corrupt.
             # Prefer raw-page inference so unfinished backfills are not skipped.

@@ -634,6 +634,39 @@ def test_resolve_start_ignores_checkpoint_without_matching_raw_pages(tmp_path: P
     assert max_uts_seen == 1003
 
 
+def test_resolve_start_prefers_older_raw_backfill_over_stale_checkpoint_range(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    # Unfinished full-history run (older/safer restart target).
+    _write_jsonl(raw_root / "scrobbles_run-7301_from-full_p0001.jsonl", [{"uts": 1}])
+    # Existing incremental range that happens to match a stale checkpoint.
+    _write_jsonl(raw_root / "scrobbles_run-7302_from-2000_p0001.jsonl", [{"uts": 2001}])
+
+    args = lastfm_ingest.argparse.Namespace(
+        from_uts=None,
+        since=None,
+        full_refetch=False,
+        no_resume=False,
+    )
+    checkpoint = {
+        "from_uts": 2000,
+        "next_page": 2,
+        "run_id": 7302,
+        "max_uts_seen": 2001,
+    }
+
+    from_uts, page, run_id, max_uts_seen = lastfm_ingest.resolve_start(
+        args=args,
+        checkpoint=checkpoint,
+        fallback_from_uts=9999,
+        raw_root=raw_root,
+    )
+
+    assert from_uts is None
+    assert page == 2
+    assert run_id == 7301
+    assert max_uts_seen == 1
+
+
 def test_resolve_start_drops_unsupported_checkpoint_when_no_raw_resume_exists(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
     args = lastfm_ingest.argparse.Namespace(
