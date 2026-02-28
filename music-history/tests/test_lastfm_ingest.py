@@ -483,6 +483,11 @@ def test_load_required_env_rejects_whitespace_only_value(monkeypatch) -> None:
         lastfm_ingest.load_required_env("LASTFM_USER")
 
 
+def test_script_does_not_embed_hardcoded_lastfm_user_fallback() -> None:
+    source = Path(lastfm_ingest.__file__).read_text(encoding="utf-8")
+    assert "clakesnapster" not in source
+
+
 def test_main_requires_lastfm_user_and_fails_before_api_call(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("LASTFM_USER", raising=False)
     monkeypatch.setenv("LASTFM_API_KEY", "api_key")
