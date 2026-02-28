@@ -132,38 +132,6 @@ def keychain_reversed_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
     ]
 
 
-def keychain_service_only_candidates() -> list[tuple[str, None]]:
-    namespaced_service = "com.mohit.tools.strava-data-puller"
-    legacy_service = "strava-data-puller"
-    return [
-        # Service-only lookup is last resort because it can be ambiguous.
-        (namespaced_service, None),
-        (legacy_service, None),
-    ]
-
-
-def keychain_service_match_count(service: str) -> int | None:
-    """Return count of generic-password items matching a service, if detectable."""
-    cmd = ["security", "dump-keychain", "-d"]
-    try:
-        result = subprocess.run(
-            cmd,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except FileNotFoundError:
-        return None
-    except subprocess.TimeoutExpired:
-        return None
-    if result.returncode != 0:
-        return None
-
-    marker = f'"svce"<blob>="{service}"'
-    return sum(1 for line in result.stdout.splitlines() if marker in line)
-
-
 def keychain_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
     account_candidates = keychain_account_lookup_candidates(var_name)
     reversed_candidates = keychain_reversed_lookup_candidates(var_name)
@@ -173,11 +141,11 @@ def keychain_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
     return account_candidates + reversed_candidates
 
 
-def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str | None:
+def load_keychain_secret(var_name: str) -> str | None:
     # macOS keychain fallback for unattended runs.
-    # Always run account-scoped (including reversed service/account) lookups first.
-    # Service-only lookup is opt-in and last-resort because it is ambiguous when
-    # multiple accounts share a service and can return the wrong STRAVA_* value.
+    # Account-scoped lookups (including reversed service/account) only.
+    # Service-only lookups are intentionally disallowed because they can be
+    # ambiguous when multiple accounts share the same service.
     def query_candidate(service: str, account: str | None) -> str | None:
         cmd = ["security", "find-generic-password", "-w", "-s", service]
         if account is not None:
@@ -200,22 +168,8 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    # First pass (strict): specific account/service candidates only.
-    # Service-only lookup is intentionally isolated to a second pass.
     for service, account in keychain_lookup_candidates(var_name):
         secret = query_candidate(service, account)
-        if secret:
-            return secret
-
-    if not allow_service_only:
-        return None
-
-    # Second pass (optional): service-only lookups, but only when a service has
-    # exactly one matching keychain item to avoid ambiguous credential selection.
-    for service, _account in keychain_service_only_candidates():
-        if keychain_service_match_count(service) != 1:
-            continue
-        secret = query_candidate(service, None)
         if secret:
             return secret
 
@@ -252,7 +206,7 @@ def resolve_strava_credentials() -> tuple[dict[str, str], dict[str, str], list[P
     for var_name in missing_after_env:
         # Service-only keychain lookup can bind a wrong STRAVA_* value, so only
         # allow strict account/service (including reversed) matching here.
-        keychain_value = load_keychain_secret(var_name, allow_service_only=False)
+        keychain_value = load_keychain_secret(var_name)
         if keychain_value:
             values[var_name] = keychain_value
             sources[var_name] = "keychain"
