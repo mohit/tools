@@ -62,6 +62,47 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.temp_dir.cleanup()
 
     @staticmethod
+    def _dedupe_records_for_parity(records: list[dict]) -> list[dict]:
+        """Mirror ingest dedupe semantics so source fixture parity compares equivalent rows."""
+        deduped: list[dict] = []
+        seen: set[tuple] = set()
+        for record in records:
+            key = (
+                record.get("type"),
+                record.get("sourceName"),
+                record.get("unit"),
+                record.get("value"),
+                record.get("startDate"),
+                record.get("endDate"),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(record)
+        return deduped
+
+    @staticmethod
+    def _dedupe_workouts_for_parity(workouts: list[dict]) -> list[dict]:
+        """Mirror ingest dedupe semantics so source fixture parity compares equivalent rows."""
+        deduped: list[dict] = []
+        seen: set[tuple] = set()
+        for workout in workouts:
+            key = (
+                workout.get("workoutActivityType"),
+                workout.get("sourceName"),
+                workout.get("startDate"),
+                workout.get("endDate"),
+                workout.get("duration"),
+                workout.get("totalDistance"),
+                workout.get("totalEnergyBurned"),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(workout)
+        return deduped
+
+    @staticmethod
     def sample_payload() -> dict:
         return {
             "records": [
@@ -1122,8 +1163,16 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         ).fetchall()
         con.close()
 
-        self.assertEqual([row[0] for row in record_rows], ["510", "520"])
-        self.assertEqual([row[0] for row in workout_rows], ["51", "52"])
+        # Source fixtures include duplicates; parity must compare against deduped source rows.
+        expected_records = self._dedupe_records_for_parity(payload_a["records"] + payload_b["records"])
+        expected_workouts = self._dedupe_workouts_for_parity(payload_a["workouts"] + payload_b["workouts"])
+        expected_record_values = [str(row["value"]) for row in sorted(expected_records, key=lambda row: row["startDate"])]
+        expected_workout_durations = [
+            str(row["duration"]) for row in sorted(expected_workouts, key=lambda row: row["startDate"])
+        ]
+
+        self.assertEqual([row[0] for row in record_rows], expected_record_values)
+        self.assertEqual([row[0] for row in workout_rows], expected_workout_durations)
 
     def test_concurrent_ingests_same_ingestor_preserve_rows(self):
         payload_a = {
