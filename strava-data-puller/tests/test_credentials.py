@@ -21,7 +21,7 @@ strava_pull = load_module()
 
 
 class TestCredentials(TestCase):
-    def test_keychain_lookup_candidates_default_excludes_service_only(self):
+    def test_keychain_lookup_candidates_returns_strict_only(self):
         self.assertEqual(
             strava_pull.keychain_account_lookup_candidates("STRAVA_CLIENT_SECRET"),
             [
@@ -53,16 +53,19 @@ class TestCredentials(TestCase):
             ],
         )
 
-    def test_keychain_lookup_candidates_appends_service_only_when_enabled(self):
+    def test_keychain_service_only_candidates_are_separate_from_strict_candidates(self):
         self.assertEqual(
-            strava_pull.keychain_lookup_candidates(
-                "STRAVA_CLIENT_SECRET", allow_service_only=True
-            ),
+            strava_pull.keychain_lookup_candidates("STRAVA_CLIENT_SECRET"),
             [
                 ("com.mohit.tools.strava-data-puller", "STRAVA_CLIENT_SECRET"),
                 ("strava-data-puller", "STRAVA_CLIENT_SECRET"),
                 ("STRAVA_CLIENT_SECRET", "com.mohit.tools.strava-data-puller"),
                 ("STRAVA_CLIENT_SECRET", "strava-data-puller"),
+            ],
+        )
+        self.assertEqual(
+            strava_pull.keychain_service_only_candidates(),
+            [
                 ("com.mohit.tools.strava-data-puller", None),
                 ("strava-data-puller", None),
             ],
