@@ -298,6 +298,8 @@ def append_raw_page_jsonl(
 
         attempt = 0
         while True:
+            # Always publish to run/page-scoped files. This preserves immutable
+            # raw dumps and never rewrites legacy month-scoped dump files.
             raw_page_file = _raw_page_file_candidate_for_attempt(
                 raw_root=raw_root,
                 run_id=run_id,
@@ -374,6 +376,31 @@ def _list_pages_for_from_uts(raw_root: Path, from_uts: int | None) -> list[int]:
     return pages
 
 
+def _list_pages_for_from_uts_with_run_filter(
+    raw_root: Path,
+    from_uts: int | None,
+    eligible_run_ids: set[int] | None = None,
+) -> list[int]:
+    from_token = _from_uts_token(from_uts)
+    pages: list[int] = []
+    for path in raw_root.glob(f"scrobbles_run-*_from-{from_token}_p*.jsonl"):
+        match = RAW_PAGE_FILE_PATTERN.match(path.name)
+        if not match:
+            continue
+        run_id = int(match.group("run_id"))
+        if eligible_run_ids is not None and run_id not in eligible_run_ids:
+            continue
+        has_valid_uts = False
+        for row in iter_jsonl(path):
+            if extract_uts(row) is not None:
+                has_valid_uts = True
+                break
+        if not has_valid_uts:
+            continue
+        pages.append(int(match.group("page")))
+    return pages
+
+
 def _next_missing_page(pages: list[int]) -> int:
     if not pages:
         return 1
@@ -384,11 +411,19 @@ def _next_missing_page(pages: list[int]) -> int:
     return candidate
 
 
-def _max_uts_for_from_uts(raw_root: Path, from_uts: int | None) -> int | None:
+def _max_uts_for_from_uts(
+    raw_root: Path,
+    from_uts: int | None,
+    eligible_run_ids: set[int] | None = None,
+) -> int | None:
     from_token = _from_uts_token(from_uts)
     latest: int | None = None
     for path in raw_root.glob(f"scrobbles_run-*_from-{from_token}_p*.jsonl"):
-        if not RAW_PAGE_FILE_PATTERN.match(path.name):
+        match = RAW_PAGE_FILE_PATTERN.match(path.name)
+        if not match:
+            continue
+        run_id = int(match.group("run_id"))
+        if eligible_run_ids is not None and run_id not in eligible_run_ids:
             continue
         for row in iter_jsonl(path):
             uts = extract_uts(row)
@@ -537,12 +572,20 @@ def infer_resume_from_raw(
     else:
         run_id = max(matching_runs, key=lambda key: key[0])[0]
 
-    # Compute the missing page using all raw files for the chosen from_uts range,
-    # not just one run_id. This avoids max(page)+1 style skips after interrupted
-    # no-checkpoint restarts that created multiple run_ids for the same backfill.
-    pages = _list_pages_for_from_uts(raw_root=raw_root, from_uts=from_uts)
+    # Compute the missing page using unfinished candidate runs for this from_uts.
+    # This keeps restart logic focused on interrupted backfills while still
+    # taking the union of pages across multiple restart run_ids.
+    pages = _list_pages_for_from_uts_with_run_filter(
+        raw_root=raw_root,
+        from_uts=from_uts,
+        eligible_run_ids=eligible_run_ids,
+    )
     next_page = _next_missing_page(pages)
-    max_uts_seen = _max_uts_for_from_uts(raw_root=raw_root, from_uts=from_uts)
+    max_uts_seen = _max_uts_for_from_uts(
+        raw_root=raw_root,
+        from_uts=from_uts,
+        eligible_run_ids=eligible_run_ids,
+    )
     return from_uts, next_page, run_id, max_uts_seen
 
 

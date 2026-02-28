@@ -892,6 +892,34 @@ def test_infer_resume_from_raw_includes_legacy_unmarked_runs_with_marked_incompl
     assert max_uts_seen == 1
 
 
+def test_infer_resume_from_raw_ignores_completed_runs_when_finding_missing_page(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+
+    # Incomplete run has a gap at page 2.
+    _write_jsonl(raw_root / "scrobbles_run-9101_from-1000_started.json", [{"run_id": 9101, "from_uts": 1000}])
+    _write_jsonl(raw_root / "scrobbles_run-9101_from-1000_p0001.jsonl", [{"uts": 1001}])
+    _write_jsonl(raw_root / "scrobbles_run-9101_from-1000_p0003.jsonl", [{"uts": 1003}])
+
+    # Completed run has later pages and must not hide missing page 2 for the
+    # interrupted run when choosing a restart page.
+    _write_jsonl(raw_root / "scrobbles_run-9102_from-1000_started.json", [{"run_id": 9102, "from_uts": 1000}])
+    _write_jsonl(
+        raw_root / "scrobbles_run-9102_from-1000_completed.json",
+        [{"run_id": 9102, "from_uts": 1000}],
+    )
+    _write_jsonl(raw_root / "scrobbles_run-9102_from-1000_p0002.jsonl", [{"uts": 1002}])
+    _write_jsonl(raw_root / "scrobbles_run-9102_from-1000_p0004.jsonl", [{"uts": 1004}])
+
+    inferred = lastfm_ingest.infer_resume_from_raw(raw_root=raw_root)
+
+    assert inferred is not None
+    from_uts, next_page, run_id, max_uts_seen = inferred
+    assert from_uts == 1000
+    assert next_page == 2
+    assert run_id == 9101
+    assert max_uts_seen == 1003
+
+
 def test_append_raw_page_jsonl_writes_immutable_page_file(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
     updated = lastfm_ingest.append_raw_page_jsonl(
