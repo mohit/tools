@@ -399,7 +399,11 @@ def _list_run_ids_for_from_uts(raw_root: Path, from_uts: int | None) -> list[int
     return sorted(run_ids)
 
 
-def _latest_run_id_with_pages_for_from_uts(raw_root: Path, from_uts: int | None) -> int | None:
+def _latest_run_id_with_pages_for_from_uts(
+    raw_root: Path,
+    from_uts: int | None,
+    eligible_run_ids: set[int] | None = None,
+) -> int | None:
     from_token = _from_uts_token(from_uts)
     latest: tuple[float, int] | None = None
 
@@ -417,6 +421,8 @@ def _latest_run_id_with_pages_for_from_uts(raw_root: Path, from_uts: int | None)
             continue
 
         run_id = int(match.group("run_id"))
+        if eligible_run_ids is not None and run_id not in eligible_run_ids:
+            continue
         try:
             mtime = path.stat().st_mtime
         except OSError:
@@ -503,7 +509,12 @@ def infer_resume_from_raw(
         from_uts = min(int(value) for value in from_candidates if value is not None)
 
     matching_runs = [key for key in candidate_pool if key[1] == from_uts]
-    latest_run_id = _latest_run_id_with_pages_for_from_uts(raw_root=raw_root, from_uts=from_uts)
+    eligible_run_ids = {run_id for run_id, _from_uts in matching_runs}
+    latest_run_id = _latest_run_id_with_pages_for_from_uts(
+        raw_root=raw_root,
+        from_uts=from_uts,
+        eligible_run_ids=eligible_run_ids,
+    )
     if latest_run_id is not None:
         run_id = latest_run_id
     else:

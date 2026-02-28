@@ -44,6 +44,33 @@ def test_load_checkpoint_returns_none_for_corrupt_json(tmp_path: Path) -> None:
     assert lastfm_ingest.load_checkpoint(checkpoint_file=checkpoint_file) is None
 
 
+def test_append_raw_page_jsonl_keeps_existing_raw_dump_immutable(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+
+    first_rows = [{"uts": 1001, "artist": "A", "track": "T1", "album": None}]
+    second_rows = [{"uts": 1002, "artist": "B", "track": "T2", "album": None}]
+
+    written_1 = lastfm_ingest.append_raw_page_jsonl(
+        rows=first_rows,
+        raw_root=raw_root,
+        run_id=1234,
+        from_uts=1000,
+        page=1,
+    )
+    written_2 = lastfm_ingest.append_raw_page_jsonl(
+        rows=second_rows,
+        raw_root=raw_root,
+        run_id=1234,
+        from_uts=1000,
+        page=1,
+    )
+
+    assert written_1 == 1
+    assert written_2 == 1
+    assert _read_jsonl(raw_root / "scrobbles_run-1234_from-1000_p0001.jsonl") == first_rows
+    assert _read_jsonl(raw_root / "scrobbles_run-1234_from-1000_p0001_a0001.jsonl") == second_rows
+
+
 def test_dedupe_rows_removes_duplicates_across_pages() -> None:
     seen_keys: set[tuple[object, object, object, object]] = set()
 
@@ -727,6 +754,54 @@ def test_infer_resume_from_raw_uses_union_of_pages_for_same_from_uts(tmp_path: P
     assert next_page == 2
     assert run_id == 5002
     assert max_uts_seen == 1004
+
+
+def test_infer_resume_from_raw_full_history_uses_first_missing_page(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+
+    # Interrupted full-history run wrote pages 1 and 3.
+    _write_jsonl(raw_root / "scrobbles_run-6001_from-full_p0001.jsonl", [{"uts": 1}])
+    _write_jsonl(raw_root / "scrobbles_run-6001_from-full_p0003.jsonl", [{"uts": 3}])
+
+    # Later restart wrote page 4 with a different run id.
+    _write_jsonl(raw_root / "scrobbles_run-6002_from-full_p0004.jsonl", [{"uts": 4}])
+
+    inferred = lastfm_ingest.infer_resume_from_raw(raw_root=raw_root)
+
+    assert inferred is not None
+    from_uts, next_page, run_id, max_uts_seen = inferred
+    assert from_uts is None
+    assert next_page == 2
+    assert run_id == 6002
+    assert max_uts_seen == 4
+
+
+def test_infer_resume_from_raw_does_not_resume_into_completed_run(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+
+    # Incomplete run for this range (missing page 2).
+    _write_jsonl(raw_root / "scrobbles_run-6101_from-1000_started.json", [{"run_id": 6101, "from_uts": 1000}])
+    _write_jsonl(raw_root / "scrobbles_run-6101_from-1000_p0001.jsonl", [{"uts": 1001}])
+    _write_jsonl(raw_root / "scrobbles_run-6101_from-1000_p0003.jsonl", [{"uts": 1003}])
+
+    # A newer completed run with page files should not become the resume run id.
+    _write_jsonl(raw_root / "scrobbles_run-6102_from-1000_started.json", [{"run_id": 6102, "from_uts": 1000}])
+    _write_jsonl(raw_root / "scrobbles_run-6102_from-1000_completed.json", [{"run_id": 6102, "from_uts": 1000}])
+    completed_page = raw_root / "scrobbles_run-6102_from-1000_p0005.jsonl"
+    _write_jsonl(completed_page, [{"uts": 1005}])
+
+    # Ensure the completed run page looks newest by mtime.
+    newest_time = completed_page.stat().st_mtime + 20
+    os.utime(completed_page, (newest_time, newest_time))
+
+    inferred = lastfm_ingest.infer_resume_from_raw(raw_root=raw_root)
+
+    assert inferred is not None
+    from_uts, next_page, run_id, max_uts_seen = inferred
+    assert from_uts == 1000
+    assert next_page == 2
+    assert run_id == 6101
+    assert max_uts_seen == 1005
 
 
 def test_infer_resume_from_raw_prefers_latest_run_with_pages_not_marker_only(tmp_path: Path) -> None:
