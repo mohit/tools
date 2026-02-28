@@ -40,19 +40,23 @@ Writes month-partitioned JSONL files:
 $DATALAKE_RAW_ROOT/lastfm/scrobbles/year=2026/month=02/scrobbles.jsonl
 ```
 
-Incremental by default — reads existing JSONL to find the latest timestamp and only fetches newer scrobbles. If no prior data exists, does a full-history backfill.
+Incremental by default — tracks the latest successful `uts` in state and fetches newer scrobbles. If no prior data exists, it backfills recent history.
+The ingester also checkpoints pagination progress and resumes after transient failures (for example HTTP 500 mid-run).
 
 ### Options
 
 ```bash
 # Start from a specific unix timestamp
-python scripts/lastfm_ingest.py --from-uts 1735689600
+python scripts/lastfm_ingest.py --from 1735689600
 
-# Start from an ISO timestamp (UTC)
-python scripts/lastfm_ingest.py --since 2026-01-01T00:00:00Z
+# Start from a specific UTC date
+python scripts/lastfm_ingest.py --since 2026-01-01
 
-# Force full historical re-fetch
-python scripts/lastfm_ingest.py --full-refetch
+# Ignore checkpoint and start the selected range from page 1
+python scripts/lastfm_ingest.py --no-resume
+
+# Tune retry/backoff for transient API failures
+python scripts/lastfm_ingest.py --max-retries 8 --base-delay-seconds 3
 ```
 
 ## Apple Music

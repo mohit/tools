@@ -63,6 +63,18 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional page limit for debugging",
     )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=MAX_RETRIES,
+        help=f"Retry budget for transient page fetch failures (default: {MAX_RETRIES})",
+    )
+    parser.add_argument(
+        "--base-delay-seconds",
+        type=int,
+        default=BASE_DELAY_SECONDS,
+        help=f"Base delay for exponential backoff in seconds (default: {BASE_DELAY_SECONDS})",
+    )
     return parser.parse_args()
 
 
@@ -101,6 +113,7 @@ def load_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> dict[str, Any] |
 
 
 def save_checkpoint(
+    user: str,
     from_uts: int,
     next_page: int,
     run_id: int,
@@ -109,6 +122,7 @@ def save_checkpoint(
 ) -> None:
     checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
     payload = {
+        "user": user,
         "from_uts": from_uts,
         "next_page": next_page,
         "run_id": run_id,
@@ -315,28 +329,43 @@ def append_parquet_partitions(
 
 def resolve_start(
     args: argparse.Namespace,
+    user: str,
     checkpoint: dict[str, Any] | None,
     fallback_from_uts: int,
-) -> tuple[int, int, int, int | None]:
+) -> tuple[int, int, int, int | None, bool]:
     if args.from_uts is not None and args.since is not None:
         raise SystemExit("Use only one of --from or --since.")
 
     explicit_from = args.from_uts if args.from_uts is not None else args.since
-    if explicit_from is not None:
-        return explicit_from, 1, int(time.time()), None
-
     if checkpoint and not args.no_resume:
         try:
+            checkpoint_user = checkpoint.get("user")
+            if checkpoint_user and checkpoint_user != user:
+                raise ValueError("checkpoint user mismatch")
+
+            checkpoint_from_uts = int(checkpoint["from_uts"])
+            if explicit_from is not None and checkpoint_from_uts != explicit_from:
+                raise ValueError("checkpoint from_uts mismatch")
+
+            if explicit_from is None:
+                from_uts = checkpoint_from_uts
+            else:
+                from_uts = explicit_from
+
             return (
-                int(checkpoint["from_uts"]),
+                from_uts,
                 int(checkpoint.get("next_page", 1)),
                 int(checkpoint.get("run_id", int(time.time()))),
                 checkpoint.get("max_uts_seen"),
+                True,
             )
         except (TypeError, ValueError, KeyError):
             pass
 
-    return fallback_from_uts, 1, int(time.time()), None
+    if explicit_from is not None:
+        return explicit_from, 1, int(time.time()), None, False
+
+    return fallback_from_uts, 1, int(time.time()), None, False
 
 
 def main() -> None:
@@ -348,18 +377,42 @@ def main() -> None:
 
     state_from_uts = load_last_uts()
     checkpoint = None if args.no_resume else load_checkpoint()
-    from_uts, page, run_id, max_uts_seen = resolve_start(args, checkpoint, state_from_uts)
+    from_uts, page, run_id, max_uts_seen, resumed = resolve_start(
+        args=args,
+        user=user,
+        checkpoint=checkpoint,
+        fallback_from_uts=state_from_uts,
+    )
+    if checkpoint and not args.no_resume and not resumed:
+        # Discard stale/incompatible checkpoints so future runs do not keep considering them.
+        clear_checkpoint()
+
     seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
     print(
         f"Starting Last.fm ingest: from_uts={from_uts}, start_page={page}, "
-        f"run_id={run_id}, resume={'yes' if checkpoint and not args.no_resume else 'no'}"
+        f"run_id={run_id}, resume={'yes' if resumed else 'no'}"
     )
 
     pages_processed = 0
     rows_written = 0
 
     while True:
-        payload = request_recent_tracks(user=user, api_key=api_key, from_uts=from_uts, page=page)
+        # Persist page intent before fetch so any transient failure can resume this exact page.
+        save_checkpoint(
+            user=user,
+            from_uts=from_uts,
+            next_page=page,
+            run_id=run_id,
+            max_uts_seen=max_uts_seen,
+        )
+        payload = request_recent_tracks(
+            user=user,
+            api_key=api_key,
+            from_uts=from_uts,
+            page=page,
+            max_retries=args.max_retries,
+            base_delay_seconds=args.base_delay_seconds,
+        )
         recent = payload.get("recenttracks", {})
         tracks = recent.get("track", [])
         rows = normalize(tracks if isinstance(tracks, list) else [])
@@ -383,6 +436,7 @@ def main() -> None:
 
         next_page = page + 1
         save_checkpoint(
+            user=user,
             from_uts=from_uts,
             next_page=next_page,
             run_id=run_id,

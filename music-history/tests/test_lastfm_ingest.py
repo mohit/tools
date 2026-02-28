@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import json
 from pathlib import Path
@@ -500,6 +501,7 @@ def test_save_checkpoint_writes_valid_json(tmp_path: Path) -> None:
     checkpoint_file = tmp_path / "checkpoint.json"
 
     lastfm_ingest.save_checkpoint(
+        user="demo-user",
         from_uts=123,
         next_page=7,
         run_id=555,
@@ -508,7 +510,55 @@ def test_save_checkpoint_writes_valid_json(tmp_path: Path) -> None:
     )
 
     saved = json.loads(checkpoint_file.read_text(encoding="utf-8"))
+    assert saved["user"] == "demo-user"
     assert saved["from_uts"] == 123
     assert saved["next_page"] == 7
     assert saved["run_id"] == 555
     assert saved["max_uts_seen"] == 987
+
+
+def test_resolve_start_resumes_for_matching_explicit_from_checkpoint() -> None:
+    args = argparse.Namespace(from_uts=1000, since=None, no_resume=False)
+    checkpoint = {
+        "user": "mohit",
+        "from_uts": 1000,
+        "next_page": 42,
+        "run_id": 123456,
+        "max_uts_seen": 1900,
+    }
+
+    from_uts, page, run_id, max_uts_seen, resumed = lastfm_ingest.resolve_start(
+        args=args,
+        user="mohit",
+        checkpoint=checkpoint,
+        fallback_from_uts=900,
+    )
+
+    assert resumed is True
+    assert from_uts == 1000
+    assert page == 42
+    assert run_id == 123456
+    assert max_uts_seen == 1900
+
+
+def test_resolve_start_ignores_checkpoint_with_user_mismatch() -> None:
+    args = argparse.Namespace(from_uts=None, since=None, no_resume=False)
+    checkpoint = {
+        "user": "someone-else",
+        "from_uts": 1000,
+        "next_page": 42,
+        "run_id": 123456,
+        "max_uts_seen": 1900,
+    }
+
+    from_uts, page, _run_id, max_uts_seen, resumed = lastfm_ingest.resolve_start(
+        args=args,
+        user="mohit",
+        checkpoint=checkpoint,
+        fallback_from_uts=777,
+    )
+
+    assert resumed is False
+    assert from_uts == 777
+    assert page == 1
+    assert max_uts_seen is None
