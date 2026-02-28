@@ -867,6 +867,27 @@ def test_infer_resume_from_raw_uses_union_of_pages_for_same_from_uts(tmp_path: P
     assert max_uts_seen == 1004
 
 
+def test_infer_resume_from_raw_legacy_runs_for_same_range_uses_conservative_missing_page(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+
+    # Older legacy run looks complete for early pages.
+    _write_jsonl(raw_root / "scrobbles_run-5201_from-1000_p0001.jsonl", [{"uts": 1001}])
+    _write_jsonl(raw_root / "scrobbles_run-5201_from-1000_p0002.jsonl", [{"uts": 1002}])
+    _write_jsonl(raw_root / "scrobbles_run-5201_from-1000_p0003.jsonl", [{"uts": 1003}])
+
+    # Newer interrupted legacy run wrote page 1 but checkpoint was never saved.
+    _write_jsonl(raw_root / "scrobbles_run-5202_from-1000_p0001.jsonl", [{"uts": 1001}])
+
+    inferred = lastfm_ingest.infer_resume_from_raw(raw_root=raw_root)
+
+    assert inferred is not None
+    from_uts, next_page, run_id, max_uts_seen = inferred
+    assert from_uts == 1000
+    assert next_page == 2
+    assert run_id == 5202
+    assert max_uts_seen == 1003
+
+
 def test_infer_resume_from_raw_full_history_uses_first_missing_page(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
 
@@ -1325,6 +1346,39 @@ def test_resolve_start_no_checkpoint_uses_first_missing_page_not_max_plus_one(tm
     assert page == 2
     assert run_id == 8202
     assert max_uts_seen == 1004
+
+
+def test_resolve_start_checkpoint_uses_conservative_missing_page_with_legacy_runs(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    _write_jsonl(raw_root / "scrobbles_run-8501_from-1000_p0001.jsonl", [{"uts": 1001}])
+    _write_jsonl(raw_root / "scrobbles_run-8501_from-1000_p0002.jsonl", [{"uts": 1002}])
+    _write_jsonl(raw_root / "scrobbles_run-8501_from-1000_p0003.jsonl", [{"uts": 1003}])
+    _write_jsonl(raw_root / "scrobbles_run-8502_from-1000_p0001.jsonl", [{"uts": 1001}])
+
+    args = lastfm_ingest.argparse.Namespace(
+        from_uts=None,
+        since=None,
+        full_refetch=False,
+        no_resume=False,
+    )
+    checkpoint = {
+        "from_uts": 1000,
+        "next_page": 999,
+        "run_id": 8502,
+        "max_uts_seen": None,
+    }
+
+    from_uts, page, run_id, max_uts_seen = lastfm_ingest.resolve_start(
+        args=args,
+        checkpoint=checkpoint,
+        fallback_from_uts=9999,
+        raw_root=raw_root,
+    )
+
+    assert from_uts == 1000
+    assert page == 2
+    assert run_id == 8502
+    assert max_uts_seen == 1003
 
 
 def test_resolve_start_corrupt_checkpoint_still_uses_first_missing_page_from_raw(tmp_path: Path) -> None:

@@ -376,13 +376,13 @@ def _list_pages_for_from_uts(raw_root: Path, from_uts: int | None) -> list[int]:
     return pages
 
 
-def _list_pages_for_from_uts_with_run_filter(
+def _list_pages_by_run_for_from_uts(
     raw_root: Path,
     from_uts: int | None,
     eligible_run_ids: set[int] | None = None,
-) -> list[int]:
+) -> dict[int, list[int]]:
     from_token = _from_uts_token(from_uts)
-    pages: list[int] = []
+    pages_by_run: dict[int, list[int]] = {}
     for path in raw_root.glob(f"scrobbles_run-*_from-{from_token}_p*.jsonl"):
         match = RAW_PAGE_FILE_PATTERN.match(path.name)
         if not match:
@@ -397,8 +397,8 @@ def _list_pages_for_from_uts_with_run_filter(
                 break
         if not has_valid_uts:
             continue
-        pages.append(int(match.group("page")))
-    return pages
+        pages_by_run.setdefault(run_id, []).append(int(match.group("page")))
+    return pages_by_run
 
 
 def _next_missing_page(pages: list[int]) -> int:
@@ -409,6 +409,30 @@ def _next_missing_page(pages: list[int]) -> int:
     while candidate in existing:
         candidate += 1
     return candidate
+
+
+def _conservative_next_page_for_from_uts(
+    raw_root: Path,
+    from_uts: int | None,
+    eligible_run_ids: set[int] | None = None,
+) -> int:
+    pages_by_run = _list_pages_by_run_for_from_uts(
+        raw_root=raw_root,
+        from_uts=from_uts,
+        eligible_run_ids=eligible_run_ids,
+    )
+    if not pages_by_run:
+        return 1
+
+    all_pages: list[int] = []
+    for pages in pages_by_run.values():
+        all_pages.extend(pages)
+
+    # Union keeps progress across restart run_ids; per-run minima avoid skipping
+    # holes when an interrupted run exists beside an older complete one.
+    union_next_page = _next_missing_page(all_pages)
+    per_run_next_page = min(_next_missing_page(pages) for pages in pages_by_run.values())
+    return min(union_next_page, per_run_next_page)
 
 
 def _max_uts_for_from_uts(
@@ -579,12 +603,11 @@ def infer_resume_from_raw(
     # Compute the missing page using unfinished candidate runs for this from_uts.
     # This keeps restart logic focused on interrupted backfills while still
     # taking the union of pages across multiple restart run_ids.
-    pages = _list_pages_for_from_uts_with_run_filter(
+    next_page = _conservative_next_page_for_from_uts(
         raw_root=raw_root,
         from_uts=from_uts,
         eligible_run_ids=eligible_run_ids,
     )
-    next_page = _next_missing_page(pages)
     max_uts_seen = _max_uts_for_from_uts(
         raw_root=raw_root,
         from_uts=from_uts,
@@ -846,7 +869,10 @@ def resolve_start(
             )
             if pages_for_from_uts:
                 # Always resume from the first missing page to avoid max(page)+1 skips.
-                safe_next_page = _next_missing_page(pages_for_from_uts)
+                safe_next_page = _conservative_next_page_for_from_uts(
+                    raw_root=raw_root,
+                    from_uts=checkpoint_from_uts,
+                )
                 checkpoint_next_page = max(1, min(checkpoint_next_page, safe_next_page))
                 run_ids_for_from_uts = _list_run_ids_for_from_uts(
                     raw_root=raw_root,
