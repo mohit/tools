@@ -99,6 +99,10 @@ def load_keychain_secret(var_name: str) -> str | None:
     lookups = (
         ("strava-data-puller", var_name),
         ("com.mohit.tools.strava-data-puller", var_name),
+        # Legacy entries with service/account swapped.
+        (var_name, "strava-data-puller"),
+        (var_name, "com.mohit.tools.strava-data-puller"),
+        # Broad service-only fallback is last to avoid selecting the wrong item.
         (var_name, None),
     )
 
