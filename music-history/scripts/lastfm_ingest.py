@@ -28,6 +28,10 @@ DEFAULT_CURATED_ROOT = Path(
 STATE_DIR = Path.home() / ".local" / "share" / "datalake"
 STATE_FILE = STATE_DIR / "lastfm_last_uts.txt"
 CHECKPOINT_FILE = STATE_DIR / "lastfm_ingest_checkpoint.json"
+LASTFM_USER_REQUIRED_HINT = (
+    "LASTFM_USER must be set explicitly; no fallback account is allowed "
+    "to avoid ingesting the wrong user's history."
+)
 
 
 def parse_date(value: str) -> int:
@@ -82,13 +86,9 @@ def load_required_env(var_name: str) -> str:
     if not value:
         hint = f"{var_name} must be set."
         if var_name == "LASTFM_USER":
-            hint = (
-                "LASTFM_USER must be set explicitly; no fallback account is allowed "
-                "to avoid ingesting the wrong user's history."
-            )
+            hint = LASTFM_USER_REQUIRED_HINT
         raise SystemExit(
-            f"Missing required env var: {var_name}. "
-            hint
+            f"Missing required env var: {var_name}. {hint}"
         )
     return value
 
