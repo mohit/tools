@@ -937,6 +937,36 @@ def test_append_raw_page_jsonl_is_append_only_for_same_page_file(tmp_path: Path)
     assert tmp_files == []
 
 
+def test_append_raw_page_jsonl_does_not_rewrite_legacy_month_dump(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    legacy_month_file = raw_root / "scrobbles_2026-02.jsonl"
+    _write_jsonl(legacy_month_file, [{"uts": 1738454400, "track": "legacy"}])
+    legacy_before = legacy_month_file.read_text(encoding="utf-8")
+
+    updated = lastfm_ingest.append_raw_page_jsonl(
+        rows=[
+            {
+                "uts": 1738454401,
+                "played_at_utc": lastfm_ingest.pd.to_datetime(1738454401, unit="s", utc=True),
+                "artist": "B",
+                "track": "new-page-row",
+                "album": None,
+                "mbid_track": "new",
+                "source": "lastfm",
+            }
+        ],
+        raw_root=raw_root,
+        run_id=12345,
+        from_uts=1735689600,
+        page=1,
+    )
+
+    assert updated == 1
+    assert legacy_month_file.read_text(encoding="utf-8") == legacy_before
+    page_files = sorted(raw_root.glob("scrobbles_run-12345_from-1735689600_p0001*.jsonl"))
+    assert len(page_files) == 1
+
+
 def test_append_parquet_partitions_is_append_only_for_same_month_file(tmp_path: Path) -> None:
     curated_root = tmp_path / "curated"
     run_id = 3333
@@ -1072,6 +1102,31 @@ def test_resolve_start_corrupt_checkpoint_still_uses_first_missing_page_from_raw
     assert page == 2
     assert run_id == 8302
     assert max_uts_seen == 1004
+
+
+def test_resolve_start_missing_checkpoint_resumes_from_earliest_missing_page(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    _write_jsonl(raw_root / "scrobbles_run-8401_from-1000_p0002.jsonl", [{"uts": 1002}])
+    _write_jsonl(raw_root / "scrobbles_run-8402_from-1000_p0003.jsonl", [{"uts": 1003}])
+
+    args = lastfm_ingest.argparse.Namespace(
+        from_uts=None,
+        since=None,
+        full_refetch=False,
+        no_resume=False,
+    )
+
+    from_uts, page, run_id, max_uts_seen = lastfm_ingest.resolve_start(
+        args=args,
+        checkpoint=None,
+        fallback_from_uts=9999,
+        raw_root=raw_root,
+    )
+
+    assert from_uts == 1000
+    assert page == 1
+    assert run_id == 8402
+    assert max_uts_seen == 1003
 
 
 def test_determine_from_uts_avoids_skipping_interrupted_full_run_without_state(tmp_path: Path) -> None:
