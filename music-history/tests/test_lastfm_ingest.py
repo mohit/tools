@@ -420,6 +420,103 @@ def test_dedupe_rows_when_seen_keys_instance_changes(tmp_path: Path) -> None:
     assert total_rows == 2
 
 
+def test_load_seen_keys_for_resume_loads_across_run_ids(tmp_path: Path) -> None:
+    curated_root = tmp_path / "curated"
+
+    prior_rows = [
+        {
+            "uts": 800,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(800, unit="s", utc=True),
+            "artist": "A",
+            "track": "T1",
+            "album": "AL1",
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+    ]
+    new_run_rows = [
+        {
+            "uts": 800,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(800, unit="s", utc=True),
+            "artist": "A",
+            "track": "T1",
+            "album": "AL1",
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+        {
+            "uts": 801,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(801, unit="s", utc=True),
+            "artist": "B",
+            "track": "T2",
+            "album": None,
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+    ]
+
+    written_1 = lastfm_ingest.append_parquet_partitions(
+        curated_root=curated_root,
+        run_id=1111,
+        page=1,
+        rows=prior_rows,
+    )
+    seen_keys = lastfm_ingest.load_seen_keys_for_resume(curated_root=curated_root, from_uts=800)
+    written_2 = lastfm_ingest.append_parquet_partitions(
+        curated_root=curated_root,
+        run_id=2222,
+        page=1,
+        rows=new_run_rows,
+        seen_keys=seen_keys,
+    )
+
+    assert written_1 == 1
+    assert written_2 == 1
+
+    all_files = sorted(curated_root.rglob("scrobbles_*.parquet"))
+    total_rows = sum(pq.read_table(path).num_rows for path in all_files)
+    assert total_rows == 2
+
+
+def test_load_seen_keys_for_resume_respects_from_uts_lower_bound(tmp_path: Path) -> None:
+    curated_root = tmp_path / "curated"
+    run_id = 3334
+
+    base_rows = [
+        {
+            "uts": 850,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(850, unit="s", utc=True),
+            "artist": "Older",
+            "track": "T0",
+            "album": None,
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+        {
+            "uts": 900,
+            "played_at_utc": lastfm_ingest.pd.to_datetime(900, unit="s", utc=True),
+            "artist": "Newer",
+            "track": "T1",
+            "album": None,
+            "mbid_track": None,
+            "source": "lastfm",
+        },
+    ]
+
+    written = lastfm_ingest.append_parquet_partitions(
+        curated_root=curated_root,
+        run_id=run_id,
+        page=1,
+        rows=base_rows,
+    )
+    assert written == 2
+
+    seen_keys = lastfm_ingest.load_seen_keys_for_resume(curated_root=curated_root, from_uts=900)
+
+    assert (850, "Older", "T0", None) not in seen_keys
+    assert (900, "Newer", "T1", None) in seen_keys
+
+
 def test_append_parquet_partitions_dedupes_across_pages_without_shared_seen_keys(tmp_path: Path) -> None:
     curated_root = tmp_path / "curated"
     run_id = 990

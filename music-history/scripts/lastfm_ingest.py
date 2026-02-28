@@ -752,6 +752,25 @@ def load_seen_keys_for_run(
     return seen_keys
 
 
+def load_seen_keys_for_resume(
+    curated_root: Path,
+    from_uts: int | None,
+) -> set[tuple[Any, Any, Any, Any]]:
+    seen_keys: set[tuple[Any, Any, Any, Any]] = set()
+    for parquet_file in curated_root.rglob("scrobbles_*.parquet"):
+        table = pq.read_table(parquet_file, columns=["uts", "artist", "track", "album"])
+        for row in table.to_pylist():
+            uts = row.get("uts")
+            if from_uts is not None and uts is not None:
+                try:
+                    if int(uts) < from_uts:
+                        continue
+                except (TypeError, ValueError):
+                    pass
+            seen_keys.add(scrobble_key(row))
+    return seen_keys
+
+
 def append_parquet_partitions(
     curated_root: Path,
     run_id: int,
@@ -890,7 +909,7 @@ def main() -> None:
         fallback_from_uts=state_from_uts,
         raw_root=raw_root,
     )
-    seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
+    seen_keys = load_seen_keys_for_resume(curated_root=curated_root, from_uts=from_uts)
     write_run_marker(
         raw_root=raw_root,
         run_id=run_id,
