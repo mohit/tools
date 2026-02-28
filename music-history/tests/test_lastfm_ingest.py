@@ -453,12 +453,12 @@ def test_load_last_uts_from_raw_prefers_max_uts_and_supports_nested_uts(tmp_path
     assert lastfm_ingest.load_last_uts_from_raw(raw_root) == 220
 
 
-def test_load_required_env_returns_trimmed_value(monkeypatch) -> None:
+def test_load_lastfm_user_returns_trimmed_value(monkeypatch) -> None:
     monkeypatch.setenv("LASTFM_USER", "env_user")
-    assert lastfm_ingest.load_required_env("LASTFM_USER") == "env_user"
+    assert lastfm_ingest.load_lastfm_user() == "env_user"
 
 
-def test_load_required_env_requires_value(monkeypatch) -> None:
+def test_load_lastfm_user_requires_value(monkeypatch) -> None:
     monkeypatch.delenv("LASTFM_USER", raising=False)
     expected = (
         "Missing required env var: LASTFM_USER. "
@@ -468,10 +468,10 @@ def test_load_required_env_requires_value(monkeypatch) -> None:
         SystemExit,
         match=expected,
     ):
-        lastfm_ingest.load_required_env("LASTFM_USER")
+        lastfm_ingest.load_lastfm_user()
 
 
-def test_load_required_env_rejects_whitespace_only_value(monkeypatch) -> None:
+def test_load_lastfm_user_rejects_whitespace_only_value(monkeypatch) -> None:
     monkeypatch.setenv("LASTFM_USER", "   ")
     expected = (
         "Missing required env var: LASTFM_USER. "
@@ -481,7 +481,7 @@ def test_load_required_env_rejects_whitespace_only_value(monkeypatch) -> None:
         SystemExit,
         match=expected,
     ):
-        lastfm_ingest.load_required_env("LASTFM_USER")
+        lastfm_ingest.load_lastfm_user()
 
 
 def test_script_does_not_embed_hardcoded_lastfm_user_fallback() -> None:

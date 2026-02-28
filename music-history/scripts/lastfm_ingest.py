@@ -83,12 +83,17 @@ def load_env(var_name: str) -> str | None:
 def load_required_env(var_name: str) -> str:
     value = load_env(var_name)
     if not value:
-        if var_name == "LASTFM_USER":
-            raise SystemExit(
-                f"Missing required env var: {var_name}. {LASTFM_USER_REQUIRED_HINT}"
-            )
         raise SystemExit(f"Missing required env var: {var_name}. {var_name} must be set.")
     return value
+
+
+def load_lastfm_user() -> str:
+    user = load_env("LASTFM_USER")
+    if not user:
+        raise SystemExit(
+            f"Missing required env var: LASTFM_USER. {LASTFM_USER_REQUIRED_HINT}"
+        )
+    return user
 
 
 def extract_uts(row: dict[str, Any]) -> int | None:
@@ -370,7 +375,7 @@ def resolve_start(
 
 def main() -> None:
     args = parse_args()
-    user = load_required_env("LASTFM_USER")
+    user = load_lastfm_user()
     api_key = load_required_env("LASTFM_API_KEY")
     raw_root = Path(os.getenv("DATALAKE_RAW_ROOT", str(DEFAULT_RAW_ROOT))) / "lastfm"
     curated_root = Path(os.getenv("DATALAKE_CURATED_ROOT", str(DEFAULT_CURATED_ROOT))) / "lastfm" / "scrobbles"
