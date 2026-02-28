@@ -305,6 +305,37 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(json.loads(records[0]["metadata_json"]), {"variant": "first"})
         self.assertEqual(json.loads(workouts[0]["metadata_json"]), {"variant": "first"})
 
+    def test_normalize_payload_deduplicates_equivalent_datetime_formats(self):
+        payload = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 321,
+                    "startDate": "2026-02-26T18:00:00Z",
+                    "endDate": "2026-02-26T18:10:00Z",
+                    "metadata": {"variant": "first"},
+                },
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 321,
+                    "startDate": "2026-02-26 10:00:00 -0800",
+                    "endDate": "2026-02-26 10:10:00 -0800",
+                    "metadata": {"variant": "second"},
+                },
+            ]
+        }
+
+        records, workouts, errors = self.ingestor._normalize_payload(payload)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(records), 1)
+        self.assertEqual(len(workouts), 0)
+        self.assertEqual(json.loads(records[0]["metadata_json"]), {"variant": "first"})
+
     def test_normalize_payload_deduplicates_invalid_rows_before_error_counting(self):
         payload = {
             "records": [
@@ -871,6 +902,84 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
 
         self.assertEqual([row[0] for row in rows], ["300", "400"])
         self.assertEqual([row[0] for row in workout_rows], ["30", "40"])
+
+    def test_concurrent_ingests_serialize_with_shared_process_lock(self):
+        other_ingestor = health_auto_export.HealthAutoExportIngestor(
+            raw_dir=self.raw_dir / "other",
+            curated_dir=self.curated_dir,
+        )
+        process_tracking_lock = _TrackingLock()
+        self.ingestor._parquet_merge_lock = threading.Lock()
+        other_ingestor._parquet_merge_lock = threading.Lock()
+
+        payload_a = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 910,
+                    "startDate": "2026-02-27T10:00:00Z",
+                    "endDate": "2026-02-27T10:10:00Z",
+                }
+            ]
+        }
+        payload_b = {
+            "records": [
+                {
+                    "type": "HKQuantityTypeIdentifierStepCount",
+                    "sourceName": "iPhone",
+                    "unit": "count",
+                    "value": 920,
+                    "startDate": "2026-02-27T11:00:00Z",
+                    "endDate": "2026-02-27T11:10:00Z",
+                }
+            ]
+        }
+
+        errors: list[Exception] = []
+
+        def _ingest_with_capture(ingestor, payload):
+            try:
+                ingestor.ingest_payload(payload)
+            except Exception as exc:  # pragma: no cover - defensive in thread
+                errors.append(exc)
+
+        with (
+            mock.patch.object(
+                self.ingestor,
+                "_acquire_process_merge_lock",
+                side_effect=lambda: process_tracking_lock,
+            ),
+            mock.patch.object(
+                other_ingestor,
+                "_acquire_process_merge_lock",
+                side_effect=lambda: process_tracking_lock,
+            ),
+        ):
+            thread_a = threading.Thread(target=_ingest_with_capture, args=(self.ingestor, payload_a))
+            thread_b = threading.Thread(target=_ingest_with_capture, args=(other_ingestor, payload_b))
+            thread_a.start()
+            thread_b.start()
+            thread_a.join()
+            thread_b.join()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(process_tracking_lock.max_active, 1)
+
+        con = duckdb.connect(":memory:")
+        rows = con.execute(
+            """
+            SELECT value
+            FROM read_parquet(?)
+            WHERE type = 'HKQuantityTypeIdentifierStepCount'
+            ORDER BY startDate
+            """,
+            [str(self.curated_dir / "health_records.parquet")],
+        ).fetchall()
+        con.close()
+
+        self.assertEqual([row[0] for row in rows], ["910", "920"])
 
     def test_concurrent_ingests_preserve_unique_rows_when_each_payload_has_duplicates(self):
         other_ingestor = health_auto_export.HealthAutoExportIngestor(
