@@ -503,6 +503,20 @@ def test_determine_from_uts_returns_none_when_state_missing_and_raw_exists(tmp_p
     assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) is None
 
 
+def test_determine_from_uts_prefers_older_unmarked_backfill_over_marked_newer_restart(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    state_file = tmp_path / "lastfm_last_uts.txt"
+    state_file.write_text("9000")
+
+    _write_jsonl(raw_root / "scrobbles_run-8001_from-5000_started.json", [{"run_id": 8001, "from_uts": 5000}])
+    _write_jsonl(raw_root / "scrobbles_run-8001_from-5000_p0001.jsonl", [{"uts": 5001}])
+    _write_jsonl(raw_root / "scrobbles_run-8002_from-full_p0001.jsonl", [{"uts": 1}])
+
+    # The safest restart floor is full history (None), not marked from_uts=5000
+    # and not state+1.
+    assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) is None
+
+
 def test_infer_resume_from_raw_uses_first_missing_page_and_preserves_run(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
     _write_jsonl(raw_root / "scrobbles_run-1001_from-1200_started.json", [{"run_id": 1001, "from_uts": 1200}])

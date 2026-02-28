@@ -543,24 +543,23 @@ def _resume_is_safer(
 
 
 def determine_from_uts(raw_root: Path, state_file: Path = STATE_FILE) -> int | None:
+    restart_candidates: list[int | None] = []
     incomplete_marked_runs = _list_incomplete_marked_runs(raw_root=raw_root)
     if incomplete_marked_runs:
-        return _safe_restart_from_uts(incomplete_marked_runs)
+        restart_candidates.append(_safe_restart_from_uts(incomplete_marked_runs))
 
     state_next = _state_next_from_uts(state_file=state_file)
     inferred_resume = infer_resume_from_raw(raw_root=raw_root)
     inferred_from_uts = None if inferred_resume is None else inferred_resume[0]
 
-    if state_next is None:
-        return inferred_from_uts
+    if inferred_resume is not None:
+        restart_candidates.append(inferred_from_uts)
+    if state_next is not None:
+        restart_candidates.append(state_next)
 
-    if inferred_resume is None:
-        return state_next
-
-    if inferred_from_uts is None:
+    if not restart_candidates:
         return None
-
-    return min(state_next, inferred_from_uts)
+    return _safe_restart_from_uts(restart_candidates)
 
 
 def request_recent_tracks(
