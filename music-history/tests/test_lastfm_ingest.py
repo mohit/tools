@@ -459,13 +459,25 @@ def test_load_required_env_returns_trimmed_value(monkeypatch) -> None:
 
 def test_load_required_env_requires_value(monkeypatch) -> None:
     monkeypatch.delenv("LASTFM_USER", raising=False)
-    with pytest.raises(SystemExit, match="Missing required env var: LASTFM_USER"):
+    with pytest.raises(
+        SystemExit,
+        match=(
+            "Missing required env var: LASTFM_USER. "
+            "Refusing to default to a hardcoded account."
+        ),
+    ):
         lastfm_ingest.load_required_env("LASTFM_USER")
 
 
 def test_load_required_env_rejects_whitespace_only_value(monkeypatch) -> None:
     monkeypatch.setenv("LASTFM_USER", "   ")
-    with pytest.raises(SystemExit, match="Missing required env var: LASTFM_USER"):
+    with pytest.raises(
+        SystemExit,
+        match=(
+            "Missing required env var: LASTFM_USER. "
+            "Refusing to default to a hardcoded account."
+        ),
+    ):
         lastfm_ingest.load_required_env("LASTFM_USER")
 
 
@@ -495,7 +507,13 @@ def test_main_requires_lastfm_user_and_fails_before_api_call(monkeypatch, tmp_pa
 
     monkeypatch.setattr(lastfm_ingest, "request_recent_tracks", fake_request_recent_tracks)
 
-    with pytest.raises(SystemExit, match="Missing required env var: LASTFM_USER"):
+    with pytest.raises(
+        SystemExit,
+        match=(
+            "Missing required env var: LASTFM_USER. "
+            "Refusing to default to a hardcoded account."
+        ),
+    ):
         lastfm_ingest.main()
     assert call_counter["count"] == 0
 
