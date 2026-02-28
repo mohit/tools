@@ -165,10 +165,16 @@ def keychain_service_match_count(service: str) -> int | None:
 
 
 def keychain_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
-    candidates: list[tuple[str, str]] = []
-    candidates.extend(keychain_account_lookup_candidates(var_name))
-    candidates.extend(keychain_reversed_lookup_candidates(var_name))
-    return candidates
+    account_candidates = keychain_account_lookup_candidates(var_name)
+    reversed_candidates = keychain_reversed_lookup_candidates(var_name)
+    # Keep namespaced layouts ahead of legacy layouts, regardless of layout style.
+    combined: list[tuple[str, str]] = []
+    for index in range(max(len(account_candidates), len(reversed_candidates))):
+        if index < len(account_candidates):
+            combined.append(account_candidates[index])
+        if index < len(reversed_candidates):
+            combined.append(reversed_candidates[index])
+    return combined
 
 
 def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str | None:
@@ -198,18 +204,12 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    # First pass (strict): account-scoped service lookups, then reversed layouts.
-    # Keep these phases explicit so service-only cannot accidentally mask specific
-    # matches if candidate helpers are modified later.
-    strict_candidate_phases = (
-        keychain_account_lookup_candidates(var_name),
-        keychain_reversed_lookup_candidates(var_name),
-    )
-    for phase_candidates in strict_candidate_phases:
-        for service, account in phase_candidates:
-            secret = query_candidate(service, account)
-            if secret:
-                return secret
+    # First pass (strict): specific account/service candidates only.
+    # Service-only lookup is intentionally isolated to a second pass.
+    for service, account in keychain_lookup_candidates(var_name):
+        secret = query_candidate(service, account)
+        if secret:
+            return secret
 
     if not allow_service_only:
         return None
