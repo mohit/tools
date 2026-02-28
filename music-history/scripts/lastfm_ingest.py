@@ -545,10 +545,14 @@ def infer_resume_from_raw(
     incomplete_runs = [key for key in started if key not in completed]
     legacy_unmarked_runs = [key for key in page_runs if key not in completed and key not in started]
 
-    # Always include legacy unmarked page runs, even when started markers exist.
-    # This avoids skipping historical backfills if an interrupted full run exists
-    # without marker files alongside other incomplete runs.
-    candidate_pool = list({*incomplete_runs, *legacy_unmarked_runs})
+    # For a given from_uts range, marker-backed incomplete runs are the most
+    # reliable signal of an interrupted backfill. Legacy unmarked runs for the
+    # same range may be old complete runs and can hide missing pages.
+    incomplete_from_uts = {from_uts for _run_id, from_uts in incomplete_runs}
+    filtered_legacy_runs = [
+        key for key in legacy_unmarked_runs if key[1] not in incomplete_from_uts
+    ]
+    candidate_pool = list({*incomplete_runs, *filtered_legacy_runs})
 
     if not candidate_pool:
         return None

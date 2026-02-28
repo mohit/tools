@@ -989,6 +989,29 @@ def test_infer_resume_from_raw_includes_legacy_unmarked_runs_with_marked_incompl
     assert max_uts_seen == 1
 
 
+def test_infer_resume_from_raw_marked_incomplete_takes_precedence_over_legacy_for_same_range(
+    tmp_path: Path,
+) -> None:
+    raw_root = tmp_path / "lastfm"
+
+    _write_jsonl(raw_root / "scrobbles_run-7101_from-full_p0001.jsonl", [{"uts": 1001}])
+    _write_jsonl(raw_root / "scrobbles_run-7101_from-full_p0002.jsonl", [{"uts": 1002}])
+    _write_jsonl(raw_root / "scrobbles_run-7101_from-full_p0003.jsonl", [{"uts": 1003}])
+
+    _write_jsonl(raw_root / "scrobbles_run-7102_from-full_started.json", [{"run_id": 7102, "from_uts": None}])
+    _write_jsonl(raw_root / "scrobbles_run-7102_from-full_p0001.jsonl", [{"uts": 2001}])
+    _write_jsonl(raw_root / "scrobbles_run-7102_from-full_p0003.jsonl", [{"uts": 2003}])
+
+    inferred = lastfm_ingest.infer_resume_from_raw(raw_root=raw_root)
+
+    assert inferred is not None
+    from_uts, next_page, run_id, max_uts_seen = inferred
+    assert from_uts is None
+    assert next_page == 2
+    assert run_id == 7102
+    assert max_uts_seen == 2003
+
+
 def test_infer_resume_from_raw_ignores_completed_runs_when_finding_missing_page(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
 
