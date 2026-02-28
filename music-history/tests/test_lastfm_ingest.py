@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import ast
 from pathlib import Path
 
 import pyarrow as pa
@@ -486,6 +487,26 @@ def test_load_required_env_rejects_whitespace_only_value(monkeypatch) -> None:
 def test_script_does_not_embed_hardcoded_lastfm_user_fallback() -> None:
     source = Path(lastfm_ingest.__file__).read_text(encoding="utf-8")
     assert "clakesnapster" not in source
+
+
+def test_script_does_not_use_default_for_lastfm_user_env_lookup() -> None:
+    source = Path(lastfm_ingest.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr != "getenv":
+            continue
+        if len(node.args) < 2:
+            continue
+        first_arg = node.args[0]
+        if isinstance(first_arg, ast.Constant) and first_arg.value == "LASTFM_USER":
+            raise AssertionError(
+                "LASTFM_USER must not be read with a default value; require explicit env var."
+            )
 
 
 def test_main_requires_lastfm_user_and_fails_before_api_call(monkeypatch, tmp_path: Path) -> None:
