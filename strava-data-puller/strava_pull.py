@@ -198,11 +198,18 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    # First pass: strict account-scoped and reversed lookups only.
-    for service, account in keychain_lookup_candidates(var_name):
-        secret = query_candidate(service, account)
-        if secret:
-            return secret
+    # First pass (strict): account-scoped service lookups, then reversed layouts.
+    # Keep these phases explicit so service-only cannot accidentally mask specific
+    # matches if candidate helpers are modified later.
+    strict_candidate_phases = (
+        keychain_account_lookup_candidates(var_name),
+        keychain_reversed_lookup_candidates(var_name),
+    )
+    for phase_candidates in strict_candidate_phases:
+        for service, account in phase_candidates:
+            secret = query_candidate(service, account)
+            if secret:
+                return secret
 
     if not allow_service_only:
         return None
