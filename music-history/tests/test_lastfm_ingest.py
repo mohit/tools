@@ -1121,6 +1121,22 @@ def test_determine_from_uts_uses_safest_lower_bound_across_newer_runs(tmp_path: 
     assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) == 1000
 
 
+def test_determine_from_uts_uses_unfinished_raw_backfill_even_when_state_is_newer(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    state_file = tmp_path / "lastfm_last_uts.txt"
+    state_file.write_text("5000")
+
+    raw_file = raw_root / "scrobbles_run-9901_from-1000_p0001.jsonl"
+    _write_jsonl(raw_file, [{"uts": 1001}])
+
+    # Simulate a crash-before-checkpoint scenario where raw page files can appear
+    # older than state metadata (clock skew, restore, copied files, etc.).
+    raw_mtime = raw_file.stat().st_mtime
+    os.utime(state_file, (raw_mtime + 20, raw_mtime + 20))
+
+    assert lastfm_ingest.determine_from_uts(raw_root=raw_root, state_file=state_file) == 1000
+
+
 def test_resolve_start_no_checkpoint_uses_first_missing_page_not_max_plus_one(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
     _write_jsonl(raw_root / "scrobbles_run-8201_from-1000_p0001.jsonl", [{"uts": 1001}])

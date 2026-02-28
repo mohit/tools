@@ -323,22 +323,6 @@ def _state_next_from_uts(state_file: Path) -> int | None:
     return state_last + 1
 
 
-def _list_raw_run_page_files(raw_root: Path) -> list[tuple[int | None, float]]:
-    if not raw_root.exists():
-        return []
-
-    run_files: list[tuple[int | None, float]] = []
-    for path in raw_root.glob("scrobbles_run-*_from-*_p*.jsonl"):
-        match = RAW_PAGE_FILE_PATTERN.match(path.name)
-        if not match:
-            continue
-        from_token = match.group("from_uts")
-        from_uts = None if from_token == "full" else int(from_token)
-        run_files.append((from_uts, path.stat().st_mtime))
-
-    return run_files
-
-
 def _list_pages_for_from_uts(raw_root: Path, from_uts: int | None) -> list[int]:
     from_token = _from_uts_token(from_uts)
     pages: list[int] = []
@@ -564,33 +548,19 @@ def determine_from_uts(raw_root: Path, state_file: Path = STATE_FILE) -> int | N
         return _safe_restart_from_uts(incomplete_marked_runs)
 
     state_next = _state_next_from_uts(state_file=state_file)
-    raw_run_files = _list_raw_run_page_files(raw_root=raw_root)
+    inferred_resume = infer_resume_from_raw(raw_root=raw_root)
+    inferred_from_uts = None if inferred_resume is None else inferred_resume[0]
 
     if state_next is None:
-        run_from_uts = [from_uts for from_uts, _mtime in raw_run_files]
-        safe_run_restart = _safe_restart_from_uts(run_from_uts)
-        if safe_run_restart is not None or run_from_uts:
-            return safe_run_restart
-        return None
+        return inferred_from_uts
 
-    if not raw_run_files:
+    if inferred_resume is None:
         return state_next
 
-    try:
-        state_mtime = state_file.stat().st_mtime
-    except OSError:
-        state_mtime = 0.0
+    if inferred_from_uts is None:
+        return None
 
-    # If any raw page dumps are newer than state, at least one run likely did not
-    # complete and update state. Restart from the safest lower bound across those runs.
-    newer_run_starts = [from_uts for from_uts, mtime in raw_run_files if mtime > state_mtime]
-    if newer_run_starts:
-        safe_restart = _safe_restart_from_uts(newer_run_starts)
-        if safe_restart is None:
-            return None
-        return min(state_next, safe_restart)
-
-    return state_next
+    return min(state_next, inferred_from_uts)
 
 
 def request_recent_tracks(
