@@ -82,7 +82,7 @@ def load_required_env(var_name: str) -> str:
     if not value:
         raise SystemExit(
             f"Missing required env var: {var_name}. "
-            "No hardcoded fallback is allowed."
+            f"{var_name} has no default fallback account."
         )
     return value
 
