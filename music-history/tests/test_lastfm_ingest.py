@@ -1104,6 +1104,8 @@ def test_append_parquet_partitions_is_append_only_for_same_month_file(tmp_path: 
     files = sorted(month_dir.glob("scrobbles_3333_p0004*.parquet"))
     assert len(files) == 2
     assert files[1].name == "scrobbles_3333_p0004_a0001.parquet"
+    tmp_files = list(month_dir.glob(".scrobbles_tmp_*.parquet"))
+    assert tmp_files == []
 
 
 def test_determine_from_uts_prefers_latest_raw_run_start_when_raw_newer_than_state(tmp_path: Path) -> None:

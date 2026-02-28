@@ -288,32 +288,65 @@ def append_raw_page_jsonl(
     raw_root.mkdir(parents=True, exist_ok=True)
     temp_file = raw_root / f".scrobbles_tmp_{run_id}_{page}_{os.getpid()}_{int(time.time() * 1000)}.jsonl"
 
-    with temp_file.open("x", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(_serialize_row(row), ensure_ascii=False))
-            handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())
+    try:
+        with temp_file.open("x", encoding="utf-8") as handle:
+            for row in rows:
+                handle.write(json.dumps(_serialize_row(row), ensure_ascii=False))
+                handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
 
-    attempt = 0
-    while True:
-        raw_page_file = _raw_page_file_candidate_for_attempt(
-            raw_root=raw_root,
-            run_id=run_id,
-            from_uts=from_uts,
-            page=page,
-            attempt=attempt,
-        )
-        try:
-            # Publish without overwrite. If a path already exists, write a new attempt file.
-            os.link(temp_file, raw_page_file)
-            break
-        except FileExistsError:
-            attempt += 1
-
-    temp_file.unlink(missing_ok=True)
+        attempt = 0
+        while True:
+            raw_page_file = _raw_page_file_candidate_for_attempt(
+                raw_root=raw_root,
+                run_id=run_id,
+                from_uts=from_uts,
+                page=page,
+                attempt=attempt,
+            )
+            try:
+                # Publish without overwrite. If a path already exists, write a new attempt file.
+                os.link(temp_file, raw_page_file)
+                break
+            except FileExistsError:
+                attempt += 1
+    finally:
+        temp_file.unlink(missing_ok=True)
 
     return 1
+
+
+def _publish_parquet_immutable(
+    table: pa.Table,
+    part_dir: Path,
+    run_id: int,
+    page: int,
+) -> None:
+    temp_file = (
+        part_dir / f".scrobbles_tmp_{run_id}_{page}_{os.getpid()}_{int(time.time() * 1000)}.parquet"
+    )
+    try:
+        with temp_file.open("xb") as handle:
+            pq.write_table(table, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+
+        attempt = 0
+        while True:
+            out_file = _parquet_file_candidate_for_attempt(
+                part_dir=part_dir,
+                run_id=run_id,
+                page=page,
+                attempt=attempt,
+            )
+            try:
+                os.link(temp_file, out_file)
+                break
+            except FileExistsError:
+                attempt += 1
+    finally:
+        temp_file.unlink(missing_ok=True)
 
 
 def _state_next_from_uts(state_file: Path) -> int | None:
@@ -708,21 +741,8 @@ def append_parquet_partitions(
         part_dir = curated_root / f"year={year:04d}" / f"month={month:02d}"
         part_dir.mkdir(parents=True, exist_ok=True)
         table = pa.Table.from_pandas(group.drop(columns=["year", "month"]), preserve_index=False)
-        attempt = 0
-        while True:
-            out_file = _parquet_file_candidate_for_attempt(
-                part_dir=part_dir,
-                run_id=run_id,
-                page=page,
-                attempt=attempt,
-            )
-            try:
-                # Keep curated page partitions immutable, mirroring raw page dump behavior.
-                with out_file.open("xb") as handle:
-                    pq.write_table(table, handle)
-                break
-            except FileExistsError:
-                attempt += 1
+        # Keep curated page partitions immutable, mirroring raw page dump behavior.
+        _publish_parquet_immutable(table=table, part_dir=part_dir, run_id=run_id, page=page)
         written += len(group)
     return written
 
