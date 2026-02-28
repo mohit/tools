@@ -498,10 +498,24 @@ def test_script_does_not_use_default_for_lastfm_user_env_lookup() -> None:
             continue
         if not isinstance(node.func, ast.Attribute):
             continue
-        if node.func.attr != "getenv":
+
+        is_os_getenv = (
+            node.func.attr == "getenv"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "os"
+        )
+        is_os_environ_get = (
+            node.func.attr == "get"
+            and isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr == "environ"
+            and isinstance(node.func.value.value, ast.Name)
+            and node.func.value.value.id == "os"
+        )
+        if not is_os_getenv and not is_os_environ_get:
             continue
         if len(node.args) < 2:
             continue
+
         first_arg = node.args[0]
         if isinstance(first_arg, ast.Constant) and first_arg.value == "LASTFM_USER":
             raise AssertionError(
