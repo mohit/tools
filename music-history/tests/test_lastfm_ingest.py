@@ -1,16 +1,31 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "lastfm_ingest.py"
 SPEC = importlib.util.spec_from_file_location("lastfm_ingest", MODULE_PATH)
 assert SPEC and SPEC.loader
 lastfm_ingest = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(lastfm_ingest)
+
+
+class _FakeResponse:
+    def __init__(self, status_code: int, payload: dict[str, object] | None = None) -> None:
+        self.status_code = status_code
+        self._payload = payload if payload is not None else {}
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise lastfm_ingest.requests.HTTPError(f"HTTP {self.status_code}")
+
+    def json(self) -> dict[str, object]:
+        return self._payload
 
 
 def _row(uts: int, artist: str, track: str, album: str | None) -> dict[str, object]:
@@ -426,3 +441,74 @@ def test_append_parquet_partitions_dedupes_across_pages_without_shared_seen_keys
     files = sorted(curated_root.rglob(f"scrobbles_{run_id}_p*.parquet"))
     total_rows = sum(pq.read_table(path).num_rows for path in files)
     assert total_rows == 2
+
+
+def test_request_recent_tracks_retries_on_500_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    responses = [
+        _FakeResponse(status_code=500),
+        _FakeResponse(
+            status_code=200,
+            payload={"recenttracks": {"track": [], "@attr": {"totalPages": "1"}}},
+        ),
+    ]
+    sleeps: list[int] = []
+
+    def _fake_get(*args, **kwargs):  # type: ignore[no-untyped-def]
+        return responses.pop(0)
+
+    monkeypatch.setattr(lastfm_ingest.requests, "get", _fake_get)
+    monkeypatch.setattr(lastfm_ingest.time, "sleep", lambda delay: sleeps.append(delay))
+
+    payload = lastfm_ingest.request_recent_tracks(
+        user="user",
+        api_key="key",
+        from_uts=100,
+        page=2,
+        max_retries=3,
+        base_delay_seconds=1,
+    )
+
+    assert payload["recenttracks"]["@attr"]["totalPages"] == "1"
+    assert sleeps == [1]
+
+
+def test_request_recent_tracks_fails_after_retry_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(lastfm_ingest.requests, "get", lambda *a, **k: _FakeResponse(status_code=500))
+    monkeypatch.setattr(lastfm_ingest.time, "sleep", lambda _delay: None)
+
+    with pytest.raises(SystemExit, match="Failed to fetch page 9 after 3 retries"):
+        lastfm_ingest.request_recent_tracks(
+            user="user",
+            api_key="key",
+            from_uts=100,
+            page=9,
+            max_retries=3,
+            base_delay_seconds=1,
+        )
+
+
+def test_load_checkpoint_returns_none_for_invalid_json(tmp_path: Path) -> None:
+    checkpoint_file = tmp_path / "checkpoint.json"
+    checkpoint_file.write_text("{not-json", encoding="utf-8")
+
+    checkpoint = lastfm_ingest.load_checkpoint(checkpoint_file=checkpoint_file)
+
+    assert checkpoint is None
+
+
+def test_save_checkpoint_writes_valid_json(tmp_path: Path) -> None:
+    checkpoint_file = tmp_path / "checkpoint.json"
+
+    lastfm_ingest.save_checkpoint(
+        from_uts=123,
+        next_page=7,
+        run_id=555,
+        max_uts_seen=987,
+        checkpoint_file=checkpoint_file,
+    )
+
+    saved = json.loads(checkpoint_file.read_text(encoding="utf-8"))
+    assert saved["from_uts"] == 123
+    assert saved["next_page"] == 7
+    assert saved["run_id"] == 555
+    assert saved["max_uts_seen"] == 987

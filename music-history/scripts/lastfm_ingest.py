@@ -5,6 +5,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -83,14 +84,20 @@ def load_last_uts(state_file: Path = STATE_FILE) -> int:
 
 def save_last_uts(value: int, state_file: Path = STATE_FILE) -> None:
     state_file.parent.mkdir(parents=True, exist_ok=True)
-    state_file.write_text(str(value))
+    atomic_write_text(state_file, str(value))
 
 
 def load_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> dict[str, Any] | None:
     if not checkpoint_file.exists():
         return None
-    with checkpoint_file.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+    try:
+        with checkpoint_file.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
 
 
 def save_checkpoint(
@@ -108,13 +115,31 @@ def save_checkpoint(
         "max_uts_seen": max_uts_seen,
         "saved_at": int(time.time()),
     }
-    with checkpoint_file.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, sort_keys=True)
+    atomic_write_json(checkpoint_file, payload)
 
 
 def clear_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> None:
     if checkpoint_file.exists():
         checkpoint_file.unlink()
+
+
+def atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        handle.write(content)
+        temp_path = Path(handle.name)
+    temp_path.replace(path)
+
+
+def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    atomic_write_text(path, json.dumps(payload, sort_keys=True))
 
 
 def request_recent_tracks(
@@ -152,8 +177,11 @@ def request_recent_tracks(
             continue
 
         if response.status_code in RETRYABLE_STATUS_CODES:
+            last_error = requests.HTTPError(
+                f"Transient HTTP {response.status_code} while fetching page {page}"
+            )
             if attempt == max_retries - 1:
-                response.raise_for_status()
+                continue
             delay = base_delay_seconds * (2**attempt)
             print(
                 f"Transient HTTP {response.status_code} on page {page}. "
@@ -163,7 +191,10 @@ def request_recent_tracks(
             continue
 
         response.raise_for_status()
-        payload = response.json()
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise SystemExit(f"Invalid JSON response for page {page}: {exc}") from exc
         if payload.get("error"):
             raise SystemExit(f"Last.fm API error {payload.get('error')}: {payload.get('message')}")
         return payload
@@ -197,10 +228,12 @@ def normalize(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def write_raw_page(raw_root: Path, run_id: int, page: int, rows: list[dict[str, Any]]) -> Path:
     raw_root.mkdir(parents=True, exist_ok=True)
     raw_path = raw_root / f"recent_{run_id}_page_{page:04d}.jsonl"
-    with raw_path.open("w", encoding="utf-8") as handle:
+    temp_path = raw_path.with_suffix(".jsonl.tmp")
+    with temp_path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, default=str, sort_keys=True))
             handle.write("\n")
+    temp_path.replace(raw_path)
     return raw_path
 
 
@@ -273,7 +306,9 @@ def append_parquet_partitions(
         part_dir.mkdir(parents=True, exist_ok=True)
         out_file = part_dir / f"scrobbles_{run_id}_p{page:04d}.parquet"
         table = pa.Table.from_pandas(group.drop(columns=["year", "month"]), preserve_index=False)
-        pq.write_table(table, out_file)
+        temp_file = out_file.with_suffix(".parquet.tmp")
+        pq.write_table(table, temp_file)
+        temp_file.replace(out_file)
         written += len(group)
     return written
 
