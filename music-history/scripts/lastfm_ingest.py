@@ -28,6 +28,10 @@ DEFAULT_CURATED_ROOT = Path(
 STATE_DIR = Path.home() / ".local" / "share" / "datalake"
 STATE_FILE = STATE_DIR / "lastfm_last_uts.txt"
 CHECKPOINT_FILE = STATE_DIR / "lastfm_ingest_checkpoint.json"
+LASTFM_USER_REQUIRED_HINT = (
+    "LASTFM_USER must be set explicitly; no fallback account is allowed to avoid "
+    "ingesting the wrong user's history."
+)
 
 def parse_date(value: str) -> int:
     try:
@@ -79,17 +83,11 @@ def load_env(var_name: str) -> str | None:
 def load_required_env(var_name: str) -> str:
     value = load_env(var_name)
     if not value:
+        if var_name == "LASTFM_USER":
+            raise SystemExit(
+                f"Missing required env var: {var_name}. {LASTFM_USER_REQUIRED_HINT}"
+            )
         raise SystemExit(f"Missing required env var: {var_name}. {var_name} must be set.")
-    return value
-
-
-def load_required_lastfm_user() -> str:
-    value = load_env("LASTFM_USER")
-    if not value:
-        raise SystemExit(
-            "Missing required env var: LASTFM_USER. LASTFM_USER must be set explicitly; "
-            "no fallback account is allowed to avoid ingesting the wrong user's history."
-        )
     return value
 
 
@@ -372,7 +370,7 @@ def resolve_start(
 
 def main() -> None:
     args = parse_args()
-    user = load_required_lastfm_user()
+    user = load_required_env("LASTFM_USER")
     api_key = load_required_env("LASTFM_API_KEY")
     raw_root = Path(os.getenv("DATALAKE_RAW_ROOT", str(DEFAULT_RAW_ROOT))) / "lastfm"
     curated_root = Path(os.getenv("DATALAKE_CURATED_ROOT", str(DEFAULT_CURATED_ROOT))) / "lastfm" / "scrobbles"
