@@ -145,6 +145,9 @@ class HealthAutoExportIngestor:
             errors.append("payload must be an object or list")
             return [], [], errors
 
+        raw_records = self._dedupe_raw_records_batch(raw_records)
+        raw_workouts = self._dedupe_raw_workouts_batch(raw_workouts)
+
         records = [self._normalize_record(item) for item in raw_records if isinstance(item, dict)]
         workouts = [self._normalize_workout(item) for item in raw_workouts if isinstance(item, dict)]
 
@@ -317,6 +320,35 @@ class HealthAutoExportIngestor:
         return HealthAutoExportIngestor._dedupe_incoming_batch(
             workouts,
             lambda row: tuple(row.get(field) for field in HealthAutoExportIngestor.WORKOUT_DEDUPE_KEY_FIELDS),
+        )
+
+    @staticmethod
+    def _dedupe_raw_records_batch(records: list[Any]) -> list[dict[str, Any]]:
+        return HealthAutoExportIngestor._dedupe_incoming_batch(
+            [row for row in records if isinstance(row, dict)],
+            lambda row: (
+                row.get("type") or row.get("recordType") or row.get("metric"),
+                row.get("sourceName") or row.get("source") or "Health Auto Export",
+                row.get("unit") or "",
+                str(row.get("value", "")),
+                _parse_datetime(row.get("startDate") or row.get("dateFrom") or row.get("date")),
+                _parse_datetime(row.get("endDate") or row.get("dateTo") or row.get("startDate")),
+            ),
+        )
+
+    @staticmethod
+    def _dedupe_raw_workouts_batch(workouts: list[Any]) -> list[dict[str, Any]]:
+        return HealthAutoExportIngestor._dedupe_incoming_batch(
+            [row for row in workouts if isinstance(row, dict)],
+            lambda row: (
+                row.get("workoutActivityType") or row.get("type") or "",
+                row.get("sourceName") or row.get("source") or "Health Auto Export",
+                _parse_datetime(row.get("startDate") or row.get("dateFrom") or row.get("date")),
+                _parse_datetime(row.get("endDate") or row.get("dateTo") or row.get("startDate")),
+                str(row.get("duration", "")),
+                str(row.get("totalDistance", "")),
+                str(row.get("totalEnergyBurned", "")),
+            ),
         )
 
     @staticmethod

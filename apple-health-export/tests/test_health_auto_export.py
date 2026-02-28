@@ -284,6 +284,31 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual(len(records), 2)
         self.assertEqual(len(workouts), 1)
 
+    def test_normalize_payload_deduplicates_raw_batch_before_normalization(self):
+        payload = self.sample_payload()
+        payload["records"].append(dict(payload["records"][0]))
+        payload["workouts"].append(dict(payload["workouts"][0]))
+
+        with (
+            mock.patch.object(
+                self.ingestor,
+                "_normalize_record",
+                wraps=self.ingestor._normalize_record,
+            ) as mock_normalize_record,
+            mock.patch.object(
+                self.ingestor,
+                "_normalize_workout",
+                wraps=self.ingestor._normalize_workout,
+            ) as mock_normalize_workout,
+        ):
+            records, workouts, errors = self.ingestor._normalize_payload(payload)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(records), 2)
+        self.assertEqual(len(workouts), 1)
+        self.assertEqual(mock_normalize_record.call_count, 2)
+        self.assertEqual(mock_normalize_workout.call_count, 1)
+
     def test_normalize_payload_deduplicates_within_nested_data_batch(self):
         payload = {
             "data": {
