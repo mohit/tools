@@ -250,8 +250,8 @@ def resolve_strava_credentials() -> tuple[dict[str, str], dict[str, str], list[P
     missing_after_env = [var_name for var_name in REQUIRED_STRAVA_VARS if var_name not in values]
 
     for var_name in missing_after_env:
-        # Keep lookups account-scoped/reversed-only first to avoid ambiguous service-only matches.
-        keychain_value = load_keychain_secret(var_name, allow_service_only=False)
+        # Prefer account-scoped/reversed lookups first, with service-only as last resort.
+        keychain_value = load_keychain_secret(var_name, allow_service_only=True)
         if keychain_value:
             values[var_name] = keychain_value
             sources[var_name] = "keychain"
