@@ -478,10 +478,20 @@ class TestCredentials(TestCase):
             ],
             [
                 "security",
+                "dump-keychain",
+                "-d",
+            ],
+            [
+                "security",
                 "find-generic-password",
                 "-w",
                 "-s",
                 "com.mohit.tools.strava-data-puller",
+            ],
+            [
+                "security",
+                "dump-keychain",
+                "-d",
             ],
             [
                 "security",
@@ -495,6 +505,14 @@ class TestCredentials(TestCase):
         def fake_run(cmd, check, capture_output, text, timeout):
             call_index = len(mock_run.call_args_list) - 1
             self.assertEqual(cmd, expected_calls[call_index])
+            if cmd == ["security", "dump-keychain", "-d"]:
+                return types.SimpleNamespace(
+                    returncode=0,
+                    stdout=(
+                        '"svce"<blob>="com.mohit.tools.strava-data-puller"\n'
+                        '"svce"<blob>="strava-data-puller"\n'
+                    ),
+                )
             return types.SimpleNamespace(returncode=44, stdout="")
 
         mock_run.side_effect = fake_run
@@ -555,10 +573,16 @@ class TestCredentials(TestCase):
             "-s",
             "com.mohit.tools.strava-data-puller",
         ]
+        dump_keychain = ["security", "dump-keychain", "-d"]
 
         def fake_run(cmd, check, capture_output, text, timeout):
             if cmd in strict_calls:
                 return types.SimpleNamespace(returncode=44, stdout="")
+            if cmd == dump_keychain:
+                return types.SimpleNamespace(
+                    returncode=0,
+                    stdout='"svce"<blob>="com.mohit.tools.strava-data-puller"\n',
+                )
             if cmd == namespaced_service_only:
                 return types.SimpleNamespace(returncode=0, stdout="fallback-client-id\n")
             return types.SimpleNamespace(returncode=44, stdout="")
@@ -572,7 +596,8 @@ class TestCredentials(TestCase):
         self.assertEqual(value, "fallback-client-id")
         called_cmds = [call.args[0] for call in mock_run.call_args_list]
         self.assertEqual(called_cmds[:4], strict_calls)
-        self.assertEqual(called_cmds[4], namespaced_service_only)
+        self.assertEqual(called_cmds[4], dump_keychain)
+        self.assertEqual(called_cmds[5], namespaced_service_only)
 
     @patch("subprocess.run")
     def test_load_keychain_secret_prefers_namespaced_specific_match_over_legacy(
@@ -616,6 +641,7 @@ class TestCredentials(TestCase):
     def test_load_keychain_secret_tries_service_only_after_specific_when_enabled(
         self, mock_run
     ):
+        dump_keychain = ["security", "dump-keychain", "-d"]
         namespaced_service_only = [
             "security",
             "find-generic-password",
@@ -631,7 +657,18 @@ class TestCredentials(TestCase):
             "strava-data-puller",
         ]
 
-        mock_run.return_value = types.SimpleNamespace(returncode=44, stdout="")
+        def fake_run(cmd, check, capture_output, text, timeout):
+            if cmd == dump_keychain:
+                return types.SimpleNamespace(
+                    returncode=0,
+                    stdout=(
+                        '"svce"<blob>="com.mohit.tools.strava-data-puller"\n'
+                        '"svce"<blob>="strava-data-puller"\n'
+                    ),
+                )
+            return types.SimpleNamespace(returncode=44, stdout="")
+
+        mock_run.side_effect = fake_run
 
         value = strava_pull.load_keychain_secret(
             "STRAVA_CLIENT_ID", allow_service_only=True
@@ -641,6 +678,49 @@ class TestCredentials(TestCase):
         called_cmds = [call.args[0] for call in mock_run.call_args_list]
         self.assertIn(namespaced_service_only, called_cmds)
         self.assertIn(legacy_service_only, called_cmds)
+
+    @patch("subprocess.run")
+    def test_load_keychain_secret_skips_ambiguous_service_only_matches(
+        self, mock_run
+    ):
+        namespaced_service_only = [
+            "security",
+            "find-generic-password",
+            "-w",
+            "-s",
+            "com.mohit.tools.strava-data-puller",
+        ]
+        legacy_service_only = [
+            "security",
+            "find-generic-password",
+            "-w",
+            "-s",
+            "strava-data-puller",
+        ]
+        dump_keychain = ["security", "dump-keychain", "-d"]
+
+        def fake_run(cmd, check, capture_output, text, timeout):
+            if cmd == dump_keychain:
+                return types.SimpleNamespace(
+                    returncode=0,
+                    stdout=(
+                        '"svce"<blob>="com.mohit.tools.strava-data-puller"\n'
+                        '"svce"<blob>="com.mohit.tools.strava-data-puller"\n'
+                        '"svce"<blob>="strava-data-puller"\n'
+                        '"svce"<blob>="strava-data-puller"\n'
+                    ),
+                )
+            if cmd == namespaced_service_only or cmd == legacy_service_only:
+                self.fail("Ambiguous service-only lookup should be skipped")
+            return types.SimpleNamespace(returncode=44, stdout="")
+
+        mock_run.side_effect = fake_run
+
+        value = strava_pull.load_keychain_secret(
+            "STRAVA_CLIENT_ID", allow_service_only=True
+        )
+
+        self.assertIsNone(value)
 
     @patch("subprocess.run")
     def test_load_keychain_secret_prefers_reversed_specific_match_over_service_only(

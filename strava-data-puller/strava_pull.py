@@ -142,6 +142,28 @@ def keychain_service_only_candidates() -> list[tuple[str, None]]:
     ]
 
 
+def keychain_service_match_count(service: str) -> int | None:
+    """Return count of generic-password items matching a service, if detectable."""
+    cmd = ["security", "dump-keychain", "-d"]
+    try:
+        result = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except FileNotFoundError:
+        return None
+    except subprocess.TimeoutExpired:
+        return None
+    if result.returncode != 0:
+        return None
+
+    marker = f'"svce"<blob>="{service}"'
+    return sum(1 for line in result.stdout.splitlines() if marker in line)
+
+
 def keychain_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
     candidates: list[tuple[str, str]] = []
     candidates.extend(keychain_account_lookup_candidates(var_name))
@@ -176,15 +198,21 @@ def load_keychain_secret(var_name: str, allow_service_only: bool = False) -> str
                 return secret
         return None
 
-    # Preserve strict ordering: account-scoped and reversed lookups first,
-    # with optional service-only lookups appended as a last resort.
-    candidates: list[tuple[str, str | None]] = []
-    candidates.extend(keychain_lookup_candidates(var_name))
-    if allow_service_only:
-        candidates.extend(keychain_service_only_candidates())
-
-    for service, account in candidates:
+    # First pass: strict account-scoped and reversed lookups only.
+    for service, account in keychain_lookup_candidates(var_name):
         secret = query_candidate(service, account)
+        if secret:
+            return secret
+
+    if not allow_service_only:
+        return None
+
+    # Second pass (optional): service-only lookups, but only when a service has
+    # exactly one matching keychain item to avoid ambiguous credential selection.
+    for service, _account in keychain_service_only_candidates():
+        if keychain_service_match_count(service) != 1:
+            continue
+        secret = query_candidate(service, None)
         if secret:
             return secret
 
