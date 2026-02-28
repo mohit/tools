@@ -463,7 +463,8 @@ def test_load_required_env_requires_value(monkeypatch) -> None:
         SystemExit,
         match=(
             "Missing required env var: LASTFM_USER. "
-            "LASTFM_USER has no default fallback account."
+            "LASTFM_USER must be set explicitly; no fallback account is allowed "
+            "to avoid ingesting the wrong user's history."
         ),
     ):
         lastfm_ingest.load_required_env("LASTFM_USER")
@@ -475,7 +476,8 @@ def test_load_required_env_rejects_whitespace_only_value(monkeypatch) -> None:
         SystemExit,
         match=(
             "Missing required env var: LASTFM_USER. "
-            "LASTFM_USER has no default fallback account."
+            "LASTFM_USER must be set explicitly; no fallback account is allowed "
+            "to avoid ingesting the wrong user's history."
         ),
     ):
         lastfm_ingest.load_required_env("LASTFM_USER")
@@ -511,7 +513,8 @@ def test_main_requires_lastfm_user_and_fails_before_api_call(monkeypatch, tmp_pa
         SystemExit,
         match=(
             "Missing required env var: LASTFM_USER. "
-            "LASTFM_USER has no default fallback account."
+            "LASTFM_USER must be set explicitly; no fallback account is allowed "
+            "to avoid ingesting the wrong user's history."
         ),
     ):
         lastfm_ingest.main()

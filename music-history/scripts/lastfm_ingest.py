@@ -80,9 +80,15 @@ def load_env(var_name: str) -> str | None:
 def load_required_env(var_name: str) -> str:
     value = load_env(var_name)
     if not value:
+        hint = f"{var_name} must be set."
+        if var_name == "LASTFM_USER":
+            hint = (
+                "LASTFM_USER must be set explicitly; no fallback account is allowed "
+                "to avoid ingesting the wrong user's history."
+            )
         raise SystemExit(
             f"Missing required env var: {var_name}. "
-            f"{var_name} has no default fallback account."
+            hint
         )
     return value
 
