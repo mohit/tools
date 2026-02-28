@@ -288,9 +288,8 @@ def append_raw_page_jsonl(
     raw_root.mkdir(parents=True, exist_ok=True)
     temp_file = raw_root / f".scrobbles_tmp_{run_id}_{page}_{os.getpid()}_{int(time.time() * 1000)}.jsonl"
 
-    sorted_rows = sorted(rows, key=lambda row: int(row["uts"]))
     with temp_file.open("x", encoding="utf-8") as handle:
-        for row in sorted_rows:
+        for row in rows:
             handle.write(json.dumps(_serialize_row(row), ensure_ascii=False))
             handle.write("\n")
         handle.flush()

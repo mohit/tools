@@ -830,6 +830,51 @@ def test_append_raw_page_jsonl_writes_immutable_page_file(tmp_path: Path) -> Non
     assert len(rows) == 1
 
 
+def test_append_raw_page_jsonl_preserves_page_row_order(tmp_path: Path) -> None:
+    raw_root = tmp_path / "lastfm"
+    updated = lastfm_ingest.append_raw_page_jsonl(
+        rows=[
+            {
+                "uts": 1738454402,
+                "played_at_utc": lastfm_ingest.pd.to_datetime(1738454402, unit="s", utc=True),
+                "artist": "C",
+                "track": "Newest",
+                "album": None,
+                "mbid_track": None,
+                "source": "lastfm",
+            },
+            {
+                "uts": 1738454400,
+                "played_at_utc": lastfm_ingest.pd.to_datetime(1738454400, unit="s", utc=True),
+                "artist": "A",
+                "track": "Oldest",
+                "album": None,
+                "mbid_track": None,
+                "source": "lastfm",
+            },
+            {
+                "uts": 1738454401,
+                "played_at_utc": lastfm_ingest.pd.to_datetime(1738454401, unit="s", utc=True),
+                "artist": "B",
+                "track": "Middle",
+                "album": None,
+                "mbid_track": None,
+                "source": "lastfm",
+            },
+        ],
+        raw_root=raw_root,
+        run_id=12345,
+        from_uts=1735689600,
+        page=5,
+    )
+
+    assert updated == 1
+    files = sorted(raw_root.glob("scrobbles_run-*_from-*_p*.jsonl"))
+    assert len(files) == 1
+    rows = _read_jsonl(files[0])
+    assert [row["uts"] for row in rows] == [1738454402, 1738454400, 1738454401]
+
+
 def test_append_raw_page_jsonl_is_append_only_for_same_page_file(tmp_path: Path) -> None:
     raw_root = tmp_path / "lastfm"
     run_id = 12345
