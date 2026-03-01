@@ -110,7 +110,7 @@ def write_credentials_env_file(path: Path, credentials: dict[str, str]) -> None:
     path.chmod(0o600)
 
 
-def keychain_account_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
+def keychain_account_lookup_candidates(var_name: str) -> list[tuple[str, str | None]]:
     namespaced_service = "com.mohit.tools.strava-data-puller"
     legacy_service = "strava-data-puller"
 
@@ -121,7 +121,7 @@ def keychain_account_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
     ]
 
 
-def keychain_reversed_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
+def keychain_reversed_lookup_candidates(var_name: str) -> list[tuple[str, str | None]]:
     namespaced_service = "com.mohit.tools.strava-data-puller"
     legacy_service = "strava-data-puller"
 
@@ -132,20 +132,31 @@ def keychain_reversed_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
     ]
 
 
-def keychain_lookup_candidates(var_name: str) -> list[tuple[str, str]]:
+def keychain_service_only_lookup_candidates() -> list[tuple[str, str | None]]:
+    namespaced_service = "com.mohit.tools.strava-data-puller"
+    legacy_service = "strava-data-puller"
+
+    return [
+        # Service-only lookups are a last-resort fallback.
+        (namespaced_service, None),
+        (legacy_service, None),
+    ]
+
+
+def keychain_lookup_candidates(var_name: str) -> list[tuple[str, str | None]]:
     account_candidates = keychain_account_lookup_candidates(var_name)
     reversed_candidates = keychain_reversed_lookup_candidates(var_name)
-    # Prefer canonical service/account entries first; only then check reversed layout.
-    # This prevents reversed legacy/namespaced entries from winning ahead of a stricter
-    # direct account-scoped match in another service namespace.
-    return account_candidates + reversed_candidates
+    service_only_candidates = keychain_service_only_lookup_candidates()
+    # Prefer canonical service/account entries first, then reversed layouts,
+    # and finally service-only fallback as a last resort.
+    return account_candidates + reversed_candidates + service_only_candidates
 
 
 def load_keychain_secret(var_name: str) -> str | None:
     # macOS keychain fallback for unattended runs.
-    # Account-scoped lookups (including reversed service/account) only.
-    # Service-only lookups are intentionally disallowed because they can be
-    # ambiguous when multiple accounts share the same service.
+    # Account-scoped lookups (including reversed service/account) are preferred.
+    # Service-only lookups are attempted last because they can be ambiguous
+    # when multiple accounts share the same service.
     def query_candidate(service: str, account: str | None) -> str | None:
         cmd = ["security", "find-generic-password", "-w", "-s", service]
         if account is not None:
@@ -204,8 +215,8 @@ def resolve_strava_credentials() -> tuple[dict[str, str], dict[str, str], list[P
     missing_after_env = [var_name for var_name in REQUIRED_STRAVA_VARS if var_name not in values]
 
     for var_name in missing_after_env:
-        # Service-only keychain lookup can bind a wrong STRAVA_* value, so only
-        # allow strict account/service (including reversed) matching here.
+        # Keychain lookup order is strict account/service, reversed account/service,
+        # then service-only fallback.
         keychain_value = load_keychain_secret(var_name)
         if keychain_value:
             values[var_name] = keychain_value
