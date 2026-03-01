@@ -347,10 +347,7 @@ def resolve_start(
             if explicit_from is not None and checkpoint_from_uts != explicit_from:
                 raise ValueError("checkpoint from_uts mismatch")
 
-            if explicit_from is None:
-                from_uts = checkpoint_from_uts
-            else:
-                from_uts = explicit_from
+            from_uts = checkpoint_from_uts if explicit_from is None else explicit_from
 
             return (
                 from_uts,
