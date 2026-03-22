@@ -27,11 +27,13 @@ DEFAULT_TYPES = [
 
 MAX_RETRIES = 5
 BASE_DELAY = 15  # seconds
+# StravaRateLimiter removed: Strava's 429 responses + exponential backoff handle rate limiting reactively.
 REQUIRED_STRAVA_VARS = (
     "STRAVA_CLIENT_ID",
     "STRAVA_CLIENT_SECRET",
     "STRAVA_REFRESH_TOKEN",
 )
+# ~/code/tools/.env is a personal fallback; set STRAVA_ENV_FILE for custom paths
 DEFAULT_AUTOMATION_ENV_FILE = (
     Path.home() / "code" / "tools" / "strava-data-puller" / ".env"
 )
