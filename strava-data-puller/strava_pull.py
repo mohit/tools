@@ -258,7 +258,7 @@ def get_access_token(client_id: str, client_secret: str, refresh_token: str) -> 
     return payload["access_token"]
 
 
-def request_json(endpoint: str, token: str, params: dict | None = None) -> dict:
+def request_json(endpoint: str, token: str, params: dict | None = None) -> dict | list:
     url = f"{STRAVA_API_BASE}{endpoint}"
 
     for attempt in range(MAX_RETRIES):
@@ -348,6 +348,8 @@ def load_existing_activities(out_dir: Path) -> tuple[list[dict], int | None]:
 
 def fetch_athlete(token: str, out_dir: Path) -> int:
     athlete = request_json("/athlete", token)
+    if not isinstance(athlete, dict) or "id" not in athlete:
+        raise SystemExit(f"Unexpected /athlete response (expected dict with 'id'): {athlete!r}")
     write_json(out_dir / "athlete.json", athlete)
     return athlete["id"]
 
@@ -359,7 +361,6 @@ def fetch_stats(token: str, athlete_id: int, out_dir: Path) -> None:
 
 def fetch_activities(
     token: str,
-    out_dir: Path,
     types: set[str],
     after: int | None,
     before: int | None,
@@ -558,7 +559,6 @@ def main() -> None:
     activity_types = parse_types(args.types)
     fetched_activities = fetch_activities(
         access_token,
-        out_dir,
         activity_types,
         after_param,
         args.before,
@@ -569,15 +569,22 @@ def main() -> None:
     # Merge strategy:
     # 1. Create a dict of all activities by ID (existing + fetched)
     #    Since we process existing first, then fetched, updates from fetched will overwrite existing
-    activity_map = {a["id"]: a for a in existing_activities}
+    activity_map: dict[int, dict] = {}
+    for a in existing_activities:
+        activity_id = a.get("id")
+        if isinstance(activity_id, int):
+            activity_map[activity_id] = a
 
     # 2. Update/Add new fetched activities
-    new_activity_ids = set()
+    new_activity_ids: set[int] = set()
     for activity in fetched_activities:
+        activity_id = activity.get("id")
+        if not isinstance(activity_id, int):
+            continue
         # Only consider it "new" if we didn't have it before
-        if activity["id"] not in activity_map:
-            new_activity_ids.add(activity["id"])
-        activity_map[activity["id"]] = activity
+        if activity_id not in activity_map:
+            new_activity_ids.add(activity_id)
+        activity_map[activity_id] = activity
 
     # 3. Convert back to list and sort by start_date
     final_activities = list(activity_map.values())
