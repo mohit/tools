@@ -14,6 +14,7 @@ from typing import Any
 
 import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import requests
 
@@ -91,6 +92,17 @@ def load_last_uts_if_valid(state_file: Path = STATE_FILE) -> int | None:
 
 
 def load_last_uts(state_file: Path = STATE_FILE) -> int:
+    """Return the saved last-ingested Unix timestamp, defaulting to 0.
+
+    **First-run / missing-state behaviour:** when the state file does not exist
+    or contains an invalid value, this function returns ``0`` (Unix epoch).
+    Callers (specifically ``main()``) treat epoch-0 as "start from the very
+    beginning", which means a **full-history backfill** will be triggered on the
+    first run on a clean machine.  If prior curated parquet data exists and no
+    interrupted multi-page run is detected, ``main()`` narrows the start cursor
+    to the latest curated timestamp instead.  Pass ``--since``/``--from-uts``
+    or ``--full-refetch`` to take explicit control of the start point.
+    """
     loaded = load_last_uts_if_valid(state_file=state_file)
     return loaded if loaded is not None else 0
 
@@ -244,6 +256,12 @@ def request_recent_tracks(
 
 
 def detect_latest_curated_uts(curated_root: Path) -> int | None:
+    """Scan all curated parquet files and return the maximum 'uts' value seen.
+
+    Uses ``pyarrow.compute.max`` so only the 'uts' column is read into memory;
+    the full row data is never materialised.  This keeps RAM bounded even when
+    the curated history folder is large.
+    """
     if not curated_root.exists():
         return None
 
@@ -255,8 +273,10 @@ def detect_latest_curated_uts(curated_root: Path) -> int | None:
         column = table.column("uts")
         if column.null_count == column.length():
             continue
-        file_max = int(column.to_pandas().max())
-        latest_uts = file_max if latest_uts is None else max(latest_uts, file_max)
+        file_max_scalar = pc.max(column)
+        if file_max_scalar.is_valid:
+            file_max = file_max_scalar.as_py()
+            latest_uts = file_max if latest_uts is None else max(latest_uts, file_max)
     return latest_uts
 
 
