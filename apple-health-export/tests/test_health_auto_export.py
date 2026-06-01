@@ -592,6 +592,54 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         self.assertEqual([row[0] for row in record_values], ["1234"])
         self.assertEqual([row[0] for row in workout_durations], ["30"])
 
+    def test_orphaned_tmp_cleaned_up_when_write_workouts_parquet_raises(self):
+        """Orphaned .tmp files must be removed when _write_workouts_parquet throws."""
+        baseline_payload = self.sample_payload()
+        self.ingestor.ingest_payload(baseline_payload)
+
+        # Fabricate the records .tmp that _write_records_parquet would have created.
+        records_tmp = self.ingestor.records_parquet.with_name(
+            f"{self.ingestor.records_parquet.name}.orphan.tmp"
+        )
+        records_tmp.parent.mkdir(parents=True, exist_ok=True)
+        records_tmp.write_text("records tmp data", encoding="utf-8")
+
+        def raise_on_workouts(con, workouts):
+            raise RuntimeError("simulated _write_workouts_parquet failure")
+
+        with (
+            mock.patch.object(
+                self.ingestor,
+                "_write_records_parquet",
+                return_value=records_tmp,
+            ),
+            mock.patch.object(
+                self.ingestor,
+                "_write_workouts_parquet",
+                side_effect=raise_on_workouts,
+            ),
+        ):
+            records, workouts, errors = self.ingestor._normalize_payload(baseline_payload)
+            self.assertEqual(errors, [])
+            with self.assertRaises(RuntimeError):
+                self.ingestor._merge_to_parquet(
+                    records, workouts, self.raw_dir / "test_raw.json"
+                )
+
+        # The orphaned records .tmp must have been deleted.
+        self.assertFalse(
+            records_tmp.exists(),
+            "records .tmp file should have been cleaned up after workouts write failure",
+        )
+
+        # No stray .tmp files anywhere in curated_dir.
+        remaining_tmp = list(self.curated_dir.glob("*.tmp"))
+        self.assertEqual(
+            remaining_tmp,
+            [],
+            f"unexpected .tmp files remain in curated_dir: {remaining_tmp}",
+        )
+
     def test_dedupe_incoming_batch_keeps_first_record_and_workout(self):
         payload = self.sample_payload()
         records, workouts, errors = self.ingestor._normalize_payload(payload)

@@ -95,7 +95,7 @@ class HealthAutoExportIngestor:
     )
 
     def __init__(self, raw_dir: Path = DEFAULT_RAW_DIR, curated_dir: Path = DEFAULT_CURATED_DIR):
-        self.raw_dir = Path(raw_dir)
+        self.raw_dir = Path(raw_dir).expanduser().resolve()
         self.curated_dir = Path(curated_dir).expanduser().resolve()
         self.records_parquet = self.curated_dir / "health_records.parquet"
         self.workouts_parquet = self.curated_dir / "health_workouts.parquet"
@@ -252,6 +252,8 @@ class HealthAutoExportIngestor:
                 for row in workouts
             ]
 
+            records_tmp_path = None
+            workouts_tmp_path = None
             with duckdb.connect(":memory:") as con:
                 con.execute("BEGIN TRANSACTION")
                 try:
@@ -260,6 +262,9 @@ class HealthAutoExportIngestor:
                     con.execute("COMMIT")
                 except Exception:
                     con.execute("ROLLBACK")
+                    for p in [records_tmp_path, workouts_tmp_path]:
+                        if p is not None and p.exists():
+                            p.unlink(missing_ok=True)
                     raise
             self._promote_parquet_outputs(records_tmp_path, workouts_tmp_path)
 
@@ -663,6 +668,7 @@ def create_app(ingestor: HealthAutoExportIngestor, token: str | None = None) -> 
         raise RuntimeError("flask is required to run the API server")
 
     app = Flask(__name__)
+    app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
 
     @app.get("/health")
     def health_check():
@@ -714,7 +720,7 @@ def main() -> None:
     serve_parser = subparsers.add_parser("serve", help="Run REST API endpoint for Health Auto Export")
     serve_parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     serve_parser.add_argument("--port", type=int, default=8787, help="Bind port")
-    serve_parser.add_argument("--token", help="Bearer token required by endpoint")
+    serve_parser.add_argument("--token", default=os.environ.get("HEALTH_AUTO_EXPORT_TOKEN"), help="Bearer token required by endpoint")
     serve_parser.add_argument("--raw-dir", help="Raw datalake root directory")
     serve_parser.add_argument("--curated-dir", help="Curated datalake directory")
 
