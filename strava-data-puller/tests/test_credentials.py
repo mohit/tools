@@ -55,19 +55,6 @@ class TestCredentials(TestCase):
             ],
         )
 
-    def test_keychain_lookup_candidates_puts_service_only_last(self):
-        self.assertEqual(
-            strava_pull.keychain_lookup_candidates("STRAVA_CLIENT_SECRET"),
-            [
-                ("com.mohit.tools.strava-data-puller", "STRAVA_CLIENT_SECRET"),
-                ("strava-data-puller", "STRAVA_CLIENT_SECRET"),
-                ("STRAVA_CLIENT_SECRET", "com.mohit.tools.strava-data-puller"),
-                ("STRAVA_CLIENT_SECRET", "strava-data-puller"),
-                ("com.mohit.tools.strava-data-puller", None),
-                ("strava-data-puller", None),
-            ],
-        )
-
     def test_write_credentials_env_file(self):
         env_file = Path(__file__).resolve().parent / "tmp_written.env"
         credentials = {

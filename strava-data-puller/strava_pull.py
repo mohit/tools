@@ -405,6 +405,173 @@ def fetch_activity_streams(token: str, out_dir: Path, activity_id: int) -> None:
     append_ndjson(out_dir / "activity_streams.ndjson", streams)
 
 
+def collect_in_scope_activity_ids(
+    activities: list[dict],
+    types: set[str],
+    after: int | None,
+    before: int | None,
+) -> set[int]:
+    """Return set of activity IDs that match the type filter and time window."""
+    result: set[int] = set()
+    for activity in activities:
+        activity_id = activity.get("id")
+        if not isinstance(activity_id, int):
+            continue
+        if activity.get("type") not in types:
+            continue
+        start_date_str = activity.get("start_date")
+        if start_date_str:
+            try:
+                parsed = dt.datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
+                ts = int(parsed.timestamp())
+                if after is not None and ts < after:
+                    continue
+                if before is not None and ts > before:
+                    continue
+            except ValueError:
+                continue
+        result.add(activity_id)
+    return result
+
+
+def find_missing_detail_ids(
+    activities: list[dict],
+    out_dir: Path,
+    types: set[str],
+    after: int | None,
+    before: int | None,
+    include_streams: bool = False,
+) -> list[tuple[int, set[str]]]:
+    """Identify activities that are missing or have incomplete detail/stream files.
+
+    Returns a list of (activity_id, reasons) tuples for activities that need
+    re-fetching, where reasons is a set of string tags describing what is missing.
+    """
+    activities_dir = out_dir / "activities"
+    streams_dir = out_dir / "streams"
+    result: list[tuple[int, set[str]]] = []
+
+    for activity in activities:
+        activity_id = activity.get("id")
+        if not isinstance(activity_id, int):
+            continue
+        if activity.get("type") not in types:
+            continue
+        start_date_str = activity.get("start_date")
+        if start_date_str:
+            try:
+                parsed = dt.datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
+                ts = int(parsed.timestamp())
+                if after is not None and ts < after:
+                    continue
+                if before is not None and ts > before:
+                    continue
+            except ValueError:
+                continue
+
+        reasons: set[str] = set()
+        detail_file = activities_dir / f"{activity_id}.json"
+
+        if not detail_file.exists():
+            reasons.add("missing_detail_file")
+        else:
+            try:
+                detail = json.loads(detail_file.read_text(encoding="utf-8"))
+                if not (detail.get("laps") is not None and detail.get("splits_metric") is not None):
+                    reasons.add("missing_laps_or_splits")
+            except (json.JSONDecodeError, OSError):
+                reasons.add("missing_detail_file")
+
+        if include_streams:
+            streams_file = streams_dir / f"{activity_id}.json"
+            if not streams_file.exists():
+                reasons.add("missing_streams_file")
+
+        if reasons:
+            result.append((activity_id, reasons))
+
+    return result
+
+
+def build_activity_details_ndjson(out_dir: Path, include_ids: set[int] | None = None) -> int:
+    """Write activity_details.ndjson from per-activity JSON files in out_dir/activities/.
+
+    Args:
+        out_dir: Root output directory containing the ``activities/`` sub-directory.
+        include_ids: If provided, only include activities whose ID is in this set.
+            Useful for excluding stale or already-exported entries.
+
+    Returns:
+        Number of rows written.
+    """
+    activities_dir = out_dir / "activities"
+    ndjson_path = out_dir / "activity_details.ndjson"
+    rows = 0
+
+    with ndjson_path.open("w", encoding="utf-8") as f:
+        for json_file in sorted(activities_dir.glob("*.json")):
+            try:
+                activity_id = int(json_file.stem)
+            except ValueError:
+                continue
+            if include_ids is not None and activity_id not in include_ids:
+                continue
+            try:
+                data = json.loads(json_file.read_text(encoding="utf-8"))
+                f.write(json.dumps(data, sort_keys=True))
+                f.write("\n")
+                rows += 1
+            except (json.JSONDecodeError, OSError):
+                continue
+
+    return rows
+
+
+# Stream columns that are optional and should be defaulted to empty when absent.
+_OPTIONAL_STREAM_COLUMNS = ["watts", "heartrate"]
+
+
+def build_activity_streams_ndjson(out_dir: Path, include_ids: set[int] | None = None) -> int:
+    """Write activity_streams.ndjson from per-activity stream JSON files in out_dir/streams/.
+
+    Each output row gains an ``activity_id`` field derived from the filename.
+    Optional stream columns (e.g. ``watts``, ``heartrate``) are defaulted to
+    ``{"data": []}`` when absent so downstream consumers see a stable schema.
+
+    Args:
+        out_dir: Root output directory containing the ``streams/`` sub-directory.
+        include_ids: If provided, only include streams whose ID is in this set.
+
+    Returns:
+        Number of rows written.
+    """
+    streams_dir = out_dir / "streams"
+    ndjson_path = out_dir / "activity_streams.ndjson"
+    rows = 0
+
+    with ndjson_path.open("w", encoding="utf-8") as f:
+        for json_file in sorted(streams_dir.glob("*.json")):
+            try:
+                activity_id = int(json_file.stem)
+            except ValueError:
+                continue
+            if include_ids is not None and activity_id not in include_ids:
+                continue
+            try:
+                data = json.loads(json_file.read_text(encoding="utf-8"))
+                data["activity_id"] = activity_id
+                for col in _OPTIONAL_STREAM_COLUMNS:
+                    if col not in data:
+                        data[col] = {"data": []}
+                f.write(json.dumps(data, sort_keys=True))
+                f.write("\n")
+                rows += 1
+            except (json.JSONDecodeError, OSError):
+                continue
+
+    return rows
+
+
 def export_parquet(out_dir: Path) -> None:
     con = duckdb.connect()
     con.execute(
@@ -425,9 +592,18 @@ def export_parquet(out_dir: Path) -> None:
             [str(out_dir / "activity_details.ndjson")],
         )
     if (out_dir / "activity_streams.ndjson").exists():
+        # Load raw first so we can inspect the schema before building the final table.
         con.execute(
-            "CREATE OR REPLACE TABLE activity_streams AS SELECT * FROM read_json_auto(?)",
+            "CREATE OR REPLACE TABLE activity_streams_raw AS SELECT * FROM read_json_auto(?)",
             [str(out_dir / "activity_streams.ndjson")],
+        )
+        # Check which columns are available; handle optional watts → power_points.
+        pragma_result = con.execute("PRAGMA table_info('activity_streams_raw')")
+        columns = {row[1] for row in pragma_result.fetchall()}
+        power_expr = "watts.data AS power_points" if "watts" in columns else "0 AS power_points"
+        con.execute(
+            f"CREATE OR REPLACE TABLE activity_streams AS"
+            f" SELECT *, {power_expr} FROM activity_streams_raw"
         )
 
     con.execute(

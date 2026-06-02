@@ -122,6 +122,7 @@ ORDER BY total_activities DESC;
 ```
 
 ## Notes
+- **First-run migration:** If you have an existing `activities.ndjson` from a version prior to incremental-sync support, re-run with `--force` once to rebuild it in the current format before resuming normal incremental runs.
 - Pro subscription unlocks additional metrics in the Strava UI, but API access is primarily governed by OAuth scopes and rate limits. You should be fine with a Pro plan as long as your app has the `read` and `activity:read_all` scopes.
 - The script stores data locally only.
 
