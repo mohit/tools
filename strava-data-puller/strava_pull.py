@@ -575,8 +575,34 @@ def build_activity_streams_ndjson(out_dir: Path, include_ids: set[int] | None = 
 def export_parquet(out_dir: Path) -> None:
     con = duckdb.connect()
     con.execute(
-        "CREATE OR REPLACE TABLE activities AS SELECT * FROM read_json_auto(?)",
+        "CREATE OR REPLACE TABLE activities_raw AS SELECT * FROM read_json_auto(?)",
         [str(out_dir / "activities.ndjson")],
+    )
+    con.execute(
+        """
+        CREATE OR REPLACE TABLE activities AS
+        SELECT
+            *,
+            TRY_CAST(distance AS DOUBLE) / 1000.0 AS distance_km,
+            TRY_CAST(moving_time AS DOUBLE) / 60.0 AS moving_time_min,
+            TRY_CAST(elapsed_time AS DOUBLE) / 3600.0 AS elapsed_time_hours,
+            CASE
+                WHEN TRY_CAST(moving_time AS DOUBLE) > 0
+                THEN (TRY_CAST(distance AS DOUBLE) / 1000.0) / (TRY_CAST(moving_time AS DOUBLE) / 3600.0)
+                ELSE NULL
+            END AS average_speed_kph,
+            CASE
+                WHEN TRY_CAST(elapsed_time AS DOUBLE) > 0
+                THEN TRY_CAST(moving_time AS DOUBLE) / TRY_CAST(elapsed_time AS DOUBLE)
+                ELSE NULL
+            END AS moving_ratio,
+            CASE
+                WHEN TRY_CAST(distance AS DOUBLE) > 0
+                THEN TRY_CAST(total_elevation_gain AS DOUBLE) / (TRY_CAST(distance AS DOUBLE) / 1000.0)
+                ELSE NULL
+            END AS elevation_gain_per_km
+        FROM activities_raw
+        """
     )
     con.execute(
         "CREATE OR REPLACE TABLE athlete AS SELECT * FROM read_json_auto(?)",
@@ -588,8 +614,19 @@ def export_parquet(out_dir: Path) -> None:
     )
     if (out_dir / "activity_details.ndjson").exists():
         con.execute(
-            "CREATE OR REPLACE TABLE activity_details AS SELECT * FROM read_json_auto(?)",
+            "CREATE OR REPLACE TABLE activity_details_raw AS SELECT * FROM read_json_auto(?)",
             [str(out_dir / "activity_details.ndjson")],
+        )
+        con.execute(
+            """
+            CREATE OR REPLACE TABLE activity_details AS
+            SELECT
+                *,
+                COALESCE(array_length(laps), 0) AS lap_count,
+                COALESCE(array_length(splits_standard), 0) AS splits_standard_count,
+                COALESCE(array_length(splits_metric), 0) AS splits_metric_count
+            FROM activity_details_raw
+            """
         )
     if (out_dir / "activity_streams.ndjson").exists():
         # Load raw first so we can inspect the schema before building the final table.
@@ -597,13 +634,35 @@ def export_parquet(out_dir: Path) -> None:
             "CREATE OR REPLACE TABLE activity_streams_raw AS SELECT * FROM read_json_auto(?)",
             [str(out_dir / "activity_streams.ndjson")],
         )
-        # Check which columns are available; handle optional watts → power_points.
-        pragma_result = con.execute("PRAGMA table_info('activity_streams_raw')")
-        columns = {row[1] for row in pragma_result.fetchall()}
-        power_expr = "watts.data AS power_points" if "watts" in columns else "0 AS power_points"
+        # Check which stream columns are present; fall back to 0 for absent ones.
+        stream_columns = {
+            row[1]
+            for row in con.execute("PRAGMA table_info('activity_streams_raw')").fetchall()
+            if len(row) > 1 and isinstance(row[1], str)
+        }
+        stream_point_definitions = [
+            ("time", "time_points"),
+            ("distance", "distance_points"),
+            ("heartrate", "heartrate_points"),
+            ("watts", "power_points"),
+            ("cadence", "cadence_points"),
+        ]
+        point_count_projection = ",\n                ".join(
+            f"COALESCE(array_length({stream_key}.data), 0) AS {point_name}"
+            if stream_key in stream_columns
+            else f"0 AS {point_name}"
+            for stream_key, point_name in stream_point_definitions
+        )
         con.execute(
-            f"CREATE OR REPLACE TABLE activity_streams AS"
-            f" SELECT *, {power_expr} FROM activity_streams_raw"
+            """
+            CREATE OR REPLACE TABLE activity_streams AS
+            SELECT
+                *,
+                """
+            + point_count_projection
+            + """
+            FROM activity_streams_raw
+            """
         )
 
     con.execute(
