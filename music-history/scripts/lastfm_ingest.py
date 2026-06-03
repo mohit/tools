@@ -449,10 +449,12 @@ def main() -> None:
     # incremental start when prior curated data already exists.
     state_from_uts = loaded_state_uts if loaded_state_uts is not None else 0
     has_explicit_start = args.full_refetch or args.from_uts is not None or args.since is not None
-    should_consider_curated_fallback = (
-        loaded_state_uts is None and checkpoint is None and not has_explicit_start
-    )
-    if should_consider_curated_fallback:
+    # Performance gate: detect_latest_curated_uts() recursively scans every curated parquet
+    # file to find the maximum 'uts' value. That scan is only useful when the state file is
+    # absent or unusable (loaded_state_uts is None). Normal incremental runs — where the
+    # state file is present and valid — must skip this block entirely so routine syncs stay
+    # fast regardless of how large the curated history has grown.
+    if loaded_state_uts is None and checkpoint is None and not has_explicit_start:
         if has_paginated_curated_output(curated_root=curated_root):
             # Paginated curated output exists but state file is absent — a prior history run
             # completed some pages but left no cursor. Resuming from the latest curated UTS
