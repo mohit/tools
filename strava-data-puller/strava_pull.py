@@ -171,8 +171,6 @@ def load_keychain_secret(var_name: str) -> str | None:
                 text=True,
                 timeout=10,
             )
-        except FileNotFoundError:
-            return None
         except subprocess.TimeoutExpired:
             return None
         if result.returncode == 0:
@@ -182,7 +180,10 @@ def load_keychain_secret(var_name: str) -> str | None:
         return None
 
     for service, account in keychain_lookup_candidates(var_name):
-        secret = query_candidate(service, account)
+        try:
+            secret = query_candidate(service, account)
+        except FileNotFoundError:
+            return None
         if secret:
             return secret
 
@@ -835,7 +836,7 @@ def main() -> None:
     print(f"Fetched {fetched_count} records (overlapping). Found {new_count} truly new activities.")
 
     # Only fetch details for the TRULY new activities
-    for activity_id in new_activity_ids:
+    for activity_id in sorted(new_activity_ids):
         # Note: We can't easily get the 'activity' dict here without iterating map,
         # but fetch_activity_details needs ID anyway.
         fetch_activity_details(access_token, out_dir, activity_id)
