@@ -267,7 +267,11 @@ def detect_latest_curated_uts(curated_root: Path) -> int | None:
 
     latest_uts: int | None = None
     for parquet_file in curated_root.rglob("*.parquet"):
-        table = pq.read_table(parquet_file, columns=["uts"])
+        try:
+            table = pq.read_table(parquet_file, columns=["uts"])
+        except Exception as e:  # noqa: BLE001
+            print(f"WARNING detect_latest_curated_uts: skipping corrupt parquet {parquet_file}: {e}")
+            continue
         if table.num_rows == 0:
             continue
         column = table.column("uts")
