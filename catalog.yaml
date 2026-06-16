@@ -1,0 +1,69 @@
+sources:
+  strava:
+    enabled: true
+    kind: api-incremental
+    cadence: daily
+    script: strava-data-puller/strava_pull.py
+    raw_root: ~/code/tools/strava-data-puller/strava-export
+    last_sync: "2026-06-16T13:00:00Z"
+    last_activity_date: "2026-05-03"
+    total_activities: 193
+    new_activities_this_run: 0
+
+  lastfm:
+    enabled: true
+    kind: api-incremental
+    cadence: daily
+    script: music-history/scripts/lastfm_ingest.py
+    raw_root: ~/datalake.me/raw/lastfm
+    curated_root: ~/datalake.me/curated/lastfm/scrobbles
+    last_sync: "2026-06-16T13:00:00Z"
+    last_scrobble_uts: 1779334414
+    last_scrobble_date: "2026-05-21T03:33:34Z"
+    new_rows_this_run: 0
+    scrobble_gap_days: 26
+    alert: "No new scrobbles since 2026-05-21 (26-day gap) — check scrobbler integration"
+
+  apple-health:
+    enabled: false
+    kind: privacy-export-manual
+    cadence: quarterly
+    raw_root: ~/datalake.me/raw/apple-health
+    last_export_xml: "2026-01-20"
+    last_processed: "2026-02-07"
+    stale: true
+    stale_days: 147
+    alert: "Re-export needed from Apple Privacy Portal"
+
+  apple-music:
+    enabled: false
+    kind: privacy-export-manual
+    cadence: quarterly
+    raw_root: ~/datalake.me/raw/apple-music
+    last_export: "2026-02-16"
+    stale: true
+    stale_days: 120
+    alert: "Re-export needed from Apple Privacy Portal"
+
+  google-calendar:
+    enabled: true
+    kind: raw-json-snapshots
+    cadence: weekly
+    script: scripts/gcal_backup.py
+    raw_root: ~/datalake.me/raw/google-calendar
+    calendars:
+      - name: mohit.ed@gmail.com
+        calendar_id: primary
+        access_role_required: owner_or_writer
+      - name: Burp
+        calendar_id: 59su84rs0gglunof4pp3dlb4p8@group.calendar.google.com
+        access_role_required: owner_or_writer
+      - name: Family
+        calendar_id: family13862746254541864797@group.calendar.google.com
+        access_role_required: owner_or_writer
+      - name: Tarzan
+        calendar_id: bhb2sf2i6f9cdv8bnv46roov60@group.calendar.google.com
+        access_role_required: owner_or_writer
+      - name: Work-ish
+        calendar_id: dqrf1vd22nvspd6jbpdrt0bikg@group.calendar.google.com
+        access_role_required: owner_or_writer
