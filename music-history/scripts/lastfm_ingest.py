@@ -6,7 +6,6 @@ import datetime as dt
 import json
 import os
 import re
-import socket
 import time
 import urllib.error
 from pathlib import Path
@@ -179,10 +178,8 @@ def is_retryable_exception(exc: Exception) -> bool:
         (
             requests.Timeout,
             requests.ConnectionError,
-            requests.RequestException,
             urllib.error.URLError,
             TimeoutError,
-            socket.timeout,
         ),
     )
 
