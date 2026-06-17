@@ -149,8 +149,14 @@ def keychain_lookup_candidates(var_name: str) -> list[tuple[str, str | None]]:
     account_candidates = keychain_account_lookup_candidates(var_name)
     reversed_candidates = keychain_reversed_lookup_candidates(var_name)
     service_only_candidates = keychain_service_only_lookup_candidates()
-    # Prefer canonical service/account entries first, then reversed layouts,
-    # and finally service-only fallback as a last resort.
+    # Ordering contract (must not be changed without updating tests):
+    #   1. account_candidates  — canonical (service, account) pairs; most specific.
+    #   2. reversed_candidates — swapped (account-as-service, service-as-account) pairs;
+    #      still account-scoped so still unambiguous per credential.
+    #   3. service_only_candidates — (service, None) with no account filter; MUST be
+    #      last because macOS returns the first matching item when multiple accounts
+    #      share the same service, which would assign the same (wrong) secret to all
+    #      three STRAVA_* variables and silently break token exchange.
     return account_candidates + reversed_candidates + service_only_candidates
 
 
