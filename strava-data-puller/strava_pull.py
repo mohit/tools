@@ -417,6 +417,13 @@ def fetch_activity_streams(token: str, out_dir: Path, activity_id: int) -> None:
                 f"({status}), skipping.",
                 file=sys.stderr,
             )
+            cached = out_dir / "streams" / f"{activity_id}.json"
+            if cached.exists():
+                cached.unlink()
+                print(
+                    f"Removed stale cached stream file for activity {activity_id}.",
+                    file=sys.stderr,
+                )
             return
         raise
     write_json(out_dir / "streams" / f"{activity_id}.json", streams)
