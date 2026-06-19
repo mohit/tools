@@ -155,6 +155,8 @@ python3 health_auto_export.py serve \
   --curated-dir ~/datalake.me/curated/apple-health
 ```
 
+> **Note:** `serve` uses Flask's built-in development server, which is suitable for personal/local use. If you need to expose this endpoint on a network, consider fronting with a production WSGI server such as gunicorn. The bearer token is the only auth layer.
+
 Endpoint: `POST /v1/health/auto-export`
 
 - Auth header: `Authorization: Bearer <token>`
@@ -185,6 +187,8 @@ Health Auto Export merge behavior:
 - Incoming record batch dedupe key: `type`, `sourceName`, `unit`, `value`, `startDate`, `endDate`.
 - Incoming workout batch dedupe key: `workoutActivityType`, `sourceName`, `startDate`, `endDate`, `duration`, `totalDistance`, `totalEnergyBurned`.
 - For duplicates inside one payload batch, the first row is kept. Fields outside the dedupe key (for example metadata or creation timestamp) do not create a new row.
+- Across payloads, the latest-ingested row wins (`ORDER BY ingestedAt DESC`): re-ingesting the same records will update non-key metadata fields with the newer ingestion's values.
+- Payloads are validated atomically — if any record or workout fails required-field validation, the entire request is rejected with HTTP 400 and nothing is persisted.
 
 ## Common Data Types
 
