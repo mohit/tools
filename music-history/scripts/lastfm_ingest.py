@@ -375,11 +375,14 @@ def main() -> None:
         print("No new rows found.")
         return
 
-    save_last_uts(max_uts_seen)
+    # Advance by 1 second so the next incremental run starts strictly after
+    # the boundary scrobble, preventing it from being re-fetched and written
+    # into a new Parquet file (which would silently accumulate duplicates).
+    save_last_uts(max_uts_seen + 1)
     clear_checkpoint()
     print(
         f"Ingest complete: pages={pages_processed}, parquet_rows={rows_written}, "
-        f"last_uts={max_uts_seen}"
+        f"last_uts={max_uts_seen} (saved as {max_uts_seen + 1})"
     )
 
 
