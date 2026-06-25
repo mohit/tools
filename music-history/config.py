@@ -13,3 +13,6 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 EXPORT_METADATA_PATH = SCRIPT_DIR / "apple_music_export_metadata.json"
 
 MAX_STALENESS_DAYS = int(os.environ.get("APPLE_MUSIC_MAX_STALENESS_DAYS", "365"))
+
+RAW_APPLE_MUSIC_DIR = RAW_ROOT / "apple-music"
+RAW_FILE_STALENESS_DAYS = int(os.environ.get("APPLE_MUSIC_RAW_FILE_STALENESS_DAYS", "30"))
