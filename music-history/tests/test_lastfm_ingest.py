@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import importlib.util
+import urllib.error
+from argparse import Namespace
 from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
+import requests
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "lastfm_ingest.py"
 SPEC = importlib.util.spec_from_file_location("lastfm_ingest", MODULE_PATH)
@@ -446,3 +450,495 @@ def test_append_parquet_partitions_dedupes_across_pages_without_shared_seen_keys
     files = sorted(curated_root.rglob(f"scrobbles_{run_id}_p*.parquet"))
     total_rows = sum(pq.read_table(path).num_rows for path in files)
     assert total_rows == 2
+
+
+def test_request_recent_tracks_retries_on_500_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"count": 0}
+
+    class FakeResponse:
+        def __init__(self, status_code: int, payload: dict[str, object]) -> None:
+            self.status_code = status_code
+            self._payload = payload
+
+        def raise_for_status(self) -> None:
+            if self.status_code >= 400:
+                raise RuntimeError(f"unexpected raise_for_status for status={self.status_code}")
+
+        def json(self) -> dict[str, object]:
+            return self._payload
+
+    def fake_get(*args: object, **kwargs: object) -> FakeResponse:
+        calls["count"] += 1
+        if calls["count"] < 3:
+            return FakeResponse(500, {})
+        return FakeResponse(200, {"recenttracks": {"track": []}})
+
+    monkeypatch.setattr(lastfm_ingest.requests, "get", fake_get)
+    monkeypatch.setattr(lastfm_ingest.time, "sleep", lambda *_: None)
+
+    payload = lastfm_ingest.request_recent_tracks(
+        user="u",
+        api_key="k",
+        from_uts=0,
+        page=1,
+        max_retries=3,
+        base_delay_seconds=0,
+    )
+
+    assert payload["recenttracks"] == {"track": []}
+    assert calls["count"] == 3
+
+
+def test_request_recent_tracks_retries_on_requests_timeout_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"count": 0}
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"recenttracks": {"track": []}}
+
+    def fake_get(*args: object, **kwargs: object) -> FakeResponse:
+        calls["count"] += 1
+        if calls["count"] < 3:
+            raise requests.Timeout("timed out")
+        return FakeResponse()
+
+    monkeypatch.setattr(lastfm_ingest.requests, "get", fake_get)
+    monkeypatch.setattr(lastfm_ingest.time, "sleep", lambda *_: None)
+
+    payload = lastfm_ingest.request_recent_tracks(
+        user="u",
+        api_key="k",
+        from_uts=0,
+        page=1,
+        max_retries=3,
+        base_delay_seconds=0,
+    )
+
+    assert payload["recenttracks"] == {"track": []}
+    assert calls["count"] == 3
+
+
+def test_request_recent_tracks_retries_on_requests_exception_with_500_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"count": 0}
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"recenttracks": {"track": []}}
+
+    def fake_get(*args: object, **kwargs: object) -> FakeResponse:
+        calls["count"] += 1
+        if calls["count"] < 3:
+            response = requests.Response()
+            response.status_code = 500
+            raise requests.RequestException("server error", response=response)
+        return FakeResponse()
+
+    monkeypatch.setattr(lastfm_ingest.requests, "get", fake_get)
+    monkeypatch.setattr(lastfm_ingest.time, "sleep", lambda *_: None)
+
+    payload = lastfm_ingest.request_recent_tracks(
+        user="u",
+        api_key="k",
+        from_uts=0,
+        page=1,
+        max_retries=3,
+        base_delay_seconds=0,
+    )
+
+    assert payload["recenttracks"] == {"track": []}
+    assert calls["count"] == 3
+
+
+def test_request_recent_tracks_exhausted_retryable_status_exits(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeResponse:
+        status_code = 500
+
+        def raise_for_status(self) -> None:
+            raise RuntimeError("should not call raise_for_status for retryable status")
+
+        def json(self) -> dict[str, object]:
+            return {}
+
+    monkeypatch.setattr(lastfm_ingest.requests, "get", lambda *args, **kwargs: FakeResponse())
+    monkeypatch.setattr(lastfm_ingest.time, "sleep", lambda *_: None)
+
+    with pytest.raises(SystemExit, match="Failed to fetch page 2 after 2 retries: HTTP 500"):
+        lastfm_ingest.request_recent_tracks(
+            user="u",
+            api_key="k",
+            from_uts=0,
+            page=2,
+            max_retries=2,
+            base_delay_seconds=0,
+        )
+
+
+def test_request_recent_tracks_retries_on_requests_http_500_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"count": 0}
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"recenttracks": {"track": []}}
+
+    def fake_get(*args: object, **kwargs: object) -> FakeResponse:
+        calls["count"] += 1
+        if calls["count"] < 3:
+            response = requests.Response()
+            response.status_code = 500
+            raise requests.HTTPError("server error", response=response)
+        return FakeResponse()
+
+    monkeypatch.setattr(lastfm_ingest.requests, "get", fake_get)
+    monkeypatch.setattr(lastfm_ingest.time, "sleep", lambda *_: None)
+
+    payload = lastfm_ingest.request_recent_tracks(
+        user="u",
+        api_key="k",
+        from_uts=0,
+        page=1,
+        max_retries=3,
+        base_delay_seconds=0,
+    )
+
+    assert payload["recenttracks"] == {"track": []}
+    assert calls["count"] == 3
+
+
+def test_request_recent_tracks_retries_on_urllib_http_500_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"count": 0}
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"recenttracks": {"track": []}}
+
+    def fake_get(*args: object, **kwargs: object) -> FakeResponse:
+        calls["count"] += 1
+        if calls["count"] < 3:
+            raise urllib.error.HTTPError(
+                url=lastfm_ingest.API,
+                code=500,
+                msg="Internal Server Error",
+                hdrs=None,
+                fp=None,
+            )
+        return FakeResponse()
+
+    monkeypatch.setattr(lastfm_ingest.requests, "get", fake_get)
+    monkeypatch.setattr(lastfm_ingest.time, "sleep", lambda *_: None)
+
+    payload = lastfm_ingest.request_recent_tracks(
+        user="u",
+        api_key="k",
+        from_uts=0,
+        page=1,
+        max_retries=3,
+        base_delay_seconds=0,
+    )
+
+    assert payload["recenttracks"] == {"track": []}
+    assert calls["count"] == 3
+
+
+def test_request_recent_tracks_urllib_non_retryable_http_exits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_get(*args: object, **kwargs: object) -> object:
+        raise urllib.error.HTTPError(
+            url=lastfm_ingest.API,
+            code=404,
+            msg="Not Found",
+            hdrs=None,
+            fp=None,
+        )
+
+    monkeypatch.setattr(lastfm_ingest.requests, "get", fake_get)
+
+    with pytest.raises(SystemExit, match="non-retryable HTTP 404"):
+        lastfm_ingest.request_recent_tracks(
+            user="u",
+            api_key="k",
+            from_uts=0,
+            page=3,
+            max_retries=3,
+            base_delay_seconds=0,
+        )
+
+
+def test_detect_latest_curated_uts(tmp_path: Path) -> None:
+    curated_root = tmp_path / "curated"
+    part_1 = curated_root / "year=2024" / "month=12"
+    part_2 = curated_root / "year=2025" / "month=01"
+    part_1.mkdir(parents=True)
+    part_2.mkdir(parents=True)
+
+    pq.write_table(
+        pa.Table.from_pylist([{"uts": 100}, {"uts": 200}]),
+        part_1 / "a.parquet",
+    )
+    pq.write_table(
+        pa.Table.from_pylist([{"uts": 300}, {"uts": 250}]),
+        part_2 / "b.parquet",
+    )
+
+    assert lastfm_ingest.detect_latest_curated_uts(curated_root) == 300
+
+
+def test_load_checkpoint_returns_none_for_invalid_json(tmp_path: Path) -> None:
+    checkpoint_file = tmp_path / "lastfm_ingest_checkpoint.json"
+    checkpoint_file.write_text("{not-json")
+
+    assert lastfm_ingest.load_checkpoint(checkpoint_file=checkpoint_file) is None
+
+
+def test_resolve_start_full_refetch_uses_zero() -> None:
+    args = Namespace(from_uts=None, since=None, full_refetch=True, no_resume=False)
+
+    from_uts, page, _run_id, max_uts_seen = lastfm_ingest.resolve_start(
+        args=args,
+        checkpoint=None,
+        fallback_from_uts=999,
+    )
+
+    assert from_uts == 0
+    assert page == 1
+    assert max_uts_seen is None
+
+
+def test_main_skips_curated_scan_when_state_file_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state_file = tmp_path / "lastfm_last_uts.txt"
+    state_file.write_text("123")
+    monkeypatch.setattr(lastfm_ingest, "STATE_FILE", state_file)
+    monkeypatch.setattr(lastfm_ingest, "parse_args", lambda: Namespace(
+        from_uts=None, since=None, full_refetch=False, no_resume=False, max_pages=None
+    ))
+    monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
+    monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: 123)
+    monkeypatch.setattr(lastfm_ingest, "load_checkpoint", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "load_seen_keys_for_run", lambda **_kwargs: set())
+    monkeypatch.setattr(
+        lastfm_ingest,
+        "request_recent_tracks",
+        lambda **_kwargs: {"recenttracks": {"track": []}},
+    )
+    monkeypatch.setattr(lastfm_ingest, "clear_checkpoint", lambda: None)
+
+    fallback_from_uts: list[int] = []
+
+    def fake_resolve_start(
+        args: Namespace, checkpoint: dict[str, object] | None, fallback_from_uts_value: int
+    ) -> tuple[int, int, int, int | None]:
+        fallback_from_uts.append(fallback_from_uts_value)
+        return fallback_from_uts_value, 1, 123, None
+
+    monkeypatch.setattr(lastfm_ingest, "resolve_start", fake_resolve_start)
+
+    def fail_detect_latest_curated_uts(*_args: object, **_kwargs: object) -> int | None:
+        pytest.fail("detect_latest_curated_uts should not run when state file exists")
+
+    monkeypatch.setattr(lastfm_ingest, "detect_latest_curated_uts", fail_detect_latest_curated_uts)
+
+    lastfm_ingest.main()
+
+    assert fallback_from_uts == [123]
+
+
+def test_main_scans_curated_when_state_file_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state_file = tmp_path / "missing_state.txt"
+    monkeypatch.setattr(lastfm_ingest, "STATE_FILE", state_file)
+    monkeypatch.setattr(lastfm_ingest, "parse_args", lambda: Namespace(
+        from_uts=None, since=None, full_refetch=False, no_resume=False, max_pages=None
+    ))
+    monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
+    monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "load_checkpoint", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "has_paginated_curated_output", lambda **_kwargs: False)
+    monkeypatch.setattr(lastfm_ingest, "load_seen_keys_for_run", lambda **_kwargs: set())
+    monkeypatch.setattr(
+        lastfm_ingest,
+        "request_recent_tracks",
+        lambda **_kwargs: {"recenttracks": {"track": []}},
+    )
+    monkeypatch.setattr(lastfm_ingest, "clear_checkpoint", lambda: None)
+
+    calls = {"count": 0}
+
+    def fake_detect_latest_curated_uts(*_args: object, **_kwargs: object) -> int | None:
+        calls["count"] += 1
+        return 456
+
+    monkeypatch.setattr(lastfm_ingest, "detect_latest_curated_uts", fake_detect_latest_curated_uts)
+
+    fallback_from_uts: list[int] = []
+
+    def fake_resolve_start(
+        args: Namespace, checkpoint: dict[str, object] | None, fallback_from_uts_value: int
+    ) -> tuple[int, int, int, int | None]:
+        fallback_from_uts.append(fallback_from_uts_value)
+        return fallback_from_uts_value, 1, 123, None
+
+    monkeypatch.setattr(lastfm_ingest, "resolve_start", fake_resolve_start)
+
+    lastfm_ingest.main()
+
+    assert calls["count"] == 1
+    assert fallback_from_uts == [456]
+
+
+def test_main_scans_curated_when_state_file_invalid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state_file = tmp_path / "lastfm_last_uts.txt"
+    state_file.write_text("not-an-int")
+    monkeypatch.setattr(lastfm_ingest, "STATE_FILE", state_file)
+    monkeypatch.setattr(lastfm_ingest, "parse_args", lambda: Namespace(
+        from_uts=None, since=None, full_refetch=False, no_resume=False, max_pages=None
+    ))
+    monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
+    monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "load_checkpoint", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "has_paginated_curated_output", lambda **_kwargs: False)
+    monkeypatch.setattr(lastfm_ingest, "load_seen_keys_for_run", lambda **_kwargs: set())
+    monkeypatch.setattr(
+        lastfm_ingest,
+        "request_recent_tracks",
+        lambda **_kwargs: {"recenttracks": {"track": []}},
+    )
+    monkeypatch.setattr(lastfm_ingest, "clear_checkpoint", lambda: None)
+
+    calls = {"count": 0}
+
+    def fake_detect_latest_curated_uts(*_args: object, **_kwargs: object) -> int | None:
+        calls["count"] += 1
+        return 789
+
+    monkeypatch.setattr(lastfm_ingest, "detect_latest_curated_uts", fake_detect_latest_curated_uts)
+
+    fallback_from_uts: list[int] = []
+
+    def fake_resolve_start(
+        args: Namespace, checkpoint: dict[str, object] | None, fallback_from_uts_value: int
+    ) -> tuple[int, int, int, int | None]:
+        fallback_from_uts.append(fallback_from_uts_value)
+        return fallback_from_uts_value, 1, 123, None
+
+    monkeypatch.setattr(lastfm_ingest, "resolve_start", fake_resolve_start)
+
+    lastfm_ingest.main()
+
+    assert calls["count"] == 1
+    assert fallback_from_uts == [789]
+
+
+def test_main_skips_curated_scan_when_checkpoint_is_usable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state_file = tmp_path / "missing_state.txt"
+    monkeypatch.setattr(lastfm_ingest, "STATE_FILE", state_file)
+    monkeypatch.setattr(lastfm_ingest, "parse_args", lambda: Namespace(
+        from_uts=None, since=None, full_refetch=False, no_resume=False, max_pages=None
+    ))
+    monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
+    monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: None)
+    monkeypatch.setattr(
+        lastfm_ingest,
+        "load_checkpoint",
+        lambda: {"from_uts": 321, "next_page": 4, "run_id": 42, "max_uts_seen": 400},
+    )
+    monkeypatch.setattr(lastfm_ingest, "load_seen_keys_for_run", lambda **_kwargs: set())
+    monkeypatch.setattr(
+        lastfm_ingest,
+        "request_recent_tracks",
+        lambda **_kwargs: {"recenttracks": {"track": []}},
+    )
+    monkeypatch.setattr(lastfm_ingest, "clear_checkpoint", lambda: None)
+
+    def fail_detect_latest_curated_uts(*_args: object, **_kwargs: object) -> int | None:
+        pytest.fail("detect_latest_curated_uts should not run when checkpoint is usable")
+
+    monkeypatch.setattr(lastfm_ingest, "detect_latest_curated_uts", fail_detect_latest_curated_uts)
+
+    fallback_from_uts: list[int] = []
+
+    def fake_resolve_start(
+        args: Namespace, checkpoint: dict[str, object] | None, fallback_from_uts_value: int
+    ) -> tuple[int, int, int, int | None]:
+        fallback_from_uts.append(fallback_from_uts_value)
+        return 321, 4, 42, 400
+
+    monkeypatch.setattr(lastfm_ingest, "resolve_start", fake_resolve_start)
+
+    lastfm_ingest.main()
+
+    assert fallback_from_uts == [0]
+
+
+def test_main_uses_zero_fallback_for_paginated_curated_output_without_state_or_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state_file = tmp_path / "missing_state.txt"
+    monkeypatch.setattr(lastfm_ingest, "STATE_FILE", state_file)
+    monkeypatch.setattr(lastfm_ingest, "parse_args", lambda: Namespace(
+        from_uts=None, since=None, full_refetch=False, no_resume=False, max_pages=None
+    ))
+    monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
+    monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "load_checkpoint", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "has_paginated_curated_output", lambda **_kwargs: True)
+    monkeypatch.setattr(lastfm_ingest, "load_seen_keys_for_run", lambda **_kwargs: set())
+    monkeypatch.setattr(
+        lastfm_ingest,
+        "request_recent_tracks",
+        lambda **_kwargs: {"recenttracks": {"track": []}},
+    )
+    monkeypatch.setattr(lastfm_ingest, "clear_checkpoint", lambda: None)
+
+    def fail_detect_latest_curated_uts(*_args: object, **_kwargs: object) -> int | None:
+        pytest.fail("detect_latest_curated_uts should not run for conservative zero fallback")
+
+    monkeypatch.setattr(lastfm_ingest, "detect_latest_curated_uts", fail_detect_latest_curated_uts)
+
+    fallback_from_uts: list[int] = []
+
+    def fake_resolve_start(
+        args: Namespace, checkpoint: dict[str, object] | None, fallback_from_uts_value: int
+    ) -> tuple[int, int, int, int | None]:
+        fallback_from_uts.append(fallback_from_uts_value)
+        return fallback_from_uts_value, 1, 123, None
+
+    monkeypatch.setattr(lastfm_ingest, "resolve_start", fake_resolve_start)
+
+    lastfm_ingest.main()
+
+    assert fallback_from_uts == [0]

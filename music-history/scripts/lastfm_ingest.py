@@ -5,12 +5,15 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 import time
+import urllib.error
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import requests
 
@@ -42,6 +45,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ingest Last.fm scrobbles into raw JSONL and parquet")
     parser.add_argument(
         "--from",
+        "--from-uts",
         dest="from_uts",
         type=int,
         help="Unix timestamp (UTC seconds) to fetch from",
@@ -50,6 +54,11 @@ def parse_args() -> argparse.Namespace:
         "--since",
         type=parse_date,
         help="Fetch from this UTC date (YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--full-refetch",
+        action="store_true",
+        help="Ignore state/checkpoint and fetch full history from unix timestamp 0",
     )
     parser.add_argument(
         "--no-resume",
@@ -72,13 +81,29 @@ def load_env(var_name: str) -> str:
     return value
 
 
+def load_last_uts_if_valid(state_file: Path = STATE_FILE) -> int | None:
+    if not state_file.exists():
+        return None
+    try:
+        return int(state_file.read_text().strip())
+    except ValueError:
+        return None
+
+
 def load_last_uts(state_file: Path = STATE_FILE) -> int:
-    if state_file.exists():
-        try:
-            return int(state_file.read_text().strip())
-        except ValueError:
-            pass
-    return int(time.time()) - 30 * 24 * 3600
+    """Return the saved last-ingested Unix timestamp, defaulting to 0.
+
+    **First-run / missing-state behaviour:** when the state file does not exist
+    or contains an invalid value, this function returns ``0`` (Unix epoch).
+    Callers (specifically ``main()``) treat epoch-0 as "start from the very
+    beginning", which means a **full-history backfill** will be triggered on the
+    first run on a clean machine.  If prior curated parquet data exists and no
+    interrupted multi-page run is detected, ``main()`` narrows the start cursor
+    to the latest curated timestamp instead.  Pass ``--since``/``--from-uts``
+    or ``--full-refetch`` to take explicit control of the start point.
+    """
+    loaded = load_last_uts_if_valid(state_file=state_file)
+    return loaded if loaded is not None else 0
 
 
 def save_last_uts(value: int, state_file: Path = STATE_FILE) -> None:
@@ -89,8 +114,12 @@ def save_last_uts(value: int, state_file: Path = STATE_FILE) -> None:
 def load_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> dict[str, Any] | None:
     if not checkpoint_file.exists():
         return None
-    with checkpoint_file.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+    try:
+        with checkpoint_file.open("r", encoding="utf-8") as handle:
+            loaded = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return loaded if isinstance(loaded, dict) else None
 
 
 def save_checkpoint(
@@ -117,6 +146,44 @@ def clear_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> None:
         checkpoint_file.unlink()
 
 
+def is_retryable_status_code(status_code: int) -> bool:
+    return status_code in RETRYABLE_STATUS_CODES or 500 <= status_code <= 599
+
+
+def backoff_delay_seconds(attempt: int, base_delay_seconds: int) -> int:
+    return base_delay_seconds * (2**attempt)
+
+
+def status_code_from_exception(exc: Exception) -> int | None:
+    response = getattr(exc, "response", None)
+    if response is not None:
+        status_code = getattr(response, "status_code", None)
+        if isinstance(status_code, int):
+            return status_code
+
+    code = getattr(exc, "code", None)
+    if isinstance(code, int):
+        return code
+
+    return None
+
+
+def is_retryable_exception(exc: Exception) -> bool:
+    status_code = status_code_from_exception(exc)
+    if status_code is not None:
+        return is_retryable_status_code(status_code)
+
+    return isinstance(
+        exc,
+        (
+            requests.Timeout,
+            requests.ConnectionError,
+            urllib.error.URLError,
+            TimeoutError,
+        ),
+    )
+
+
 def request_recent_tracks(
     user: str,
     api_key: str,
@@ -139,22 +206,36 @@ def request_recent_tracks(
     for attempt in range(max_retries):
         try:
             response = requests.get(API, params=params, timeout=30)
-        except (requests.Timeout, requests.ConnectionError) as exc:
+        except Exception as exc:
             last_error = exc
+            status_code = status_code_from_exception(exc)
+            if not is_retryable_exception(exc):
+                if status_code is None:
+                    raise
+                raise SystemExit(
+                    f"Last.fm request failed with non-retryable HTTP {status_code}"
+                ) from exc
             if attempt == max_retries - 1:
                 break
-            delay = base_delay_seconds * (2**attempt)
-            print(
-                f"Transient network error on page {page}: {exc}. "
-                f"Retrying in {delay}s ({attempt + 1}/{max_retries})..."
-            )
+            delay = backoff_delay_seconds(attempt, base_delay_seconds)
+            if status_code is not None:
+                print(
+                    f"Transient HTTP {status_code} on page {page}. "
+                    f"Retrying in {delay}s ({attempt + 1}/{max_retries})..."
+                )
+            else:
+                print(
+                    f"Transient network error on page {page}: {exc}. "
+                    f"Retrying in {delay}s ({attempt + 1}/{max_retries})..."
+                )
             time.sleep(delay)
             continue
 
-        if response.status_code in RETRYABLE_STATUS_CODES:
+        if is_retryable_status_code(response.status_code):
+            last_error = RuntimeError(f"HTTP {response.status_code}")
             if attempt == max_retries - 1:
-                response.raise_for_status()
-            delay = base_delay_seconds * (2**attempt)
+                break
+            delay = backoff_delay_seconds(attempt, base_delay_seconds)
             print(
                 f"Transient HTTP {response.status_code} on page {page}. "
                 f"Retrying in {delay}s ({attempt + 1}/{max_retries})..."
@@ -169,6 +250,51 @@ def request_recent_tracks(
         return payload
 
     raise SystemExit(f"Failed to fetch page {page} after {max_retries} retries: {last_error}")
+
+
+def detect_latest_curated_uts(curated_root: Path) -> int | None:
+    """Scan all curated parquet files and return the maximum 'uts' value seen.
+
+    Uses ``pyarrow.compute.max`` so only the 'uts' column is read into memory;
+    the full row data is never materialised.  This keeps RAM bounded even when
+    the curated history folder is large.
+    """
+    if not curated_root.exists():
+        return None
+
+    latest_uts: int | None = None
+    for parquet_file in curated_root.rglob("*.parquet"):
+        try:
+            table = pq.read_table(parquet_file, columns=["uts"])
+        except Exception as e:  # noqa: BLE001
+            print(f"WARNING detect_latest_curated_uts: skipping corrupt parquet {parquet_file}: {e}")
+            continue
+        if table.num_rows == 0:
+            continue
+        column = table.column("uts")
+        if column.null_count == column.length():
+            continue
+        file_max_scalar = pc.max(column)
+        if file_max_scalar.is_valid:
+            file_max = file_max_scalar.as_py()
+            latest_uts = file_max if latest_uts is None else max(latest_uts, file_max)
+    return latest_uts
+
+
+CURATED_RUN_FILE_RE = re.compile(r"^scrobbles_(?P<run_id>\d+)_p(?P<page>\d+)$")
+
+
+def has_paginated_curated_output(curated_root: Path) -> bool:
+    if not curated_root.exists():
+        return False
+
+    for parquet_file in curated_root.rglob("scrobbles_*_p*.parquet"):
+        match = CURATED_RUN_FILE_RE.match(parquet_file.stem)
+        if not match:
+            continue
+        if int(match.group("page")) > 1:
+            return True
+    return False
 
 
 def normalize(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -285,6 +411,10 @@ def resolve_start(
 ) -> tuple[int, int, int, int | None]:
     if args.from_uts is not None and args.since is not None:
         raise SystemExit("Use only one of --from or --since.")
+    if args.full_refetch and (args.from_uts is not None or args.since is not None):
+        raise SystemExit("--full-refetch cannot be combined with --from/--since.")
+    if args.full_refetch:
+        return 0, 1, int(time.time()), None
 
     explicit_from = args.from_uts if args.from_uts is not None else args.since
     if explicit_from is not None:
@@ -311,8 +441,35 @@ def main() -> None:
     raw_root = Path(os.getenv("DATALAKE_RAW_ROOT", str(DEFAULT_RAW_ROOT))) / "lastfm"
     curated_root = Path(os.getenv("DATALAKE_CURATED_ROOT", str(DEFAULT_CURATED_ROOT))) / "lastfm" / "scrobbles"
 
-    state_from_uts = load_last_uts()
     checkpoint = None if args.no_resume else load_checkpoint()
+    loaded_state_uts = load_last_uts_if_valid()
+    # Intentional: when the state file is missing or corrupted, fall back to unix epoch 0
+    # (full-history backfill) rather than an arbitrary recent window (e.g. now minus 30 days).
+    # A missing/corrupted state file means we have no reliable cursor, so starting from 0
+    # guarantees no historical gaps. The curated-scan block below narrows this down to an
+    # incremental start when prior curated data already exists.
+    state_from_uts = loaded_state_uts if loaded_state_uts is not None else 0
+    has_explicit_start = args.full_refetch or args.from_uts is not None or args.since is not None
+    # Performance gate: detect_latest_curated_uts() recursively scans every curated parquet
+    # file to find the maximum 'uts' value. That scan is only useful when the state file is
+    # absent or unusable (loaded_state_uts is None). Normal incremental runs — where the
+    # state file is present and valid — must skip this block entirely so routine syncs stay
+    # fast regardless of how large the curated history has grown.
+    if loaded_state_uts is None and checkpoint is None and not has_explicit_start:
+        if has_paginated_curated_output(curated_root=curated_root):
+            # Paginated curated output exists but state file is absent — a prior history run
+            # completed some pages but left no cursor. Resuming from the latest curated UTS
+            # would silently skip the remaining pages of that interrupted run. Keep the
+            # fallback at 0 so the full-history path handles deduplication safely instead.
+            state_from_uts = 0
+        else:
+            latest_curated_uts = detect_latest_curated_uts(curated_root=curated_root)
+            if latest_curated_uts is not None:
+                # No multi-page interrupted run detected; curated data exists but state is
+                # missing. Use the latest scrobble timestamp from curated parquet as the
+                # incremental start to avoid a redundant full re-fetch.
+                state_from_uts = latest_curated_uts
+
     from_uts, page, run_id, max_uts_seen = resolve_start(args, checkpoint, state_from_uts)
     seen_keys = load_seen_keys_for_run(curated_root=curated_root, run_id=run_id)
     print(
