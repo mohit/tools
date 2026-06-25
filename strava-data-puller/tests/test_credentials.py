@@ -584,6 +584,7 @@ class TestCredentials(TestCase):
             install_credentials=False,
             check_credentials=False,
             out_dir=str(out_dir),
+            curated_dir="",
             force=False,
             after=None,
             before=None,
