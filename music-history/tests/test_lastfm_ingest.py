@@ -743,6 +743,7 @@ def test_main_skips_curated_scan_when_state_file_exists(
     ))
     monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
     monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: 123)
+    monkeypatch.setattr(lastfm_ingest, "load_persisted_uts", lambda **_kw: None)
     monkeypatch.setattr(lastfm_ingest, "load_checkpoint", lambda: None)
     monkeypatch.setattr(lastfm_ingest, "load_seen_keys_for_run", lambda **_kwargs: set())
     monkeypatch.setattr(
@@ -782,6 +783,7 @@ def test_main_scans_curated_when_state_file_missing(
     ))
     monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
     monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "load_persisted_uts", lambda **_kw: None)
     monkeypatch.setattr(lastfm_ingest, "load_checkpoint", lambda: None)
     monkeypatch.setattr(lastfm_ingest, "has_paginated_curated_output", lambda **_kwargs: False)
     monkeypatch.setattr(lastfm_ingest, "load_seen_keys_for_run", lambda **_kwargs: set())
@@ -827,6 +829,7 @@ def test_main_scans_curated_when_state_file_invalid(
     ))
     monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
     monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "load_persisted_uts", lambda **_kw: None)
     monkeypatch.setattr(lastfm_ingest, "load_checkpoint", lambda: None)
     monkeypatch.setattr(lastfm_ingest, "has_paginated_curated_output", lambda **_kwargs: False)
     monkeypatch.setattr(lastfm_ingest, "load_seen_keys_for_run", lambda **_kwargs: set())
@@ -871,6 +874,7 @@ def test_main_skips_curated_scan_when_checkpoint_is_usable(
     ))
     monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
     monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "load_persisted_uts", lambda **_kw: None)
     monkeypatch.setattr(
         lastfm_ingest,
         "load_checkpoint",
@@ -914,6 +918,7 @@ def test_main_uses_zero_fallback_for_paginated_curated_output_without_state_or_c
     ))
     monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
     monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "load_persisted_uts", lambda **_kw: None)
     monkeypatch.setattr(lastfm_ingest, "load_checkpoint", lambda: None)
     monkeypatch.setattr(lastfm_ingest, "has_paginated_curated_output", lambda **_kwargs: True)
     monkeypatch.setattr(lastfm_ingest, "load_seen_keys_for_run", lambda **_kwargs: set())
