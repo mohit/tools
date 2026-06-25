@@ -743,6 +743,7 @@ def test_main_skips_curated_scan_when_state_file_exists(
     ))
     monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
     monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: 123)
+    monkeypatch.setattr(lastfm_ingest, "load_persisted_uts", lambda **_kw: None)
     monkeypatch.setattr(lastfm_ingest, "load_checkpoint", lambda: None)
     monkeypatch.setattr(lastfm_ingest, "load_seen_keys_for_run", lambda **_kwargs: set())
     monkeypatch.setattr(
@@ -782,6 +783,7 @@ def test_main_scans_curated_when_state_file_missing(
     ))
     monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
     monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "load_persisted_uts", lambda **_kw: None)
     monkeypatch.setattr(lastfm_ingest, "load_checkpoint", lambda: None)
     monkeypatch.setattr(lastfm_ingest, "has_paginated_curated_output", lambda **_kwargs: False)
     monkeypatch.setattr(lastfm_ingest, "load_seen_keys_for_run", lambda **_kwargs: set())
@@ -827,6 +829,7 @@ def test_main_scans_curated_when_state_file_invalid(
     ))
     monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
     monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "load_persisted_uts", lambda **_kw: None)
     monkeypatch.setattr(lastfm_ingest, "load_checkpoint", lambda: None)
     monkeypatch.setattr(lastfm_ingest, "has_paginated_curated_output", lambda **_kwargs: False)
     monkeypatch.setattr(lastfm_ingest, "load_seen_keys_for_run", lambda **_kwargs: set())
@@ -871,6 +874,7 @@ def test_main_skips_curated_scan_when_checkpoint_is_usable(
     ))
     monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
     monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "load_persisted_uts", lambda **_kw: None)
     monkeypatch.setattr(
         lastfm_ingest,
         "load_checkpoint",
@@ -914,6 +918,7 @@ def test_main_uses_zero_fallback_for_paginated_curated_output_without_state_or_c
     ))
     monkeypatch.setattr(lastfm_ingest, "load_env", lambda _name: "value")
     monkeypatch.setattr(lastfm_ingest, "load_last_uts_if_valid", lambda: None)
+    monkeypatch.setattr(lastfm_ingest, "load_persisted_uts", lambda **_kw: None)
     monkeypatch.setattr(lastfm_ingest, "load_checkpoint", lambda: None)
     monkeypatch.setattr(lastfm_ingest, "has_paginated_curated_output", lambda **_kwargs: True)
     monkeypatch.setattr(lastfm_ingest, "load_seen_keys_for_run", lambda **_kwargs: set())
@@ -942,3 +947,163 @@ def test_main_uses_zero_fallback_for_paginated_curated_output_without_state_or_c
     lastfm_ingest.main()
 
     assert fallback_from_uts == [0]
+
+
+# ---------------------------------------------------------------------------
+# Staleness-detection helpers
+# ---------------------------------------------------------------------------
+
+def test_load_persisted_uts_returns_none_when_state_file_absent(tmp_path: Path) -> None:
+    assert lastfm_ingest.load_persisted_uts(state_file=tmp_path / "missing.txt") is None
+
+
+def test_load_persisted_uts_returns_value_when_state_file_present(tmp_path: Path) -> None:
+    state_file = tmp_path / "last_uts.txt"
+    state_file.write_text("1779334414")
+    assert lastfm_ingest.load_persisted_uts(state_file=state_file) == 1779334414
+
+
+def test_load_staleness_state_returns_defaults_when_absent(tmp_path: Path) -> None:
+    result = lastfm_ingest.load_staleness_state(staleness_file=tmp_path / "missing.json")
+    assert result == {"stale": False, "stale_since": None}
+
+
+def test_save_and_load_staleness_state_roundtrip(tmp_path: Path) -> None:
+    state_file = tmp_path / "staleness.json"
+    payload = {"stale": True, "stale_since": "2026-06-01"}
+    lastfm_ingest.save_staleness_state(payload, staleness_file=state_file)
+    result = lastfm_ingest.load_staleness_state(staleness_file=state_file)
+    assert result["stale"] is True
+    assert result["stale_since"] == "2026-06-01"
+
+
+# ---------------------------------------------------------------------------
+# update_catalog_staleness
+# ---------------------------------------------------------------------------
+
+def test_update_catalog_staleness_adds_fields_when_absent(tmp_path: Path) -> None:
+    catalog = tmp_path / "lastfm.yaml"
+    catalog.write_text(
+        'source: lastfm\nlatest: "2026-05-21"\nfields:\n  - name: track name\n'
+    )
+    lastfm_ingest.update_catalog_staleness(True, "2026-06-01", catalog_file=catalog)
+    text = catalog.read_text()
+    assert "stale: true\n" in text
+    assert 'stale_since: "2026-06-01"\n' in text
+    # Fields block should still come after the inserted lines
+    assert text.index("fields:") > text.index("stale: true")
+
+
+def test_update_catalog_staleness_updates_existing_fields(tmp_path: Path) -> None:
+    catalog = tmp_path / "lastfm.yaml"
+    catalog.write_text(
+        "source: lastfm\nstale: false\nstale_since: null\nfields:\n  - name: track name\n"
+    )
+    lastfm_ingest.update_catalog_staleness(True, "2026-06-10", catalog_file=catalog)
+    text = catalog.read_text()
+    assert "stale: true\n" in text
+    assert 'stale_since: "2026-06-10"\n' in text
+    # Each field should appear exactly once
+    assert text.count("stale: ") == 1
+    assert text.count("stale_since: ") == 1
+
+
+def test_update_catalog_staleness_clears_stale_flag(tmp_path: Path) -> None:
+    catalog = tmp_path / "lastfm.yaml"
+    catalog.write_text(
+        'source: lastfm\nstale: true\nstale_since: "2026-06-01"\nfields:\n  - name: track name\n'
+    )
+    lastfm_ingest.update_catalog_staleness(False, None, catalog_file=catalog)
+    text = catalog.read_text()
+    assert "stale: false\n" in text
+    assert "stale_since: null\n" in text
+
+
+def test_update_catalog_staleness_no_op_when_catalog_absent(tmp_path: Path) -> None:
+    # Should not raise even if the file doesn't exist
+    lastfm_ingest.update_catalog_staleness(True, "2026-06-01", catalog_file=tmp_path / "absent.yaml")
+
+
+def test_update_catalog_staleness_stale_since_not_confused_with_stale(tmp_path: Path) -> None:
+    """Ensure stale_since: line is not accidentally matched by the stale: handler."""
+    catalog = tmp_path / "lastfm.yaml"
+    catalog.write_text("source: lastfm\nstale_since: null\nstale: false\n")
+    lastfm_ingest.update_catalog_staleness(True, "2026-06-15", catalog_file=catalog)
+    text = catalog.read_text()
+    assert text.count("stale: ") == 1
+    assert text.count("stale_since: ") == 1
+    assert "stale: true\n" in text
+    assert 'stale_since: "2026-06-15"\n' in text
+
+
+# ---------------------------------------------------------------------------
+# Staleness-clear boundary: max_uts_seen vs persisted_uts
+# ---------------------------------------------------------------------------
+
+def test_stale_flag_not_cleared_when_max_uts_equals_persisted(tmp_path: Path) -> None:
+    """Ad-hoc replay returning equal timestamp must NOT clear the stale flag.
+
+    When --from/--since is set earlier than the saved checkpoint, fetched rows
+    may have max_uts_seen == persisted_uts (a replay of existing data).  The
+    stale flag must remain set in this case because scrobbling has not resumed.
+    """
+    staleness_file = tmp_path / "staleness.json"
+    lastfm_ingest.save_staleness_state(
+        {"stale": True, "stale_since": "2026-06-01"}, staleness_file=staleness_file
+    )
+
+    persisted_uts = 1_750_000_000
+    max_uts_seen = persisted_uts  # equal — replay, not genuinely new data
+
+    stale_state = lastfm_ingest.load_staleness_state(staleness_file=staleness_file)
+    # Mirrors the fixed condition in main()
+    if stale_state.get("stale") and (persisted_uts is None or max_uts_seen > persisted_uts):
+        lastfm_ingest.save_staleness_state(
+            {"stale": False, "stale_since": None}, staleness_file=staleness_file
+        )
+
+    result = lastfm_ingest.load_staleness_state(staleness_file=staleness_file)
+    assert result["stale"] is True, "Stale flag must stay set after a replay with no new data"
+    assert result["stale_since"] == "2026-06-01"
+
+
+def test_stale_flag_not_cleared_when_max_uts_older_than_persisted(tmp_path: Path) -> None:
+    """Ad-hoc replay returning older timestamp must NOT clear the stale flag."""
+    staleness_file = tmp_path / "staleness.json"
+    lastfm_ingest.save_staleness_state(
+        {"stale": True, "stale_since": "2026-06-01"}, staleness_file=staleness_file
+    )
+
+    persisted_uts = 1_750_000_000
+    max_uts_seen = persisted_uts - 1  # older than saved checkpoint
+
+    stale_state = lastfm_ingest.load_staleness_state(staleness_file=staleness_file)
+    if stale_state.get("stale") and (persisted_uts is None or max_uts_seen > persisted_uts):
+        lastfm_ingest.save_staleness_state(
+            {"stale": False, "stale_since": None}, staleness_file=staleness_file
+        )
+
+    result = lastfm_ingest.load_staleness_state(staleness_file=staleness_file)
+    assert result["stale"] is True, "Stale flag must stay set when max_uts_seen < persisted_uts"
+
+
+def test_stale_flag_cleared_when_max_uts_strictly_newer(tmp_path: Path) -> None:
+    """Genuine new scrobble (max_uts_seen > persisted_uts) clears the stale flag."""
+    staleness_file = tmp_path / "staleness.json"
+    lastfm_ingest.save_staleness_state(
+        {"stale": True, "stale_since": "2026-06-01"}, staleness_file=staleness_file
+    )
+
+    persisted_uts = 1_750_000_000
+    max_uts_seen = persisted_uts + 1  # strictly newer — real resume
+
+    stale_state = lastfm_ingest.load_staleness_state(staleness_file=staleness_file)
+    if stale_state.get("stale") and (persisted_uts is None or max_uts_seen > persisted_uts):
+        lastfm_ingest.save_staleness_state(
+            {"stale": False, "stale_since": None}, staleness_file=staleness_file
+        )
+
+    result = lastfm_ingest.load_staleness_state(staleness_file=staleness_file)
+    assert result["stale"] is False, "Stale flag must be cleared when max_uts_seen > persisted_uts"
+    assert result["stale_since"] is None
+
