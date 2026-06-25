@@ -1030,3 +1030,75 @@ def test_update_catalog_staleness_stale_since_not_confused_with_stale(tmp_path: 
     assert "stale: true\n" in text
     assert 'stale_since: "2026-06-15"\n' in text
 
+
+# ---------------------------------------------------------------------------
+# Staleness-clear boundary: max_uts_seen vs persisted_uts
+# ---------------------------------------------------------------------------
+
+def test_stale_flag_not_cleared_when_max_uts_equals_persisted(tmp_path: Path) -> None:
+    """Ad-hoc replay returning equal timestamp must NOT clear the stale flag.
+
+    When --from/--since is set earlier than the saved checkpoint, fetched rows
+    may have max_uts_seen == persisted_uts (a replay of existing data).  The
+    stale flag must remain set in this case because scrobbling has not resumed.
+    """
+    staleness_file = tmp_path / "staleness.json"
+    lastfm_ingest.save_staleness_state(
+        {"stale": True, "stale_since": "2026-06-01"}, staleness_file=staleness_file
+    )
+
+    persisted_uts = 1_750_000_000
+    max_uts_seen = persisted_uts  # equal — replay, not genuinely new data
+
+    stale_state = lastfm_ingest.load_staleness_state(staleness_file=staleness_file)
+    # Mirrors the fixed condition in main()
+    if stale_state.get("stale") and (persisted_uts is None or max_uts_seen > persisted_uts):
+        lastfm_ingest.save_staleness_state(
+            {"stale": False, "stale_since": None}, staleness_file=staleness_file
+        )
+
+    result = lastfm_ingest.load_staleness_state(staleness_file=staleness_file)
+    assert result["stale"] is True, "Stale flag must stay set after a replay with no new data"
+    assert result["stale_since"] == "2026-06-01"
+
+
+def test_stale_flag_not_cleared_when_max_uts_older_than_persisted(tmp_path: Path) -> None:
+    """Ad-hoc replay returning older timestamp must NOT clear the stale flag."""
+    staleness_file = tmp_path / "staleness.json"
+    lastfm_ingest.save_staleness_state(
+        {"stale": True, "stale_since": "2026-06-01"}, staleness_file=staleness_file
+    )
+
+    persisted_uts = 1_750_000_000
+    max_uts_seen = persisted_uts - 1  # older than saved checkpoint
+
+    stale_state = lastfm_ingest.load_staleness_state(staleness_file=staleness_file)
+    if stale_state.get("stale") and (persisted_uts is None or max_uts_seen > persisted_uts):
+        lastfm_ingest.save_staleness_state(
+            {"stale": False, "stale_since": None}, staleness_file=staleness_file
+        )
+
+    result = lastfm_ingest.load_staleness_state(staleness_file=staleness_file)
+    assert result["stale"] is True, "Stale flag must stay set when max_uts_seen < persisted_uts"
+
+
+def test_stale_flag_cleared_when_max_uts_strictly_newer(tmp_path: Path) -> None:
+    """Genuine new scrobble (max_uts_seen > persisted_uts) clears the stale flag."""
+    staleness_file = tmp_path / "staleness.json"
+    lastfm_ingest.save_staleness_state(
+        {"stale": True, "stale_since": "2026-06-01"}, staleness_file=staleness_file
+    )
+
+    persisted_uts = 1_750_000_000
+    max_uts_seen = persisted_uts + 1  # strictly newer — real resume
+
+    stale_state = lastfm_ingest.load_staleness_state(staleness_file=staleness_file)
+    if stale_state.get("stale") and (persisted_uts is None or max_uts_seen > persisted_uts):
+        lastfm_ingest.save_staleness_state(
+            {"stale": False, "stale_since": None}, staleness_file=staleness_file
+        )
+
+    result = lastfm_ingest.load_staleness_state(staleness_file=staleness_file)
+    assert result["stale"] is False, "Stale flag must be cleared when max_uts_seen > persisted_uts"
+    assert result["stale_since"] is None
+

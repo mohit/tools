@@ -671,9 +671,12 @@ def main() -> None:
     # the boundary scrobble, preventing it from being re-fetched and written
     # into a new Parquet file (which would silently accumulate duplicates).
     save_last_uts(max_uts_seen + 1)
-    # Clear any prior staleness now that new scrobbles were successfully ingested.
+    # Only clear prior staleness when max_uts_seen is strictly newer than the
+    # last persisted timestamp. An ad-hoc replay (--from/--since earlier than
+    # the saved timestamp) may return rows whose max_uts_seen <= persisted_uts,
+    # which does not prove that scrobbling has resumed.
     stale_state = load_staleness_state()
-    if stale_state.get("stale"):
+    if stale_state.get("stale") and (persisted_uts is None or max_uts_seen > persisted_uts):
         save_staleness_state({"stale": False, "stale_since": None})
         update_catalog_staleness(stale=False, stale_since=None)
     clear_checkpoint()
