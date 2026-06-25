@@ -195,4 +195,87 @@ class TestBackfill(TestCase):
             for sql, _ in fake_con.statements
             if "CREATE OR REPLACE TABLE activity_streams AS" in sql
         )
+        # watts absent → 0 AS power_points
         self.assertIn("0 AS power_points", streams_create_sql)
+        # present streams → COALESCE(array_length(...), 0)
+        self.assertIn("COALESCE(array_length(time.data), 0) AS time_points", streams_create_sql)
+        self.assertIn("COALESCE(array_length(distance.data), 0) AS distance_points", streams_create_sql)
+        self.assertIn("COALESCE(array_length(heartrate.data), 0) AS heartrate_points", streams_create_sql)
+        self.assertIn("COALESCE(array_length(cadence.data), 0) AS cadence_points", streams_create_sql)
+        # raw array must NOT be emitted for power_points
+        self.assertNotIn("watts.data AS power_points", streams_create_sql)
+
+    def test_export_parquet_activities_derived_columns_in_sql(self):
+        """activities table CREATE must include all 6 derived columns from main."""
+        out_dir = self.tmp_dir
+        (out_dir / "activities.ndjson").write_text("{}\n", encoding="utf-8")
+        (out_dir / "athlete.json").write_text("{}", encoding="utf-8")
+        (out_dir / "stats.json").write_text("{}", encoding="utf-8")
+
+        class FakeConnection:
+            def __init__(self):
+                self.statements = []
+
+            def execute(self, sql, params=None):
+                self.statements.append((sql, params))
+                return self
+
+        fake_con = FakeConnection()
+        original_duckdb = strava_pull.duckdb
+        strava_pull.duckdb = types.SimpleNamespace(connect=lambda: fake_con)
+        try:
+            strava_pull.export_parquet(out_dir)
+        finally:
+            strava_pull.duckdb = original_duckdb
+
+        activities_create_sql = next(
+            sql
+            for sql, _ in fake_con.statements
+            if "CREATE OR REPLACE TABLE activities AS" in sql
+        )
+        self.assertIn("distance_km", activities_create_sql)
+        self.assertIn("moving_time_min", activities_create_sql)
+        self.assertIn("elapsed_time_hours", activities_create_sql)
+        self.assertIn("average_speed_kph", activities_create_sql)
+        self.assertIn("moving_ratio", activities_create_sql)
+        self.assertIn("elevation_gain_per_km", activities_create_sql)
+        # Must read from activities_raw, not directly from read_json_auto
+        self.assertIn("FROM activities_raw", activities_create_sql)
+
+    def test_export_parquet_activity_details_derived_columns_in_sql(self):
+        """activity_details table CREATE must include lap_count and splits counts."""
+        out_dir = self.tmp_dir
+        (out_dir / "activities.ndjson").write_text("{}\n", encoding="utf-8")
+        (out_dir / "athlete.json").write_text("{}", encoding="utf-8")
+        (out_dir / "stats.json").write_text("{}", encoding="utf-8")
+        (out_dir / "activity_details.ndjson").write_text("{}\n", encoding="utf-8")
+
+        class FakeConnection:
+            def __init__(self):
+                self.statements = []
+
+            def execute(self, sql, params=None):
+                self.statements.append((sql, params))
+                return self
+
+        fake_con = FakeConnection()
+        original_duckdb = strava_pull.duckdb
+        strava_pull.duckdb = types.SimpleNamespace(connect=lambda: fake_con)
+        try:
+            strava_pull.export_parquet(out_dir)
+        finally:
+            strava_pull.duckdb = original_duckdb
+
+        details_create_sql = next(
+            sql
+            for sql, _ in fake_con.statements
+            if "CREATE OR REPLACE TABLE activity_details AS" in sql
+        )
+        self.assertIn("lap_count", details_create_sql)
+        self.assertIn("splits_standard_count", details_create_sql)
+        self.assertIn("splits_metric_count", details_create_sql)
+        self.assertIn("COALESCE(array_length(laps), 0) AS lap_count", details_create_sql)
+        self.assertIn("COALESCE(array_length(splits_standard), 0) AS splits_standard_count", details_create_sql)
+        self.assertIn("COALESCE(array_length(splits_metric), 0) AS splits_metric_count", details_create_sql)
+        # Must read from activity_details_raw
+        self.assertIn("FROM activity_details_raw", details_create_sql)

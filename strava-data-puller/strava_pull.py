@@ -7,9 +7,7 @@ import shlex
 import subprocess
 import sys
 import time
-from collections import deque
 from pathlib import Path
-from typing import Any
 
 import duckdb
 import requests
@@ -29,63 +27,16 @@ DEFAULT_TYPES = [
 
 MAX_RETRIES = 5
 BASE_DELAY = 15  # seconds
+# StravaRateLimiter removed: Strava's 429 responses + exponential backoff handle rate limiting reactively.
 REQUIRED_STRAVA_VARS = (
     "STRAVA_CLIENT_ID",
     "STRAVA_CLIENT_SECRET",
     "STRAVA_REFRESH_TOKEN",
 )
+# ~/code/tools/.env is a personal fallback; set STRAVA_ENV_FILE for custom paths
 DEFAULT_AUTOMATION_ENV_FILE = (
     Path.home() / "code" / "tools" / "strava-data-puller" / ".env"
 )
-
-
-class StravaRateLimiter:
-    """Conservative client-side limiter to stay under Strava API quotas."""
-
-    def __init__(
-        self,
-        short_window_limit: int = 100,
-        short_window_seconds: int = 15 * 60,
-        daily_limit: int = 1000,
-        safety_margin: int = 2,
-    ) -> None:
-        self.short_window_limit = max(1, short_window_limit - safety_margin)
-        self.short_window_seconds = short_window_seconds
-        self.daily_limit = max(1, daily_limit - safety_margin)
-        self.short_window_requests: deque[float] = deque()
-        self.daily_requests: deque[float] = deque()
-
-    def _prune(self, now: float) -> None:
-        while self.short_window_requests and now - self.short_window_requests[0] >= self.short_window_seconds:
-            self.short_window_requests.popleft()
-        while self.daily_requests and now - self.daily_requests[0] >= 24 * 60 * 60:
-            self.daily_requests.popleft()
-
-    def wait_for_slot(self) -> None:
-        while True:
-            now = time.time()
-            self._prune(now)
-
-            if len(self.daily_requests) >= self.daily_limit:
-                raise SystemExit(
-                    "Daily Strava API limit reached locally; retry after the daily window resets."
-                )
-
-            if len(self.short_window_requests) < self.short_window_limit:
-                return
-
-            sleep_for = self.short_window_requests[0] + self.short_window_seconds - now + 1
-            if sleep_for > 0:
-                print(
-                    f"Approaching Strava 15-minute limit; sleeping {int(sleep_for)}s to stay under quota.",
-                    file=sys.stderr,
-                )
-                time.sleep(sleep_for)
-
-    def note_request(self) -> None:
-        now = time.time()
-        self.short_window_requests.append(now)
-        self.daily_requests.append(now)
 
 
 def is_readable_file(path: Path) -> bool:
@@ -138,10 +89,15 @@ def discover_env_files() -> list[Path]:
 
     script_dir = Path(__file__).resolve().parent
     cwd = Path.cwd()
+    shared_tools_dir = Path.home() / "code" / "tools"
     for path in (
         script_dir / ".env",
+        script_dir.parent / ".env",
         cwd / ".env",
+        cwd.parent / ".env",
         DEFAULT_AUTOMATION_ENV_FILE,
+        shared_tools_dir / ".env",
+        Path.home() / ".env",
     ):
         if path not in candidate_paths:
             candidate_paths.append(path)
@@ -156,17 +112,62 @@ def write_credentials_env_file(path: Path, credentials: dict[str, str]) -> None:
     path.chmod(0o600)
 
 
+def keychain_account_lookup_candidates(var_name: str) -> list[tuple[str, str | None]]:
+    namespaced_service = "com.mohit.tools.strava-data-puller"
+    legacy_service = "strava-data-puller"
+
+    return [
+        # Account-scoped lookups first.
+        (namespaced_service, var_name),
+        (legacy_service, var_name),
+    ]
+
+
+def keychain_reversed_lookup_candidates(var_name: str) -> list[tuple[str, str | None]]:
+    namespaced_service = "com.mohit.tools.strava-data-puller"
+    legacy_service = "strava-data-puller"
+
+    return [
+        # Reversed service/account layouts next.
+        (var_name, namespaced_service),
+        (var_name, legacy_service),
+    ]
+
+
+def keychain_service_only_lookup_candidates() -> list[tuple[str, str | None]]:
+    namespaced_service = "com.mohit.tools.strava-data-puller"
+    legacy_service = "strava-data-puller"
+
+    return [
+        # Service-only lookups are a last-resort fallback.
+        (namespaced_service, None),
+        (legacy_service, None),
+    ]
+
+
+def keychain_lookup_candidates(var_name: str) -> list[tuple[str, str | None]]:
+    account_candidates = keychain_account_lookup_candidates(var_name)
+    reversed_candidates = keychain_reversed_lookup_candidates(var_name)
+    service_only_candidates = keychain_service_only_lookup_candidates()
+    # Ordering contract (must not be changed without updating tests):
+    #   1. account_candidates  — canonical (service, account) pairs; most specific.
+    #   2. reversed_candidates — swapped (account-as-service, service-as-account) pairs;
+    #      still account-scoped so still unambiguous per credential.
+    #   3. service_only_candidates — (service, None) with no account filter; MUST be
+    #      last because macOS returns the first matching item when multiple accounts
+    #      share the same service, which would assign the same (wrong) secret to all
+    #      three STRAVA_* variables and silently break token exchange.
+    return account_candidates + reversed_candidates + service_only_candidates
+
+
 def load_keychain_secret(var_name: str) -> str | None:
     # macOS keychain fallback for unattended runs.
-    lookups = (
-        ("strava-data-puller", var_name),
-        ("com.mohit.tools.strava-data-puller", var_name),
-        (var_name, None),
-    )
-
-    for service, account in lookups:
+    # Account-scoped lookups (including reversed service/account) are preferred.
+    # Service-only lookups are attempted last because they can be ambiguous
+    # when multiple accounts share the same service.
+    def query_candidate(service: str, account: str | None) -> str | None:
         cmd = ["security", "find-generic-password", "-w", "-s", service]
-        if account:
+        if account is not None:
             cmd.extend(["-a", account])
         try:
             result = subprocess.run(
@@ -176,14 +177,22 @@ def load_keychain_secret(var_name: str) -> str | None:
                 text=True,
                 timeout=10,
             )
-        except FileNotFoundError:
-            return None
         except subprocess.TimeoutExpired:
-            continue
+            return None
         if result.returncode == 0:
             secret = result.stdout.strip()
             if secret:
                 return secret
+        return None
+
+    for service, account in keychain_lookup_candidates(var_name):
+        try:
+            secret = query_candidate(service, account)
+        except FileNotFoundError:
+            return None
+        if secret:
+            return secret
+
     return None
 
 
@@ -212,9 +221,11 @@ def resolve_strava_credentials() -> tuple[dict[str, str], dict[str, str], list[P
                 values[var_name] = env_value
                 sources[var_name] = f"dotenv:{env_file}"
 
-    for var_name in REQUIRED_STRAVA_VARS:
-        if var_name in values:
-            continue
+    missing_after_env = [var_name for var_name in REQUIRED_STRAVA_VARS if var_name not in values]
+
+    for var_name in missing_after_env:
+        # Keychain lookup order is strict account/service, reversed account/service,
+        # then service-only fallback.
         keychain_value = load_keychain_secret(var_name)
         if keychain_value:
             values[var_name] = keychain_value
@@ -254,18 +265,10 @@ def get_access_token(client_id: str, client_secret: str, refresh_token: str) -> 
     return payload["access_token"]
 
 
-def request_json(
-    endpoint: str,
-    token: str,
-    params: dict[str, Any] | None = None,
-    rate_limiter: StravaRateLimiter | None = None,
-) -> Any:
+def request_json(endpoint: str, token: str, params: dict | None = None) -> dict | list:
     url = f"{STRAVA_API_BASE}{endpoint}"
 
     for attempt in range(MAX_RETRIES):
-        if rate_limiter:
-            rate_limiter.wait_for_slot()
-
         response = requests.get(
             url,
             headers={"Authorization": f"Bearer {token}"},
@@ -273,11 +276,9 @@ def request_json(
             timeout=30,
         )
 
-        if rate_limiter:
-            rate_limiter.note_request()
-
         if response.status_code == 429:
-            delay = BASE_DELAY * (2**attempt)
+            # Rate limited - wait and retry
+            delay = BASE_DELAY * (2 ** attempt)
             print(f"Rate limited. Waiting {delay}s before retry ({attempt + 1}/{MAX_RETRIES})...")
             time.sleep(delay)
             continue
@@ -291,6 +292,7 @@ def request_json(
 
         return response.json()
 
+    # Exhausted retries
     raise SystemExit(f"Rate limit exceeded after {MAX_RETRIES} retries. Try again later.")
 
 
@@ -300,7 +302,7 @@ def write_json(path: Path, payload: object) -> None:
         json.dump(payload, handle, indent=2, sort_keys=True)
 
 
-def write_ndjson(path: Path, payloads: list[dict[str, Any]]) -> None:
+def write_ndjson(path: Path, payloads: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for payload in payloads:
@@ -308,67 +310,59 @@ def write_ndjson(path: Path, payloads: list[dict[str, Any]]) -> None:
             handle.write("\n")
 
 
-def parse_activity_timestamp(activity: dict[str, Any]) -> int | None:
-    start_date_str = activity.get("start_date")
-    if not isinstance(start_date_str, str) or not start_date_str:
-        return None
-    try:
-        parsed = dt.datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return int(parsed.timestamp())
+def append_ndjson(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True))
+        handle.write("\n")
 
 
-def load_json(path: Path) -> Any:
-    with path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+def load_existing_activities(out_dir: Path) -> tuple[list[dict], int | None]:
+    """Load existing activities and find the most recent activity timestamp.
 
-
-def load_existing_activities(out_dir: Path) -> tuple[list[dict[str, Any]], int | None]:
+    Returns:
+        Tuple of (list of activity dicts, most recent start_date as Unix timestamp or None)
+    """
     ndjson_path = out_dir / "activities.ndjson"
-    existing_activities: list[dict[str, Any]] = []
+    existing_activities: list[dict] = []
     latest_timestamp: int | None = None
 
     if not ndjson_path.exists():
         return existing_activities, latest_timestamp
 
-    with ndjson_path.open("r", encoding="utf-8") as handle:
-        for raw_line in handle:
-            line = raw_line.strip()
+    with ndjson_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
             if not line:
                 continue
             try:
                 activity = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(activity, dict):
-                continue
+                existing_activities.append(activity)
 
-            existing_activities.append(activity)
-            timestamp = parse_activity_timestamp(activity)
-            if timestamp is not None and (latest_timestamp is None or timestamp > latest_timestamp):
-                latest_timestamp = timestamp
+                # Parse start_date to find the latest
+                start_date_str = activity.get("start_date")
+                if start_date_str:
+                    # Parse ISO format like "2024-01-15T10:30:00Z"
+                    parsed = dt.datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
+                    ts = int(parsed.timestamp())
+                    if latest_timestamp is None or ts > latest_timestamp:
+                        latest_timestamp = ts
+            except (json.JSONDecodeError, ValueError):
+                continue
 
     return existing_activities, latest_timestamp
 
 
-def fetch_athlete(token: str, out_dir: Path, rate_limiter: StravaRateLimiter | None = None) -> int:
-    athlete = request_json("/athlete", token, rate_limiter=rate_limiter)
+def fetch_athlete(token: str, out_dir: Path) -> int:
+    athlete = request_json("/athlete", token)
     if not isinstance(athlete, dict) or "id" not in athlete:
-        raise SystemExit("Unexpected athlete response from Strava API")
+        raise SystemExit(f"Unexpected /athlete response (expected dict with 'id'): {athlete!r}")
     write_json(out_dir / "athlete.json", athlete)
-    return int(athlete["id"])
+    return athlete["id"]
 
 
-def fetch_stats(
-    token: str,
-    athlete_id: int,
-    out_dir: Path,
-    rate_limiter: StravaRateLimiter | None = None,
-) -> None:
-    stats = request_json(f"/athletes/{athlete_id}/stats", token, rate_limiter=rate_limiter)
-    if not isinstance(stats, dict):
-        raise SystemExit("Unexpected stats response from Strava API")
+def fetch_stats(token: str, athlete_id: int, out_dir: Path) -> None:
+    stats = request_json(f"/athletes/{athlete_id}/stats", token)
     write_json(out_dir / "stats.json", stats)
 
 
@@ -379,53 +373,32 @@ def fetch_activities(
     before: int | None,
     per_page: int,
     max_pages: int,
-    rate_limiter: StravaRateLimiter | None = None,
-) -> list[dict[str, Any]]:
-    activities: list[dict[str, Any]] = []
+) -> list[dict]:
+    activities: list[dict] = []
     page = 1
     while page <= max_pages:
-        params: dict[str, int] = {"page": page, "per_page": per_page}
+        params = {"page": page, "per_page": per_page}
         if after:
             params["after"] = after
         if before:
             params["before"] = before
-
-        batch = request_json("/athlete/activities", token, params, rate_limiter=rate_limiter)
-        if not isinstance(batch, list):
-            raise SystemExit("Unexpected activities response from Strava API")
+        batch = request_json("/athlete/activities", token, params)
         if not batch:
             break
-
-        filtered = [
-            activity
-            for activity in batch
-            if isinstance(activity, dict) and activity.get("type") in types
-        ]
+        filtered = [activity for activity in batch if activity.get("type") in types]
         activities.extend(filtered)
         page += 1
-
+    # Note: We do NOT write to files here anymore, that happens in main() after merging
     return activities
 
 
-def fetch_activity_details(
-    token: str,
-    out_dir: Path,
-    activity_id: int,
-    rate_limiter: StravaRateLimiter | None = None,
-) -> dict[str, Any]:
-    activity = request_json(f"/activities/{activity_id}", token, rate_limiter=rate_limiter)
-    if not isinstance(activity, dict):
-        raise SystemExit(f"Unexpected activity detail response for {activity_id}")
+def fetch_activity_details(token: str, out_dir: Path, activity_id: int) -> None:
+    activity = request_json(f"/activities/{activity_id}", token)
     write_json(out_dir / "activities" / f"{activity_id}.json", activity)
-    return activity
+    append_ndjson(out_dir / "activity_details.ndjson", activity)
 
 
-def fetch_activity_streams(
-    token: str,
-    out_dir: Path,
-    activity_id: int,
-    rate_limiter: StravaRateLimiter | None = None,
-) -> dict[str, Any]:
+def fetch_activity_streams(token: str, out_dir: Path, activity_id: int) -> None:
     streams = request_json(
         f"/activities/{activity_id}/streams",
         token,
@@ -434,187 +407,176 @@ def fetch_activity_streams(
             "avg_grade_adjusted_speed",
             "key_by_type": "true",
         },
-        rate_limiter=rate_limiter,
     )
-    if not isinstance(streams, dict):
-        raise SystemExit(f"Unexpected stream response for {activity_id}")
     write_json(out_dir / "streams" / f"{activity_id}.json", streams)
-    return streams
-
-
-def build_activity_details_ndjson(out_dir: Path, activity_ids: set[int] | None = None) -> int:
-    details_dir = out_dir / "activities"
-    detail_files = sorted(details_dir.glob("*.json"), key=lambda p: int(p.stem)) if details_dir.exists() else []
-    records: list[dict[str, Any]] = []
-    for path in detail_files:
-        try:
-            activity_id = int(path.stem)
-        except ValueError:
-            continue
-        if activity_ids is not None and activity_id not in activity_ids:
-            continue
-
-        try:
-            payload = load_json(path)
-        except (OSError, json.JSONDecodeError):
-            continue
-        if isinstance(payload, dict):
-            records.append(payload)
-
-    ndjson_path = out_dir / "activity_details.ndjson"
-    if records:
-        write_ndjson(ndjson_path, records)
-    elif ndjson_path.exists():
-        ndjson_path.unlink()
-    return len(records)
-
-
-def build_activity_streams_ndjson(out_dir: Path, activity_ids: set[int] | None = None) -> int:
-    streams_dir = out_dir / "streams"
-    stream_files = sorted(streams_dir.glob("*.json"), key=lambda p: int(p.stem)) if streams_dir.exists() else []
-    records: list[dict[str, Any]] = []
-    point_count_streams = ("time", "distance", "heartrate", "watts", "cadence")
-
-    for path in stream_files:
-        try:
-            activity_id = int(path.stem)
-        except ValueError:
-            continue
-        if activity_ids is not None and activity_id not in activity_ids:
-            continue
-
-        try:
-            payload = load_json(path)
-        except (OSError, json.JSONDecodeError):
-            continue
-
-        if not isinstance(payload, dict):
-            continue
-
-        record = {"activity_id": activity_id}
-        record.update(payload)
-        for stream_key in point_count_streams:
-            stream_value = record.get(stream_key)
-            if not isinstance(stream_value, dict):
-                record[stream_key] = {"data": []}
-                continue
-            if not isinstance(stream_value.get("data"), list):
-                stream_copy = dict(stream_value)
-                stream_copy["data"] = []
-                record[stream_key] = stream_copy
-        records.append(record)
-
-    ndjson_path = out_dir / "activity_streams.ndjson"
-    if records:
-        write_ndjson(ndjson_path, records)
-    elif ndjson_path.exists():
-        ndjson_path.unlink()
-    return len(records)
-
-
-def activity_in_scope(
-    activity: dict[str, Any],
-    types: set[str],
-    after: int | None,
-    before: int | None,
-) -> bool:
-    if activity.get("type") not in types:
-        return False
-
-    timestamp = parse_activity_timestamp(activity)
-    if timestamp is None:
-        return False
-
-    if after is not None and timestamp < after:
-        return False
-    if before is not None and timestamp > before:
-        return False
-    return True
-
-
-def detail_has_expected_fields(detail: dict[str, Any]) -> bool:
-    has_laps_key = "laps" in detail
-    has_split_key = "splits_metric" in detail or "splits_standard" in detail
-    return has_laps_key and has_split_key
-
-
-def streams_have_data(streams: dict[str, Any]) -> bool:
-    if not streams:
-        return False
-
-    for stream in streams.values():
-        if not isinstance(stream, dict):
-            continue
-        values = stream.get("data")
-        if isinstance(values, list) and values:
-            return True
-    return False
-
-
-def find_missing_detail_ids(
-    activities: list[dict[str, Any]],
-    out_dir: Path,
-    types: set[str],
-    after: int | None,
-    before: int | None,
-    include_streams: bool,
-) -> list[tuple[int, list[str]]]:
-    candidates: list[tuple[int, list[str]]] = []
-
-    for activity in activities:
-        if not activity_in_scope(activity, types, after, before):
-            continue
-
-        activity_id = activity.get("id")
-        if not isinstance(activity_id, int):
-            continue
-
-        reasons: list[str] = []
-        detail_path = out_dir / "activities" / f"{activity_id}.json"
-        if not detail_path.exists():
-            reasons.append("missing_detail_file")
-        else:
-            try:
-                detail_payload = load_json(detail_path)
-            except (OSError, json.JSONDecodeError):
-                reasons.append("invalid_detail_file")
-            else:
-                if not isinstance(detail_payload, dict) or not detail_has_expected_fields(detail_payload):
-                    reasons.append("missing_laps_or_splits")
-
-        if include_streams:
-            streams_path = out_dir / "streams" / f"{activity_id}.json"
-            if not streams_path.exists():
-                reasons.append("missing_streams_file")
-            else:
-                try:
-                    streams_payload = load_json(streams_path)
-                except (OSError, json.JSONDecodeError):
-                    reasons.append("invalid_streams_file")
-                else:
-                    if not isinstance(streams_payload, dict) or not streams_have_data(streams_payload):
-                        reasons.append("empty_streams")
-
-        if reasons:
-            candidates.append((activity_id, reasons))
-
-    return candidates
+    append_ndjson(out_dir / "activity_streams.ndjson", streams)
 
 
 def collect_in_scope_activity_ids(
-    activities: list[dict[str, Any]],
+    activities: list[dict],
     types: set[str],
     after: int | None,
     before: int | None,
 ) -> set[int]:
-    activity_ids: set[int] = set()
+    """Return set of activity IDs that match the type filter and time window."""
+    result: set[int] = set()
     for activity in activities:
-        if not activity_in_scope(activity, types, after, before):
-            continue
         activity_id = activity.get("id")
-        if isinstance(activity_id, int):
-            activity_ids.add(activity_id)
-    return activity_ids
+        if not isinstance(activity_id, int):
+            continue
+        if activity.get("type") not in types:
+            continue
+        start_date_str = activity.get("start_date")
+        if start_date_str:
+            try:
+                parsed = dt.datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
+                ts = int(parsed.timestamp())
+                if after is not None and ts < after:
+                    continue
+                if before is not None and ts > before:
+                    continue
+            except ValueError:
+                continue
+        result.add(activity_id)
+    return result
+
+
+def find_missing_detail_ids(
+    activities: list[dict],
+    out_dir: Path,
+    types: set[str],
+    after: int | None,
+    before: int | None,
+    include_streams: bool = False,
+) -> list[tuple[int, set[str]]]:
+    """Identify activities that are missing or have incomplete detail/stream files.
+
+    Returns a list of (activity_id, reasons) tuples for activities that need
+    re-fetching, where reasons is a set of string tags describing what is missing.
+    """
+    activities_dir = out_dir / "activities"
+    streams_dir = out_dir / "streams"
+    result: list[tuple[int, set[str]]] = []
+
+    for activity in activities:
+        activity_id = activity.get("id")
+        if not isinstance(activity_id, int):
+            continue
+        if activity.get("type") not in types:
+            continue
+        start_date_str = activity.get("start_date")
+        if start_date_str:
+            try:
+                parsed = dt.datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
+                ts = int(parsed.timestamp())
+                if after is not None and ts < after:
+                    continue
+                if before is not None and ts > before:
+                    continue
+            except ValueError:
+                continue
+
+        reasons: set[str] = set()
+        detail_file = activities_dir / f"{activity_id}.json"
+
+        if not detail_file.exists():
+            reasons.add("missing_detail_file")
+        else:
+            try:
+                detail = json.loads(detail_file.read_text(encoding="utf-8"))
+                if not (detail.get("laps") is not None and detail.get("splits_metric") is not None):
+                    reasons.add("missing_laps_or_splits")
+            except (json.JSONDecodeError, OSError):
+                reasons.add("missing_detail_file")
+
+        if include_streams:
+            streams_file = streams_dir / f"{activity_id}.json"
+            if not streams_file.exists():
+                reasons.add("missing_streams_file")
+
+        if reasons:
+            result.append((activity_id, reasons))
+
+    return result
+
+
+def build_activity_details_ndjson(out_dir: Path, include_ids: set[int] | None = None) -> int:
+    """Write activity_details.ndjson from per-activity JSON files in out_dir/activities/.
+
+    Args:
+        out_dir: Root output directory containing the ``activities/`` sub-directory.
+        include_ids: If provided, only include activities whose ID is in this set.
+            Useful for excluding stale or already-exported entries.
+
+    Returns:
+        Number of rows written.
+    """
+    activities_dir = out_dir / "activities"
+    ndjson_path = out_dir / "activity_details.ndjson"
+    rows = 0
+
+    with ndjson_path.open("w", encoding="utf-8") as f:
+        for json_file in sorted(activities_dir.glob("*.json")):
+            try:
+                activity_id = int(json_file.stem)
+            except ValueError:
+                continue
+            if include_ids is not None and activity_id not in include_ids:
+                continue
+            try:
+                data = json.loads(json_file.read_text(encoding="utf-8"))
+                f.write(json.dumps(data, sort_keys=True))
+                f.write("\n")
+                rows += 1
+            except (json.JSONDecodeError, OSError):
+                continue
+
+    return rows
+
+
+# Stream columns that are optional and should be defaulted to empty when absent.
+_OPTIONAL_STREAM_COLUMNS = ["watts", "heartrate"]
+
+
+def build_activity_streams_ndjson(out_dir: Path, include_ids: set[int] | None = None) -> int:
+    """Write activity_streams.ndjson from per-activity stream JSON files in out_dir/streams/.
+
+    Each output row gains an ``activity_id`` field derived from the filename.
+    Optional stream columns (e.g. ``watts``, ``heartrate``) are defaulted to
+    ``{"data": []}`` when absent so downstream consumers see a stable schema.
+
+    Args:
+        out_dir: Root output directory containing the ``streams/`` sub-directory.
+        include_ids: If provided, only include streams whose ID is in this set.
+
+    Returns:
+        Number of rows written.
+    """
+    streams_dir = out_dir / "streams"
+    ndjson_path = out_dir / "activity_streams.ndjson"
+    rows = 0
+
+    with ndjson_path.open("w", encoding="utf-8") as f:
+        for json_file in sorted(streams_dir.glob("*.json")):
+            try:
+                activity_id = int(json_file.stem)
+            except ValueError:
+                continue
+            if include_ids is not None and activity_id not in include_ids:
+                continue
+            try:
+                data = json.loads(json_file.read_text(encoding="utf-8"))
+                data["activity_id"] = activity_id
+                for col in _OPTIONAL_STREAM_COLUMNS:
+                    if col not in data:
+                        data[col] = {"data": []}
+                f.write(json.dumps(data, sort_keys=True))
+                f.write("\n")
+                rows += 1
+            except (json.JSONDecodeError, OSError):
+                continue
+
+    return rows
 
 
 def export_parquet(out_dir: Path) -> None:
@@ -657,7 +619,6 @@ def export_parquet(out_dir: Path) -> None:
         "CREATE OR REPLACE TABLE stats AS SELECT * FROM read_json_auto(?)",
         [str(out_dir / "stats.json")],
     )
-
     if (out_dir / "activity_details.ndjson").exists():
         con.execute(
             "CREATE OR REPLACE TABLE activity_details_raw AS SELECT * FROM read_json_auto(?)",
@@ -674,12 +635,13 @@ def export_parquet(out_dir: Path) -> None:
             FROM activity_details_raw
             """
         )
-
     if (out_dir / "activity_streams.ndjson").exists():
+        # Load raw first so we can inspect the schema before building the final table.
         con.execute(
             "CREATE OR REPLACE TABLE activity_streams_raw AS SELECT * FROM read_json_auto(?)",
             [str(out_dir / "activity_streams.ndjson")],
         )
+        # Check which stream columns are present; fall back to 0 for absent ones.
         stream_columns = {
             row[1]
             for row in con.execute("PRAGMA table_info('activity_streams_raw')").fetchall()
@@ -710,10 +672,12 @@ def export_parquet(out_dir: Path) -> None:
             """
         )
 
-    con.execute("COPY activities TO ? (FORMAT 'parquet')", [str(out_dir / "activities.parquet")])
+    con.execute(
+        "COPY activities TO ? (FORMAT 'parquet')",
+        [str(out_dir / "activities.parquet")],
+    )
     con.execute("COPY athlete TO ? (FORMAT 'parquet')", [str(out_dir / "athlete.parquet")])
     con.execute("COPY stats TO ? (FORMAT 'parquet')", [str(out_dir / "stats.parquet")])
-
     if (out_dir / "activity_details.ndjson").exists():
         con.execute(
             "COPY activity_details TO ? (FORMAT 'parquet')",
@@ -739,7 +703,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--after", type=parse_date)
     parser.add_argument("--before", type=parse_date)
     parser.add_argument("--include-streams", action="store_true")
-    parser.add_argument("--backfill-details", action="store_true")
     parser.add_argument("--per-page", type=int, default=200)
     parser.add_argument("--max-pages", type=int, default=50)
     parser.add_argument(
@@ -781,7 +744,9 @@ def main() -> None:
     credentials, sources, searched_env_files = resolve_strava_credentials()
     missing_vars = [var for var in REQUIRED_STRAVA_VARS if var not in credentials]
     if missing_vars:
-        raise SystemExit(format_missing_credentials_message(missing_vars, searched_env_files))
+        raise SystemExit(
+            format_missing_credentials_message(missing_vars, searched_env_files)
+        )
 
     if args.install_credentials:
         credentials_file = Path(args.credentials_file).expanduser()
@@ -801,12 +766,12 @@ def main() -> None:
     refresh_token = credentials["STRAVA_REFRESH_TOKEN"]
 
     access_token = get_access_token(client_id, client_secret, refresh_token)
-    rate_limiter = StravaRateLimiter()
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    existing_activities: list[dict[str, Any]] = []
+    # Load existing activities for incremental sync
+    existing_activities: list[dict] = []
     auto_after: int | None = None
 
     if not args.force:
@@ -815,20 +780,23 @@ def main() -> None:
             print(f"Found {len(existing_activities)} existing activities.")
             print("Use --force to re-fetch all activities.")
 
+    # Use auto_after with 7-day buffer if no explicit --after was provided
     after_param = args.after
     if after_param is None and auto_after is not None and not args.force:
+        # Buffer 7 days (7 * 24 * 60 * 60 seconds)
         buffer_seconds = 7 * 24 * 60 * 60
         after_param = auto_after - buffer_seconds
         print(f"Auto-setting --after to {after_param} (latest - 7 days) to catch late uploads/edits.")
 
+    # Only clear detail files if forcing full refresh
     if args.force:
         for ndjson_file in ("activity_details.ndjson", "activity_streams.ndjson"):
             ndjson_path = out_dir / ndjson_file
             if ndjson_path.exists():
                 ndjson_path.unlink()
 
-    athlete_id = fetch_athlete(access_token, out_dir, rate_limiter=rate_limiter)
-    fetch_stats(access_token, athlete_id, out_dir, rate_limiter=rate_limiter)
+    athlete_id = fetch_athlete(access_token, out_dir)
+    fetch_stats(access_token, athlete_id, out_dir)
 
     activity_types = parse_types(args.types)
     fetched_activities = fetch_activities(
@@ -838,71 +806,48 @@ def main() -> None:
         args.before,
         args.per_page,
         args.max_pages,
-        rate_limiter=rate_limiter,
     )
 
-    activity_map: dict[int, dict[str, Any]] = {}
-    for activity in existing_activities:
-        activity_id = activity.get("id")
+    # Merge strategy:
+    # 1. Create a dict of all activities by ID (existing + fetched)
+    #    Since we process existing first, then fetched, updates from fetched will overwrite existing
+    activity_map: dict[int, dict] = {}
+    for a in existing_activities:
+        activity_id = a.get("id")
         if isinstance(activity_id, int):
-            activity_map[activity_id] = activity
+            activity_map[activity_id] = a
 
+    # 2. Update/Add new fetched activities
     new_activity_ids: set[int] = set()
     for activity in fetched_activities:
         activity_id = activity.get("id")
         if not isinstance(activity_id, int):
             continue
+        # Only consider it "new" if we didn't have it before
         if activity_id not in activity_map:
             new_activity_ids.add(activity_id)
         activity_map[activity_id] = activity
 
+    # 3. Convert back to list and sort by start_date
     final_activities = list(activity_map.values())
     final_activities.sort(key=lambda x: x.get("start_date", ""), reverse=True)
 
+    # 4. Write merged list to files
     write_json(out_dir / "activities.json", final_activities)
     write_ndjson(out_dir / "activities.ndjson", final_activities)
 
     fetched_count = len(fetched_activities)
     new_count = len(new_activity_ids)
+
     print(f"Fetched {fetched_count} records (overlapping). Found {new_count} truly new activities.")
 
-    details_or_streams_updated = False
-
-    include_streams_for_new = args.include_streams or args.backfill_details
+    # Only fetch details for the TRULY new activities
     for activity_id in sorted(new_activity_ids):
-        fetch_activity_details(access_token, out_dir, activity_id, rate_limiter=rate_limiter)
-        details_or_streams_updated = True
-        if include_streams_for_new:
-            fetch_activity_streams(access_token, out_dir, activity_id, rate_limiter=rate_limiter)
-
-    if args.backfill_details:
-        candidates = find_missing_detail_ids(
-            final_activities,
-            out_dir,
-            activity_types,
-            args.after,
-            args.before,
-            include_streams=True,
-        )
-        print(f"Backfill scan complete. {len(candidates)} activities missing detail/stream data.")
-
-        for activity_id, reasons in candidates:
-            reason_text = ", ".join(reasons)
-            print(f"Backfilling activity {activity_id} ({reason_text})")
-            fetch_activity_details(access_token, out_dir, activity_id, rate_limiter=rate_limiter)
-            fetch_activity_streams(access_token, out_dir, activity_id, rate_limiter=rate_limiter)
-            details_or_streams_updated = True
-
-    if details_or_streams_updated:
-        current_activity_ids = collect_in_scope_activity_ids(
-            final_activities,
-            activity_types,
-            args.after,
-            args.before,
-        )
-        detail_rows = build_activity_details_ndjson(out_dir, current_activity_ids)
-        stream_rows = build_activity_streams_ndjson(out_dir, current_activity_ids)
-        print(f"Rebuilt detail indexes: {detail_rows} detail records, {stream_rows} stream records.")
+        # Note: We can't easily get the 'activity' dict here without iterating map,
+        # but fetch_activity_details needs ID anyway.
+        fetch_activity_details(access_token, out_dir, activity_id)
+        if args.include_streams:
+            fetch_activity_streams(access_token, out_dir, activity_id)
 
     if not args.skip_parquet:
         export_parquet(out_dir)
