@@ -35,12 +35,14 @@ uv sync
 python scripts/lastfm_ingest.py
 ```
 
-Writes month-partitioned JSONL files:
-```
-$DATALAKE_RAW_ROOT/lastfm/scrobbles/year=2026/month=02/scrobbles.jsonl
-```
-
-Incremental by default — reads existing JSONL to find the latest timestamp and only fetches newer scrobbles. If no prior data exists, does a full-history backfill.
+Incremental by default:
+- Uses `~/.local/share/datalake/lastfm_last_uts.txt` as the primary cursor.
+- Falls back to scanning curated parquet for latest `uts` if the state file is missing/invalid.
+- **Missing or corrupted state file triggers a full-history backfill** (from unix epoch 0) rather
+  than an arbitrary recent window. If prior curated data exists without an interrupted multi-page
+  run, the latest scrobble timestamp in parquet is used as the incremental start instead.
+- Resumes interrupted runs from `~/.local/share/datalake/lastfm_ingest_checkpoint.json` unless `--no-resume` is set.
+- Retries transient HTTP/network failures (including 5xx and timeouts) with exponential backoff.
 
 ### Options
 
@@ -48,11 +50,14 @@ Incremental by default — reads existing JSONL to find the latest timestamp and
 # Start from a specific unix timestamp
 python scripts/lastfm_ingest.py --from-uts 1735689600
 
-# Start from an ISO timestamp (UTC)
-python scripts/lastfm_ingest.py --since 2026-01-01T00:00:00Z
+# Start from a UTC date
+python scripts/lastfm_ingest.py --since 2026-01-01
 
 # Force full historical re-fetch
 python scripts/lastfm_ingest.py --full-refetch
+
+# Ignore a saved checkpoint and start selected range from page 1
+python scripts/lastfm_ingest.py --no-resume
 ```
 
 ## Apple Music
