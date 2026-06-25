@@ -1,14 +1,13 @@
 """Tests for raw-CSV mtime-based staleness detection in ingest_apple_music."""
+
 from __future__ import annotations
 
 import time
 from pathlib import Path
 
-import pytest
-
 import ingest_apple_music as ingest_mod
+import pytest
 from ingest_apple_music import check_raw_csv_staleness
-
 
 # ---------------------------------------------------------------------------
 # check_raw_csv_staleness
@@ -90,7 +89,6 @@ def test_ingest_warns_and_continues_when_stale(
     """By default, stale raw files emit a WARNING and do NOT abort."""
     csv = tmp_path / "Apple Music - Track Play History.csv"
     _write_csv(csv)
-    fake_now = time.time() + 128 * 86400
 
     monkeypatch.setattr(ingest_mod, "RAW_APPLE_MUSIC_DIR", tmp_path)
     monkeypatch.setattr(ingest_mod, "RAW_FILE_STALENESS_DAYS", 30)
@@ -108,11 +106,14 @@ def test_ingest_warns_and_continues_when_stale(
 
     # Patch duckdb.connect to stop early — we only care about the warning path.
     import duckdb as _duckdb
+
     monkeypatch.setattr(_duckdb, "connect", lambda *a, **kw: (_ for _ in ()).throw(StopIteration("duckdb")))
 
     # Also stub out the metadata check so it passes cleanly.
-    from apple_music_export_guard import AppleMusicExportMetadata
     from datetime import date
+
+    from apple_music_export_guard import AppleMusicExportMetadata
+
     fake_metadata = AppleMusicExportMetadata(
         last_export_date=date.today(),
         latest_play_date=date.today(),
@@ -178,8 +179,10 @@ def test_ingest_no_warning_when_fresh(
         lambda raw_dir, threshold_days, **kwargs: (5.0, []),
     )
 
-    from apple_music_export_guard import AppleMusicExportMetadata
     from datetime import date
+
+    from apple_music_export_guard import AppleMusicExportMetadata
+
     fake_metadata = AppleMusicExportMetadata(
         last_export_date=date.today(),
         latest_play_date=date.today(),
@@ -196,6 +199,7 @@ def test_ingest_no_warning_when_fresh(
     monkeypatch.setattr(ingest_mod, "CURATED_ROOT", tmp_path / "curated")
 
     import duckdb as _duckdb
+
     monkeypatch.setattr(_duckdb, "connect", lambda *a, **kw: (_ for _ in ()).throw(StopIteration("duckdb")))
 
     with pytest.raises(StopIteration):

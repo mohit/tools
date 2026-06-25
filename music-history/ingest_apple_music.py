@@ -35,7 +35,7 @@ def check_raw_csv_staleness(
     found.  *stale_files* is the list of files whose mtime exceeds
     *threshold_days*.
     """
-    csv_files = list(raw_dir.glob("*.csv"))
+    csv_files = list(raw_dir.rglob("*.csv"))
     if not csv_files:
         return None, []
 
