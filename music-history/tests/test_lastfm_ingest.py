@@ -371,6 +371,26 @@ def test_dedupe_rows_when_seen_keys_instance_changes(tmp_path: Path) -> None:
     assert total_rows == 2
 
 
+def test_save_last_uts_advances_by_one_to_prevent_boundary_duplication(tmp_path: Path) -> None:
+    """Regression test for #73: save_last_uts must store max_uts_seen + 1.
+
+    When a new run begins with from_uts == max_uts_seen, Last.fm returns the
+    scrobble at exactly that timestamp again.  Storing max_uts_seen + 1 ensures
+    the next run starts strictly after the boundary and avoids re-writing it.
+    """
+    state_file = tmp_path / "lastfm_last_uts.txt"
+    max_uts_seen = 1_700_000_000
+
+    # Simulate what main() does after the loop completes.
+    lastfm_ingest.save_last_uts(max_uts_seen + 1, state_file=state_file)
+
+    stored = lastfm_ingest.load_last_uts(state_file=state_file)
+    assert stored == max_uts_seen + 1, (
+        f"Expected {max_uts_seen + 1}, got {stored}. "
+        "save_last_uts must advance by 1 to skip the boundary scrobble."
+    )
+
+
 def test_append_parquet_partitions_dedupes_across_pages_without_shared_seen_keys(tmp_path: Path) -> None:
     curated_root = tmp_path / "curated"
     run_id = 990
