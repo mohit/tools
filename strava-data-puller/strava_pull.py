@@ -399,15 +399,33 @@ def fetch_activity_details(token: str, out_dir: Path, activity_id: int) -> None:
 
 
 def fetch_activity_streams(token: str, out_dir: Path, activity_id: int) -> None:
-    streams = request_json(
-        f"/activities/{activity_id}/streams",
-        token,
-        {
-            "keys": "time,distance,latlng,altitude,velocity_smooth,heartrate,cadence,watts,grade_smooth,temp,moving,grade_smooth,"
-            "avg_grade_adjusted_speed",
-            "key_by_type": "true",
-        },
-    )
+    try:
+        streams = request_json(
+            f"/activities/{activity_id}/streams",
+            token,
+            {
+                "keys": "time,distance,latlng,altitude,velocity_smooth,heartrate,cadence,watts,grade_smooth,temp,moving,grade_smooth,"
+                "avg_grade_adjusted_speed",
+                "key_by_type": "true",
+            },
+        )
+    except requests.exceptions.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else None
+        if status in (403, 404):
+            print(
+                f"Warning: streams not available for activity {activity_id} "
+                f"({status}), skipping.",
+                file=sys.stderr,
+            )
+            cached = out_dir / "streams" / f"{activity_id}.json"
+            if cached.exists():
+                cached.unlink()
+                print(
+                    f"Removed stale cached stream file for activity {activity_id}.",
+                    file=sys.stderr,
+                )
+            return
+        raise
     write_json(out_dir / "streams" / f"{activity_id}.json", streams)
     append_ndjson(out_dir / "activity_streams.ndjson", streams)
 

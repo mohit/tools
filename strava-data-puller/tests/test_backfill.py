@@ -4,7 +4,7 @@ import shutil
 import sys
 import types
 from pathlib import Path
-from unittest import TestCase
+from unittest import TestCase, mock
 
 
 def load_module():
@@ -279,3 +279,36 @@ class TestBackfill(TestCase):
         self.assertIn("COALESCE(array_length(splits_metric), 0) AS splits_metric_count", details_create_sql)
         # Must read from activity_details_raw
         self.assertIn("FROM activity_details_raw", details_create_sql)
+
+    def test_fetch_activity_streams_deletes_cached_file_on_403_404(self):
+        """On 403/404, fetch_activity_streams should remove any stale cached stream file."""
+        FakeHTTPError = type("HTTPError", (Exception,), {})
+        fake_requests = types.SimpleNamespace(
+            exceptions=types.SimpleNamespace(HTTPError=FakeHTTPError)
+        )
+
+        streams_dir = self.tmp_dir / "streams"
+        streams_dir.mkdir(parents=True, exist_ok=True)
+        cached_file = streams_dir / "999.json"
+
+        for status_code in (403, 404):
+            cached_file.write_text(json.dumps({"time": {"data": [0, 1]}}), encoding="utf-8")
+            self.assertTrue(cached_file.exists(), f"precondition: cached file should exist for {status_code}")
+
+            fake_response = mock.Mock()
+            fake_response.status_code = status_code
+            http_error = FakeHTTPError()
+            http_error.response = fake_response
+
+            with mock.patch.object(strava_pull, "requests", fake_requests), \
+                 mock.patch.object(strava_pull, "request_json", side_effect=http_error):
+                strava_pull.fetch_activity_streams(
+                    token="fake_token",
+                    out_dir=self.tmp_dir,
+                    activity_id=999,
+                )
+
+            self.assertFalse(
+                cached_file.exists(),
+                f"cached stream file should be deleted on {status_code}",
+            )
