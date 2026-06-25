@@ -6,6 +6,7 @@ import datetime as dt
 import json
 import os
 import re
+import sys
 import time
 import urllib.error
 from pathlib import Path
@@ -31,6 +32,18 @@ DEFAULT_CURATED_ROOT = Path(
 STATE_DIR = Path.home() / ".local" / "share" / "datalake"
 STATE_FILE = STATE_DIR / "lastfm_last_uts.txt"
 CHECKPOINT_FILE = STATE_DIR / "lastfm_ingest_checkpoint.json"
+STALENESS_STATE_FILE = STATE_DIR / "lastfm_staleness.json"
+
+# Days without a new scrobble before the ingest is declared stale and exits non-zero.
+STALE_THRESHOLD_DAYS: int = 7
+
+# Catalog YAML that downstream tools read for dataset metadata.
+CATALOG_FILE = Path(
+    os.environ.get(
+        "LASTFM_CATALOG_FILE",
+        str(Path.home() / "datalake.me" / "catalog" / "lastfm.yaml"),
+    )
+)
 
 
 def parse_date(value: str) -> int:
@@ -109,6 +122,98 @@ def load_last_uts(state_file: Path = STATE_FILE) -> int:
 def save_last_uts(value: int, state_file: Path = STATE_FILE) -> None:
     state_file.parent.mkdir(parents=True, exist_ok=True)
     state_file.write_text(str(value))
+
+
+def load_persisted_uts(state_file: Path = STATE_FILE) -> int | None:
+    """Return the persisted last-scrobble UTS, or *None* when no state file exists yet.
+
+    Unlike :func:`load_last_uts`, this never synthesises a fallback value, so
+    callers can distinguish "never seen a scrobble" from "last scrobble was N
+    days ago".
+    """
+    if state_file.exists():
+        try:
+            return int(state_file.read_text().strip())
+        except ValueError:
+            pass
+    return None
+
+
+def load_staleness_state(
+    staleness_file: Path = STALENESS_STATE_FILE,
+) -> dict[str, Any]:
+    """Load the persisted staleness state dict.
+
+    Returns ``{"stale": False, "stale_since": None}`` if the file is absent
+    or unreadable.
+    """
+    if staleness_file.exists():
+        try:
+            with staleness_file.open("r", encoding="utf-8") as handle:
+                return json.load(handle)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {"stale": False, "stale_since": None}
+
+
+def save_staleness_state(
+    state: dict[str, Any],
+    staleness_file: Path = STALENESS_STATE_FILE,
+) -> None:
+    staleness_file.parent.mkdir(parents=True, exist_ok=True)
+    with staleness_file.open("w", encoding="utf-8") as handle:
+        json.dump(state, handle, sort_keys=True)
+
+
+def update_catalog_staleness(
+    stale: bool,
+    stale_since: str | None,
+    catalog_file: Path = CATALOG_FILE,
+) -> None:
+    """Upsert ``stale`` and ``stale_since`` fields in the Last.fm YAML catalog.
+
+    Operates on raw text so PyYAML is not required as a dependency.  Only
+    top-level scalar lines that begin with ``stale:`` or ``stale_since:`` are
+    touched; the rest of the file is preserved byte-for-byte.
+    If the file does not exist the function returns silently.
+    """
+    if not catalog_file.exists():
+        return
+
+    stale_val = "true" if stale else "false"
+    stale_since_val = f'"{stale_since}"' if stale_since else "null"
+
+    lines = catalog_file.read_text(encoding="utf-8").splitlines(keepends=True)
+    out: list[str] = []
+    stale_written = False
+    stale_since_written = False
+
+    for line in lines:
+        if line.startswith("stale_since:"):
+            out.append(f"stale_since: {stale_since_val}\n")
+            stale_since_written = True
+        elif line.startswith("stale:"):
+            out.append(f"stale: {stale_val}\n")
+            stale_written = True
+        else:
+            out.append(line)
+
+    # If neither field existed yet, insert them before the ``fields:`` block
+    # (or at the very end of the file when no such block exists).
+    if not stale_written or not stale_since_written:
+        insert_idx = len(out)
+        for i, line in enumerate(out):
+            if line.startswith("fields:"):
+                insert_idx = i
+                break
+        new_lines: list[str] = []
+        if not stale_written:
+            new_lines.append(f"stale: {stale_val}\n")
+        if not stale_since_written:
+            new_lines.append(f"stale_since: {stale_since_val}\n")
+        out[insert_idx:insert_idx] = new_lines
+
+    catalog_file.write_text("".join(out), encoding="utf-8")
 
 
 def load_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> dict[str, Any] | None:
@@ -441,6 +546,9 @@ def main() -> None:
     raw_root = Path(os.getenv("DATALAKE_RAW_ROOT", str(DEFAULT_RAW_ROOT))) / "lastfm"
     curated_root = Path(os.getenv("DATALAKE_CURATED_ROOT", str(DEFAULT_CURATED_ROOT))) / "lastfm" / "scrobbles"
 
+    # Keep the raw persisted value separately so staleness detection can
+    # distinguish "first ever run" from "last scrobble was N days ago".
+    persisted_uts = load_persisted_uts()
     checkpoint = None if args.no_resume else load_checkpoint()
     loaded_state_uts = load_last_uts_if_valid()
     # Intentional: when the state file is missing or corrupted, fall back to unix epoch 0
@@ -530,12 +638,44 @@ def main() -> None:
     if max_uts_seen is None:
         clear_checkpoint()
         print("No new rows found.")
+
+        # --- Staleness detection ---
+        # Only fire when we have a real persisted timestamp (i.e. we have
+        # ingested at least once before) and the gap exceeds the threshold.
+        if persisted_uts is not None:
+            gap_days = (int(time.time()) - persisted_uts) / 86400.0
+            if gap_days >= STALE_THRESHOLD_DAYS:
+                # Persist stale_since on first detection; keep it on subsequent runs.
+                stale_state = load_staleness_state()
+                if not stale_state.get("stale"):
+                    today = dt.datetime.now(tz=dt.UTC).strftime("%Y-%m-%d")
+                    stale_state = {"stale": True, "stale_since": today}
+                    save_staleness_state(stale_state)
+                stale_since = stale_state["stale_since"]
+                update_catalog_staleness(stale=True, stale_since=stale_since)
+                last_date = dt.datetime.fromtimestamp(
+                    persisted_uts, tz=dt.UTC
+                ).strftime("%Y-%m-%d")
+                gap_int = int(gap_days)
+                print(
+                    f"ERROR: No new Last.fm scrobbles detected for {gap_int} days "
+                    f"(last scrobble: {last_date}, threshold: {STALE_THRESHOLD_DAYS}d). "
+                    "Check that the scrobbling source is still connected at "
+                    "https://www.last.fm/settings/applications",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
         return
 
     # Advance by 1 second so the next incremental run starts strictly after
     # the boundary scrobble, preventing it from being re-fetched and written
     # into a new Parquet file (which would silently accumulate duplicates).
     save_last_uts(max_uts_seen + 1)
+    # Clear any prior staleness now that new scrobbles were successfully ingested.
+    stale_state = load_staleness_state()
+    if stale_state.get("stale"):
+        save_staleness_state({"stale": False, "stale_since": None})
+        update_catalog_staleness(stale=False, stale_since=None)
     clear_checkpoint()
     print(
         f"Ingest complete: pages={pages_processed}, parquet_rows={rows_written}, "
