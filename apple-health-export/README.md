@@ -7,6 +7,8 @@ A Python-based tool for exporting and analyzing Apple Health and Fitness data on
 - **Export Health Data** - Helper to trigger manual export from Health.app
 - **Parse XML Export** - Parse the exported XML into usable formats
 - **Convert to CSV** - Export health records and workouts to CSV
+- **Health Auto Export API** - Receive incremental JSON exports via REST endpoint
+- **Parquet Curation** - Merge incremental records/workouts into curated parquet
 - **Filter Data** - Filter by type, date range, or other criteria
 - **Summary Statistics** - Get overview of your health data
 
@@ -34,9 +36,13 @@ This will install the package in development mode with all dependencies.
 # Install development dependencies (optional, for testing)
 pip3 install pytest pytest-cov
 
-# The scripts use only Python standard library, so they work without installation
+# Install runtime dependencies used by automated ingestion
+pip3 install duckdb flask
+
+# Core scripts
 python3 health_export.py --help
 python3 health_parser.py --help
+python3 health_auto_export.py --help
 ```
 
 ### Option 3: Using Make
@@ -136,6 +142,54 @@ python3 health_parser.py export.xml export-records \
   --output heart_rate_2024.csv
 ```
 
+### 5. Set Up Health Auto Export (Automated Incremental Sync)
+
+Run a local authenticated endpoint for Health Auto Export:
+
+```bash
+python3 health_auto_export.py serve \
+  --host 0.0.0.0 \
+  --port 8787 \
+  --token "$HEALTH_AUTO_EXPORT_TOKEN" \
+  --raw-dir ~/datalake.me/raw/apple-health/auto-export \
+  --curated-dir ~/datalake.me/curated/apple-health
+```
+
+> **Note:** `serve` uses Flask's built-in development server, which is suitable for personal/local use. If you need to expose this endpoint on a network, consider fronting with a production WSGI server such as gunicorn. The bearer token is the only auth layer.
+
+Endpoint: `POST /v1/health/auto-export`
+
+- Auth header: `Authorization: Bearer <token>`
+- Content-Type: `application/json`
+- Payload supports `records` and `workouts` arrays
+
+Curated outputs are updated on each successful request:
+
+- `~/datalake.me/curated/apple-health/health_records.parquet`
+- `~/datalake.me/curated/apple-health/health_workouts.parquet`
+
+Raw payloads are stored immutably under:
+
+- `~/datalake.me/raw/apple-health/auto-export/YYYY/MM/DD/*.json`
+
+You can also ingest a JSON file directly:
+
+```bash
+python3 health_auto_export.py ingest-file \
+  --file sample_auto_export.json \
+  --raw-dir ~/datalake.me/raw/apple-health/auto-export \
+  --curated-dir ~/datalake.me/curated/apple-health
+```
+
+Health Auto Export merge behavior:
+
+- Parquet merges are serialized with an in-process mutex plus a cross-process file lock at `<curated-dir>/.parquet_merge.lock`, preventing concurrent read-modify-write races.
+- Incoming record batch dedupe key: `type`, `sourceName`, `unit`, `value`, `startDate`, `endDate`.
+- Incoming workout batch dedupe key: `workoutActivityType`, `sourceName`, `startDate`, `endDate`, `duration`, `totalDistance`, `totalEnergyBurned`.
+- For duplicates inside one payload batch, the first row is kept. Fields outside the dedupe key (for example metadata or creation timestamp) do not create a new row.
+- Across payloads, the latest-ingested row wins (`ORDER BY ingestedAt DESC`): re-ingesting the same records will update non-key metadata fields with the newer ingestion's values.
+- Payloads are validated atomically — if any record or workout fails required-field validation, the entire request is rejected with HTTP 400 and nothing is persisted.
+
 ## Common Data Types
 
 Here are some commonly used health data types:
@@ -215,7 +269,8 @@ python3 health_parser.py export.xml export-workouts \
 apple-health-export/
 ├── README.md                # This file
 ├── health_export.py         # Export and extraction utilities
-└── health_parser.py         # XML parsing and CSV export
+├── health_parser.py         # XML parsing and CSV export
+└── health_auto_export.py    # REST ingestion + JSON to parquet
 ```
 
 ## How It Works
@@ -301,6 +356,12 @@ python3 health_parser.py $EXPORT_XML export-records \
   --end-date $TODAY \
   --output "steps_week_${TODAY}.csv"
 ```
+
+Recommended hybrid workflow:
+
+1. Daily incremental updates via Health Auto Export to `/v1/health/auto-export`
+2. Quarterly full Health.app `export.zip` to keep a baseline snapshot
+3. Reconcile differences by comparing incremental parquet with the quarterly full export
 
 ## Troubleshooting
 

@@ -19,8 +19,10 @@ classifiers = [
     "Topic :: Utilities",
 ]
 
-# No runtime dependencies - uses only Python standard library
-dependencies = []
+dependencies = [
+    "duckdb>=1.1.0",
+    "flask>=3.0.0",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -31,6 +33,7 @@ dev = [
 [project.scripts]
 health-export = "health_export:main"
 health-parse = "health_parser:main"
+health-auto-export = "health_auto_export:main"
 
 [build-system]
 requires = ["hatchling"]
