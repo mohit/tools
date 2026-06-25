@@ -41,6 +41,28 @@ def test_determine_from_uts_prefers_raw_over_state(tmp_path, monkeypatch):
     assert determine_from_uts(raw_dir) == 201
 
 
+def test_determine_from_uts_state_fallback_no_double_offset(tmp_path, monkeypatch):
+    """Regression test for the double-+1 bug.
+
+    lastfm_ingest.py writes (max_uts_seen + 1) to the state file, so
+    determine_from_uts() must NOT add another +1 when falling back to state;
+    otherwise it requests from T+2 and permanently skips the scrobble at T+1.
+    """
+    # Empty raw dir so state fallback is exercised.
+    raw_dir = tmp_path / "lastfm"
+    raw_dir.mkdir()
+
+    # State file contains T+1 as written by lastfm_ingest.py.
+    stored_value = 1_700_000_001  # i.e. max_uts_seen=1_700_000_000, +1 already stored
+    monkeypatch.setattr("main.load_last_uts_from_state", lambda: stored_value)
+
+    result = determine_from_uts(raw_dir)
+    assert result == stored_value, (
+        f"determine_from_uts() returned {result}, expected {stored_value}. "
+        "State already holds next-from_uts; adding +1 again causes a skipped scrobble."
+    )
+
+
 def test_merge_raw_monthly_jsonl_upserts_and_splits_months(tmp_path):
     raw_dir = tmp_path / "lastfm"
     jan_file = raw_dir / "scrobbles_2024-01.jsonl"

@@ -126,7 +126,10 @@ def determine_from_uts(raw_dir: Path = RAW) -> int | None:
 
     state_last = load_last_uts_from_state()
     if state_last is not None:
-        return state_last + 1
+        # lastfm_ingest.py already writes (max_uts_seen + 1) to the state file,
+        # so the stored value is already the "next from_uts" — do not add 1
+        # again or we would skip the scrobble at max_uts_seen + 1.
+        return state_last
 
     # No history found: fetch full history.
     return None
