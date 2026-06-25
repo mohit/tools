@@ -365,13 +365,18 @@ class TestCheckFreshness(unittest.TestCase):
         self.assertEqual(len(stale), 1)
         self.assertEqual(stale[0]["name"], health_export._FRESHNESS_FILES[0])
 
-    def test_nonexistent_directory_returns_empty(self):
-        """Missing data directory is tolerated — returns empty list."""
+    def test_nonexistent_directory_returns_all_missing(self):
+        """Missing data directory → all required files returned as missing/stale."""
         fake_dir = self.data_dir / "no_such_dir"
 
         stale = health_export.check_freshness(data_dir=fake_dir, threshold_days=30)
 
-        self.assertEqual(stale, [])
+        self.assertEqual(len(stale), len(health_export._FRESHNESS_FILES))
+        stale_names = {e["name"] for e in stale}
+        self.assertEqual(stale_names, set(health_export._FRESHNESS_FILES))
+        for entry in stale:
+            self.assertEqual(entry["age_days"], float("inf"))
+            self.assertEqual(entry["mtime"], "(missing)")
 
     def test_custom_threshold_tighter(self):
         """A tighter threshold catches files that would otherwise be fresh."""
@@ -515,6 +520,17 @@ class TestCheckFreshnessCLI(unittest.TestCase):
             self._touch_with_age(name, age_days=60)
 
         argv = ['health_export.py', 'check-freshness', '--dir', str(self.data_dir)]
+        with patch('sys.argv', argv):
+            with self.assertRaises(SystemExit) as cm:
+                health_export.main()
+
+            self.assertEqual(cm.exception.code, 1)
+
+    def test_cli_check_freshness_missing_dir_exits_one(self):
+        """check-freshness exits 1 when the data directory does not exist."""
+        fake_dir = self.data_dir / "no_such_dir"
+
+        argv = ['health_export.py', 'check-freshness', '--dir', str(fake_dir)]
         with patch('sys.argv', argv):
             with self.assertRaises(SystemExit) as cm:
                 health_export.main()

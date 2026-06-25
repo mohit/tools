@@ -177,10 +177,18 @@ def check_freshness(data_dir=None, threshold_days=30):
     if not data_dir.exists():
         print(
             f"Warning: data directory not found: {data_dir}\n"
-            "No staleness check performed.",
+            "Treating all required files as missing (stale).",
             file=sys.stderr,
         )
-        return []
+        return [
+            {
+                "name": filename,
+                "path": data_dir / filename,
+                "age_days": float("inf"),
+                "mtime": "(missing)",
+            }
+            for filename in _FRESHNESS_FILES
+        ]
 
     now = datetime.now(tz=timezone.utc)
     stale = []
