@@ -8,7 +8,7 @@ It can trigger exports via AppleScript and parse the resulting XML data.
 
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -190,7 +190,7 @@ def check_freshness(data_dir=None, threshold_days=30):
             for filename in _FRESHNESS_FILES
         ]
 
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     stale = []
 
     for filename in _FRESHNESS_FILES:
@@ -205,7 +205,7 @@ def check_freshness(data_dir=None, threshold_days=30):
                 }
             )
         else:
-            mtime = datetime.fromtimestamp(fpath.stat().st_mtime, tz=timezone.utc)
+            mtime = datetime.fromtimestamp(fpath.stat().st_mtime, tz=UTC)
             age_days = (now - mtime).days
             if age_days > threshold_days:
                 stale.append(
