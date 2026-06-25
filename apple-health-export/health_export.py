@@ -8,7 +8,7 @@ It can trigger exports via AppleScript and parse the resulting XML data.
 
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -132,6 +132,119 @@ def get_export_info(export_dir):
     return info
 
 
+# ---------------------------------------------------------------------------
+# Staleness detection
+# ---------------------------------------------------------------------------
+
+# Files that must exist and be fresh in the raw data lake directory.
+_FRESHNESS_FILES = [
+    "health_workouts.parquet",
+    "health_records.parquet",
+    "export.xml",
+]
+
+_ACTION_MESSAGE = """
+To refresh your Apple Health data:
+  1. On your iPhone, go to: Settings → Privacy & Security → Health → Export All Health Data
+     OR visit https://privacy.apple.com and request an Apple Health export.
+  2. Once the export.zip arrives, run:
+       health-export extract --file <path/to/export.zip>
+  3. Then re-run your ingestion pipeline to rebuild the Parquet files.
+"""
+
+
+def check_freshness(data_dir=None, threshold_days=30):
+    """Check whether key Apple Health data files are fresh.
+
+    Inspects the mtime of each file listed in *_FRESHNESS_FILES* inside
+    *data_dir* and reports any file whose age exceeds *threshold_days*.
+
+    Args:
+        data_dir: Directory containing the raw Apple Health files.
+                  Defaults to ``~/datalake.me/raw/apple-health/``.
+        threshold_days: Maximum acceptable age in days (default 30).
+
+    Returns:
+        list[dict]: One entry per *stale* file, each with keys
+                    ``name``, ``path``, ``age_days``, ``mtime``.
+                    Empty list means all files are fresh (or the directory
+                    does not exist yet).
+    """
+    if data_dir is None:
+        data_dir = Path.home() / "datalake.me" / "raw" / "apple-health"
+    data_dir = Path(data_dir)
+
+    if not data_dir.exists():
+        print(
+            f"Warning: data directory not found: {data_dir}\n"
+            "No staleness check performed.",
+            file=sys.stderr,
+        )
+        return []
+
+    now = datetime.now(tz=timezone.utc)
+    stale = []
+
+    for filename in _FRESHNESS_FILES:
+        fpath = data_dir / filename
+        if not fpath.exists():
+            stale.append(
+                {
+                    "name": filename,
+                    "path": fpath,
+                    "age_days": float("inf"),
+                    "mtime": "(missing)",
+                }
+            )
+        else:
+            mtime = datetime.fromtimestamp(fpath.stat().st_mtime, tz=timezone.utc)
+            age_days = (now - mtime).days
+            if age_days > threshold_days:
+                stale.append(
+                    {
+                        "name": filename,
+                        "path": fpath,
+                        "age_days": age_days,
+                        "mtime": mtime.strftime("%Y-%m-%d"),
+                    }
+                )
+
+    return stale
+
+
+def print_freshness_report(stale_files, threshold_days=30, data_dir=None):
+    """Print a human-readable freshness report and return True if all fresh.
+
+    Args:
+        stale_files: List returned by :func:`check_freshness`.
+        threshold_days: Threshold used for the check (for display only).
+        data_dir: Directory that was checked (for display only).
+
+    Returns:
+        bool: ``True`` if *stale_files* is empty (everything is fresh),
+              ``False`` otherwise.
+    """
+    if not stale_files:
+        print("✓ All Apple Health data files are fresh.")
+        return True
+
+    print(
+        f"\n⚠️  Apple Health data is STALE (threshold: {threshold_days} days)\n"
+    )
+    print(f"  {'File':<32} {'Last modified':<14} {'Age':>6}")
+    print(f"  {'-'*32} {'-'*14} {'-'*6}")
+    for entry in stale_files:
+        age = (
+            f"{int(entry['age_days'])}d"
+            if entry["age_days"] != float("inf")
+            else "MISSING"
+        )
+        print(f"  {entry['name']:<32} {entry['mtime']:<14} {age:>6}")
+
+    print(_ACTION_MESSAGE)
+    return False
+
+
 def main():
     """Main entry point for the health export tool."""
     import argparse
@@ -141,7 +254,7 @@ def main():
     )
     parser.add_argument(
         'command',
-        choices=['export', 'extract', 'info', 'find'],
+        choices=['export', 'extract', 'info', 'find', 'check-freshness'],
         help='Command to run'
     )
     parser.add_argument(
@@ -151,6 +264,13 @@ def main():
     parser.add_argument(
         '--dir',
         help='Directory to search or output directory'
+    )
+    parser.add_argument(
+        '--threshold-days',
+        type=int,
+        default=30,
+        metavar='DAYS',
+        help='Staleness threshold in days for check-freshness (default: 30)'
     )
 
     args = parser.parse_args()
@@ -185,6 +305,19 @@ def main():
             print("Error: --dir required for info command")
             sys.exit(1)
         get_export_info(args.dir)
+
+    elif args.command == 'check-freshness':
+        stale = check_freshness(
+            data_dir=args.dir,
+            threshold_days=args.threshold_days,
+        )
+        fresh = print_freshness_report(
+            stale,
+            threshold_days=args.threshold_days,
+            data_dir=args.dir,
+        )
+        if not fresh:
+            sys.exit(1)
 
 
 if __name__ == '__main__':
