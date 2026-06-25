@@ -4,6 +4,7 @@ import datetime as dt
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -597,6 +598,35 @@ def build_activity_streams_ndjson(out_dir: Path, include_ids: set[int] | None = 
     return rows
 
 
+_CURATED_PARQUET_FILES = (
+    "activities.parquet",
+    "athlete.parquet",
+    "stats.parquet",
+    "activity_details.parquet",
+    "activity_streams.parquet",
+)
+
+
+def _copy_parquet_to_curated(out_dir: Path, curated_dir: Path) -> None:
+    """Copy exported parquet files from *out_dir* to *curated_dir*.
+
+    Only files that actually exist in *out_dir* are copied; missing files
+    (e.g. activity_details.parquet when no detail fetch was run) are silently
+    skipped so the curated directory is never left with stale artefacts from a
+    previous run that no longer exist in raw.
+    """
+    copied = []
+    for name in _CURATED_PARQUET_FILES:
+        src = out_dir / name
+        if src.exists():
+            shutil.copy2(src, curated_dir / name)
+            copied.append(name)
+    if copied:
+        print(f"Copied {len(copied)} parquet file(s) to curated dir: {curated_dir}")
+    else:
+        print(f"No parquet files found to copy to curated dir: {curated_dir}")
+
+
 def export_parquet(out_dir: Path) -> None:
     con = duckdb.connect()
     con.execute(
@@ -717,6 +747,18 @@ def parse_types(raw_types: str | None) -> set[str]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Pull Strava data locally")
     parser.add_argument("--out-dir", default="./strava-export")
+    parser.add_argument(
+        "--curated-dir",
+        default=os.environ.get(
+            "DATALAKE_STRAVA_CURATED_ROOT",
+            str(Path.home() / "datalake.me" / "curated" / "strava"),
+        ),
+        help=(
+            "Directory to copy exported parquet files into after each sync. "
+            "Defaults to DATALAKE_STRAVA_CURATED_ROOT env var, then "
+            "~/datalake.me/curated/strava. Pass empty string to disable."
+        ),
+    )
     parser.add_argument("--types", default=None)
     parser.add_argument("--after", type=parse_date)
     parser.add_argument("--before", type=parse_date)
@@ -869,6 +911,10 @@ def main() -> None:
 
     if not args.skip_parquet:
         export_parquet(out_dir)
+        if args.curated_dir:
+            curated_dir = Path(args.curated_dir)
+            curated_dir.mkdir(parents=True, exist_ok=True)
+            _copy_parquet_to_curated(out_dir, curated_dir)
 
     print(f"Sync complete. Total library size: {len(final_activities)} activities.")
 

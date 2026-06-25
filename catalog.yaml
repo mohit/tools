@@ -5,6 +5,7 @@ sources:
     cadence: daily
     script: strava-data-puller/strava_pull.py
     raw_root: ~/code/tools/strava-data-puller/strava-export
+    curated_root: ~/datalake.me/curated/strava
     last_sync: "2026-06-16T13:00:00Z"
     last_activity_date: "2026-05-03"
     total_activities: 193
