@@ -274,5 +274,294 @@ class TestHealthExportCLI(unittest.TestCase):
             self.assertEqual(cm.exception.code, 1)
 
 
+class TestCheckFreshness(unittest.TestCase):
+    """Tests for the check_freshness() staleness detection function."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.data_dir = Path(self.temp_dir)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    # ------------------------------------------------------------------ helpers
+
+    def _touch_with_age(self, filename, age_days):
+        """Create *filename* in data_dir with mtime set to *age_days* ago."""
+        import time
+        p = self.data_dir / filename
+        p.touch()
+        mtime = time.time() - age_days * 86400
+        os.utime(p, (mtime, mtime))
+        return p
+
+    # ------------------------------------------------------------------ tests
+
+    def test_fresh_files_returns_empty_list(self):
+        """All files within threshold → no stale entries."""
+        for name in health_export._FRESHNESS_FILES:
+            self._touch_with_age(name, age_days=1)  # 1 day old
+
+        stale = health_export.check_freshness(
+            data_dir=self.data_dir, threshold_days=30
+        )
+
+        self.assertEqual(stale, [])
+
+    def test_stale_files_returns_all_entries(self):
+        """All files exceed threshold → all returned as stale."""
+        for name in health_export._FRESHNESS_FILES:
+            self._touch_with_age(name, age_days=60)  # 60 days old
+
+        stale = health_export.check_freshness(
+            data_dir=self.data_dir, threshold_days=30
+        )
+
+        self.assertEqual(len(stale), len(health_export._FRESHNESS_FILES))
+        stale_names = {e["name"] for e in stale}
+        self.assertEqual(stale_names, set(health_export._FRESHNESS_FILES))
+
+    def test_stale_entry_has_expected_keys(self):
+        """Each stale entry contains the required metadata keys."""
+        for name in health_export._FRESHNESS_FILES:
+            self._touch_with_age(name, age_days=60)
+
+        stale = health_export.check_freshness(
+            data_dir=self.data_dir, threshold_days=30
+        )
+
+        for entry in stale:
+            self.assertIn("name", entry)
+            self.assertIn("path", entry)
+            self.assertIn("age_days", entry)
+            self.assertIn("mtime", entry)
+
+    def test_missing_file_reported_as_stale(self):
+        """A file that doesn't exist at all is treated as stale."""
+        # Create all but the first file
+        for name in health_export._FRESHNESS_FILES[1:]:
+            self._touch_with_age(name, age_days=1)
+
+        stale = health_export.check_freshness(
+            data_dir=self.data_dir, threshold_days=30
+        )
+
+        self.assertEqual(len(stale), 1)
+        self.assertEqual(stale[0]["name"], health_export._FRESHNESS_FILES[0])
+        self.assertEqual(stale[0]["age_days"], float("inf"))
+
+    def test_partial_staleness(self):
+        """Only files that exceed the threshold appear in results."""
+        # First file: stale; rest: fresh
+        self._touch_with_age(health_export._FRESHNESS_FILES[0], age_days=60)
+        for name in health_export._FRESHNESS_FILES[1:]:
+            self._touch_with_age(name, age_days=1)
+
+        stale = health_export.check_freshness(
+            data_dir=self.data_dir, threshold_days=30
+        )
+
+        self.assertEqual(len(stale), 1)
+        self.assertEqual(stale[0]["name"], health_export._FRESHNESS_FILES[0])
+
+    def test_nonexistent_directory_returns_all_missing(self):
+        """Missing data directory → all required files returned as missing/stale."""
+        fake_dir = self.data_dir / "no_such_dir"
+
+        stale = health_export.check_freshness(data_dir=fake_dir, threshold_days=30)
+
+        self.assertEqual(len(stale), len(health_export._FRESHNESS_FILES))
+        stale_names = {e["name"] for e in stale}
+        self.assertEqual(stale_names, set(health_export._FRESHNESS_FILES))
+        for entry in stale:
+            self.assertEqual(entry["age_days"], float("inf"))
+            self.assertEqual(entry["mtime"], "(missing)")
+
+    def test_custom_threshold_tighter(self):
+        """A tighter threshold catches files that would otherwise be fresh."""
+        for name in health_export._FRESHNESS_FILES:
+            self._touch_with_age(name, age_days=15)
+
+        # threshold=30 → all fresh
+        self.assertEqual(
+            health_export.check_freshness(self.data_dir, threshold_days=30), []
+        )
+        # threshold=7 → all stale
+        stale = health_export.check_freshness(self.data_dir, threshold_days=7)
+        self.assertEqual(len(stale), len(health_export._FRESHNESS_FILES))
+
+    def test_stale_age_days_is_accurate(self):
+        """Reported age_days reflects the actual file age."""
+        for name in health_export._FRESHNESS_FILES:
+            self._touch_with_age(name, age_days=45)
+
+        stale = health_export.check_freshness(
+            data_dir=self.data_dir, threshold_days=30
+        )
+
+        for entry in stale:
+            # Allow ±1 day tolerance for timing jitter during the test.
+            self.assertAlmostEqual(entry["age_days"], 45, delta=1)
+
+
+class TestPrintFreshnessReport(unittest.TestCase):
+    """Tests for print_freshness_report() output and return value."""
+
+    def test_all_fresh_returns_true(self):
+        result = health_export.print_freshness_report([], threshold_days=30)
+        self.assertTrue(result)
+
+    def test_stale_returns_false(self):
+        stale = [
+            {
+                "name": "health_workouts.parquet",
+                "path": Path("/fake/health_workouts.parquet"),
+                "age_days": 137,
+                "mtime": "2026-02-07",
+            }
+        ]
+        result = health_export.print_freshness_report(stale, threshold_days=30)
+        self.assertFalse(result)
+
+    def test_stale_output_contains_actionable_message(self):
+        """The printed report must contain the privacy.apple.com URL."""
+        stale = [
+            {
+                "name": "export.xml",
+                "path": Path("/fake/export.xml"),
+                "age_days": 155,
+                "mtime": "2026-01-20",
+            }
+        ]
+        import io
+        from contextlib import redirect_stdout
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            health_export.print_freshness_report(stale, threshold_days=30)
+
+        output = buf.getvalue()
+        self.assertIn("privacy.apple.com", output)
+
+    def test_stale_output_contains_filename(self):
+        """Stale file name must appear in the printed report."""
+        stale = [
+            {
+                "name": "health_records.parquet",
+                "path": Path("/fake/health_records.parquet"),
+                "age_days": 100,
+                "mtime": "2026-03-16",
+            }
+        ]
+        import io
+        from contextlib import redirect_stdout
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            health_export.print_freshness_report(stale, threshold_days=30)
+
+        self.assertIn("health_records.parquet", buf.getvalue())
+
+    def test_missing_file_shows_missing_label(self):
+        """Files with age_days=inf should display 'MISSING'."""
+        stale = [
+            {
+                "name": "health_workouts.parquet",
+                "path": Path("/fake/health_workouts.parquet"),
+                "age_days": float("inf"),
+                "mtime": "(missing)",
+            }
+        ]
+        import io
+        from contextlib import redirect_stdout
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            health_export.print_freshness_report(stale, threshold_days=30)
+
+        self.assertIn("MISSING", buf.getvalue())
+
+
+class TestCheckFreshnessCLI(unittest.TestCase):
+    """CLI integration tests for the 'check-freshness' sub-command."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.data_dir = Path(self.temp_dir)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _touch_with_age(self, filename, age_days):
+        import time
+        p = self.data_dir / filename
+        p.touch()
+        mtime = time.time() - age_days * 86400
+        os.utime(p, (mtime, mtime))
+        return p
+
+    def test_cli_check_freshness_all_fresh_exits_zero(self):
+        """check-freshness exits 0 when all files are within the threshold."""
+        for name in health_export._FRESHNESS_FILES:
+            self._touch_with_age(name, age_days=1)
+
+        argv = ['health_export.py', 'check-freshness', '--dir', str(self.data_dir)]
+        with patch('sys.argv', argv):
+            try:
+                health_export.main()
+            except SystemExit as exc:
+                self.fail(f"Expected exit 0 but got SystemExit({exc.code})")
+
+    def test_cli_check_freshness_stale_exits_one(self):
+        """check-freshness exits 1 when at least one file is stale."""
+        for name in health_export._FRESHNESS_FILES:
+            self._touch_with_age(name, age_days=60)
+
+        argv = ['health_export.py', 'check-freshness', '--dir', str(self.data_dir)]
+        with patch('sys.argv', argv):
+            with self.assertRaises(SystemExit) as cm:
+                health_export.main()
+
+            self.assertEqual(cm.exception.code, 1)
+
+    def test_cli_check_freshness_missing_dir_exits_one(self):
+        """check-freshness exits 1 when the data directory does not exist."""
+        fake_dir = self.data_dir / "no_such_dir"
+
+        argv = ['health_export.py', 'check-freshness', '--dir', str(fake_dir)]
+        with patch('sys.argv', argv):
+            with self.assertRaises(SystemExit) as cm:
+                health_export.main()
+
+            self.assertEqual(cm.exception.code, 1)
+
+    def test_cli_check_freshness_custom_threshold(self):
+        """--threshold-days flag overrides the default 30-day threshold."""
+        for name in health_export._FRESHNESS_FILES:
+            self._touch_with_age(name, age_days=15)
+
+        # With default threshold (30) this should be fresh → exit 0
+        argv = ['health_export.py', 'check-freshness', '--dir', str(self.data_dir)]
+        with patch('sys.argv', argv):
+            try:
+                health_export.main()
+            except SystemExit as exc:
+                self.fail(f"Expected exit 0 but got SystemExit({exc.code})")
+
+        # With tight threshold (7) files are stale → exit 1
+        argv_tight = [
+            'health_export.py', 'check-freshness',
+            '--dir', str(self.data_dir),
+            '--threshold-days', '7',
+        ]
+        with patch('sys.argv', argv_tight):
+            with self.assertRaises(SystemExit) as cm:
+                health_export.main()
+
+            self.assertEqual(cm.exception.code, 1)
+
+
 if __name__ == '__main__':
     unittest.main()
