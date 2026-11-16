@@ -1,5 +1,22 @@
-// Cross-browser compatibility: use browserAPI.* or chrome.*
-const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
+// Cross-browser compatibility: use browser.* when available, fallback to chrome.*
+const hasBrowserNamespace = typeof browser !== 'undefined';
+const browserAPI = hasBrowserNamespace ? browser : chrome;
+
+function sendRuntimeMessage(message) {
+  if (hasBrowserNamespace) {
+    return browserAPI.runtime.sendMessage(message);
+  }
+  return new Promise((resolve, reject) => {
+    browserAPI.runtime.sendMessage(message, (response) => {
+      const err = browserAPI.runtime?.lastError;
+      if (err) {
+        reject(new Error(err.message));
+        return;
+      }
+      resolve(response);
+    });
+  });
+}
 
 // Popup script - shows recent codes with sender info
 
@@ -9,7 +26,7 @@ async function updateStatus() {
   const contentEl = document.getElementById('content');
 
   try {
-    const response = await browserAPI.runtime.sendMessage({ type: 'GET_ALL_CODES' });
+    const response = await sendRuntimeMessage({ type: 'GET_ALL_CODES' });
     const codes = response?.codes || [];
 
     // Filter to codes within last 15 minutes

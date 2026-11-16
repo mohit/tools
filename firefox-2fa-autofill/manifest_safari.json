@@ -1,0 +1,40 @@
+{
+  "manifest_version": 2,
+  "name": "Google Voice 2FA Autofill",
+  "version": "1.0.0",
+  "description": "Automatically extracts 2FA codes from Google Voice SMS and fills them into websites",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "tabs",
+    "*://voice.google.com/*"
+  ],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": false
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://voice.google.com/*"],
+      "js": ["content-google-voice.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-2fa-detector.js"],
+      "run_at": "document_idle",
+      "exclude_matches": ["*://voice.google.com/*"]
+    }
+  ],
+  "browser_action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "icon.svg"
+    },
+    "default_title": "Google Voice 2FA Autofill"
+  },
+  "icons": {
+    "48": "icon.svg",
+    "96": "icon.svg"
+  }
+}

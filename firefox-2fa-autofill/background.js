@@ -1,5 +1,54 @@
-// Cross-browser compatibility: use browserAPI.* or chrome.*
-const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
+// Cross-browser compatibility: use browser.* when available, fallback to chrome.*
+const hasBrowserNamespace = typeof browser !== 'undefined';
+const browserAPI = hasBrowserNamespace ? browser : chrome;
+
+function storageGet(key) {
+  if (hasBrowserNamespace) {
+    return browserAPI.storage.local.get(key);
+  }
+  return new Promise((resolve, reject) => {
+    browserAPI.storage.local.get(key, (result) => {
+      const err = browserAPI.runtime?.lastError;
+      if (err) {
+        reject(new Error(err.message));
+        return;
+      }
+      resolve(result || {});
+    });
+  });
+}
+
+function storageSet(data) {
+  if (hasBrowserNamespace) {
+    return browserAPI.storage.local.set(data);
+  }
+  return new Promise((resolve, reject) => {
+    browserAPI.storage.local.set(data, () => {
+      const err = browserAPI.runtime?.lastError;
+      if (err) {
+        reject(new Error(err.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function sendTabMessage(tabId, message) {
+  if (hasBrowserNamespace) {
+    return browserAPI.tabs.sendMessage(tabId, message);
+  }
+  return new Promise((resolve, reject) => {
+    browserAPI.tabs.sendMessage(tabId, message, (response) => {
+      const err = browserAPI.runtime?.lastError;
+      if (err) {
+        reject(new Error(err.message));
+        return;
+      }
+      resolve(response);
+    });
+  });
+}
 
 // Background script - stores codes and coordinates between Google Voice and websites
 
@@ -55,7 +104,9 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
     notifyPendingTabs(code);
 
     // Persist to storage
-    browserAPI.storage.local.set({ recentCodes });
+    storageSet({ recentCodes }).catch(err => {
+      console.error('[2FA Autofill] Error persisting codes:', err);
+    });
 
     sendResponse({ success: true });
   }
@@ -144,7 +195,7 @@ async function notifyPendingTabs(code) {
 
   for (const tabId of pendingTabs) {
     try {
-      await browserAPI.tabs.sendMessage(tabId, {
+      await sendTabMessage(tabId, {
         type: 'CODE_AVAILABLE',
         code: latest.code,
         timestamp: latest.timestamp,
@@ -164,11 +215,13 @@ browserAPI.tabs.onRemoved.addListener((tabId) => {
 });
 
 // Load stored codes on startup
-browserAPI.storage.local.get('recentCodes').then(result => {
+storageGet('recentCodes').then(result => {
   if (result.recentCodes) {
     recentCodes = result.recentCodes;
     cleanupExpiredCodes();
   }
+}).catch(err => {
+  console.error('[2FA Autofill] Error loading stored codes:', err);
 });
 
 console.log('[2FA Autofill] Background script loaded');
