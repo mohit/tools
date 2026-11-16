@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -11,9 +10,12 @@ from pathlib import Path
 from typing import Any
 from zipfile import ZipFile
 
-DEFAULT_RAW_ROOT = Path(os.getenv("DATALAKE_RAW_ROOT", "~/datalake.me/raw")).expanduser()
-DEFAULT_CURATED_ROOT = Path(os.getenv("DATALAKE_CURATED_ROOT", "~/datalake.me/curated")).expanduser()
-DEFAULT_STATE_FILE = Path.home() / ".local" / "share" / "datalake" / "google_takeout_focused_state.json"
+import datalake_paths as dp
+
+# Derived from DATALAKE_ROOT; main() verifies the disk before process/sync write.
+DEFAULT_RAW_ROOT = dp.configured_root() / "raw"
+DEFAULT_CURATED_ROOT = dp.configured_root() / "curated"
+DEFAULT_STATE_FILE = dp.configured_root() / "state" / "google-takeout-focused" / "state.json"
 
 
 @dataclass(frozen=True)
@@ -287,7 +289,8 @@ def _write_partitioned_parquet(
                 insert_sql,
                 [[row.get(name) for name, _ in columns] for row in group_rows],
             )
-            conn.execute(f"copy {table_name} to ? (format parquet)", [str(out_path)])
+            with dp.atomic_output(out_path) as tmp:
+                conn.execute(f"copy {table_name} to ? (format parquet)", [str(tmp)])
             written += len(group_rows)
         finally:
             conn.close()
@@ -315,8 +318,7 @@ def _state_load(path: Path) -> dict[str, Any]:
 
 
 def _state_save(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    dp.atomic_write_text(path, json.dumps(payload, indent=2, sort_keys=True))
 
 
 def _process_one_takeout(source: Path, curated_root: Path) -> dict[str, int]:
@@ -420,10 +422,9 @@ def _copy_raw_archive(source: Path, raw_root: Path) -> Path:
     if not source.is_file():
         return source
     raw_dir = raw_root / "google_takeout" / "archives"
-    raw_dir.mkdir(parents=True, exist_ok=True)
     destination = raw_dir / source.name
     if not destination.exists():
-        destination.write_bytes(source.read_bytes())
+        dp.publish_file(source, destination)
     return destination
 
 
@@ -433,6 +434,14 @@ def _iter_takeout_sources(input_dir: Path) -> list[Path]:
         if path.is_file() and path.suffix.lower() == ".zip" or path.is_dir() and "takeout" in path.name.lower():
             candidates.append(path)
     return candidates
+
+
+def _verified_outputs(*paths: str) -> tuple[Path, ...]:
+    """Resolve write locations, requiring them inside the verified datalake."""
+    try:
+        return tuple(dp.within_root(path) for path in paths)
+    except dp.DatalakeUnavailable as exc:
+        raise SystemExit(str(exc)) from None
 
 
 def _print_guide() -> None:
@@ -479,8 +488,7 @@ def main() -> None:
 
     if args.command == "process":
         source = Path(args.source).expanduser().resolve()
-        curated_root = Path(args.curated_root).expanduser().resolve()
-        raw_root = Path(args.raw_root).expanduser().resolve()
+        curated_root, raw_root = _verified_outputs(args.curated_root, args.raw_root)
 
         copied_source = _copy_raw_archive(source, raw_root)
         result = _process_one_takeout(copied_source, curated_root)
@@ -490,9 +498,9 @@ def main() -> None:
 
     if args.command == "sync":
         takeout_dir = Path(args.takeout_dir).expanduser().resolve()
-        curated_root = Path(args.curated_root).expanduser().resolve()
-        raw_root = Path(args.raw_root).expanduser().resolve()
-        state_file = Path(args.state_file).expanduser().resolve()
+        curated_root, raw_root, state_file = _verified_outputs(
+            args.curated_root, args.raw_root, args.state_file
+        )
 
         state = _state_load(state_file)
         processed = state["processed"]

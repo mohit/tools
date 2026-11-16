@@ -8,6 +8,7 @@ from apple_music_export_guard import (
     AppleMusicExportGuardError,
     enforce_fresh_export_or_raise,
 )
+from config import STATE_ROOT
 
 
 def main() -> int:
@@ -17,7 +18,7 @@ def main() -> int:
     parser.add_argument(
         "--metadata-path",
         type=Path,
-        default=Path(__file__).with_name("apple_music_export_metadata.json"),
+        default=STATE_ROOT / "apple_music_export_metadata.json",
         help="Path to Apple Music export metadata JSON",
     )
     parser.add_argument(

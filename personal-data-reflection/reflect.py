@@ -2,6 +2,7 @@
 """Personal Data Reflection Tool - CLI Interface."""
 
 import argparse
+import ipaddress
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +12,32 @@ from reflector.dashboard import create_app
 from reflector.database import ReflectionDB
 from reflector.importers import HealthImporter, StravaImporter
 from reflector.reports import MonthlyReportGenerator
+
+import datalake_paths as dp
+
+TOOL = "personal-data-reflection"
+# Commands that only read existing data must never create a replacement database.
+CREATES_DATABASE = {"import-health", "import-strava"}
+
+
+def resolve_storage(args) -> None:
+    """Verify the datalake disk and pin the database and report paths inside it."""
+    try:
+        if args.database:
+            args.database = str(dp.within_root(args.database))
+        else:
+            args.database = str(dp.databases(TOOL, "reflection.duckdb"))
+        if getattr(args, "output", None):
+            output = Path(args.output).expanduser()
+            if not output.is_absolute():
+                output = dp.artifacts(TOOL, "reports") / output
+            args.output = str(dp.within_root(output))
+    except dp.DatalakeUnavailable as exc:
+        raise SystemExit(str(exc)) from None
+    if args.command not in CREATES_DATABASE and not Path(args.database).is_file():
+        raise SystemExit(
+            f"Database not found at {args.database}; refusing to create an empty replacement."
+        )
 
 
 def import_health_data(args):
@@ -181,7 +208,14 @@ def generate_report(args):
 
 def serve_dashboard(args):
     """Start the web dashboard."""
-    host_label = args.host if args.host not in ["0.0.0.0", "127.0.0.1"] else "localhost"
+    try:
+        loopback = ipaddress.ip_address(args.host).is_loopback
+    except ValueError:
+        loopback = args.host == "localhost"
+    if not loopback:
+        print("Error: the dashboard only binds to localhost; reach it through SSH port forwarding.")
+        return 1
+    host_label = "localhost"
     print(f"Starting dashboard on http://{host_label}:{args.port}")
     print("Press Ctrl+C to stop")
 
@@ -221,8 +255,11 @@ Examples:
 
     parser.add_argument(
         '--database',
-        default='./data/reflection.duckdb',
-        help='Path to DuckDB database (default: ./data/reflection.duckdb)'
+        default=None,
+        help=(
+            'Path to DuckDB database inside the datalake '
+            '(default: $DATALAKE_ROOT/databases/personal-data-reflection/reflection.duckdb)'
+        ),
     )
 
     subparsers = parser.add_subparsers(dest='command', help='Command to run')
@@ -264,7 +301,10 @@ Examples:
     )
     report_parser.add_argument(
         '--output',
-        help='Output file path (default: print to stdout)'
+        help=(
+            'Output file inside the datalake; relative paths go under '
+            '$DATALAKE_ROOT/artifacts/personal-data-reflection/reports (default: print to stdout)'
+        )
     )
 
     # Serve dashboard
@@ -294,6 +334,8 @@ Examples:
     if not args.command:
         parser.print_help()
         return 1
+
+    resolve_storage(args)
 
     # Route to appropriate handler
     handlers = {

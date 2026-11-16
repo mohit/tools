@@ -1,5 +1,4 @@
 import argparse
-import os
 import re
 import sys
 import webbrowser
@@ -7,12 +6,9 @@ import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-DEFAULT_RAW_BASE = Path(
-    os.environ.get(
-        "DATALAKE_RAW_ROOT",
-        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports",
-    )
-)
+from config import CURATED_ROOT, RAW_ROOT, STATE_ROOT, require_datalake  # noqa: E402,F401
+
+DEFAULT_RAW_BASE = RAW_ROOT
 DEFAULT_RAW_ROOT = DEFAULT_RAW_BASE / "apple-music"
 DEFAULT_DOWNLOADS = Path.home() / "Downloads"
 PRIVACY_EXPORT_URL = "https://privacy.apple.com/account"
@@ -109,6 +105,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    require_datalake()
 
     raw_root = Path(args.raw_root).expanduser()
     downloads_dir = Path(args.downloads_dir).expanduser()

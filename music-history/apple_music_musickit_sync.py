@@ -6,18 +6,11 @@ from pathlib import Path
 
 import duckdb
 
-DEFAULT_RAW_BASE = Path(
-    os.environ.get(
-        "DATALAKE_RAW_ROOT",
-        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports",
-    )
-)
-DEFAULT_CURATED_BASE = Path(
-    os.environ.get(
-        "DATALAKE_CURATED_ROOT",
-        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated",
-    )
-)
+from config import CURATED_ROOT, RAW_ROOT, STATE_ROOT, require_datalake  # noqa: E402,F401
+from datalake_paths import atomic_write_text  # noqa: E402
+
+DEFAULT_RAW_BASE = RAW_ROOT
+DEFAULT_CURATED_BASE = CURATED_ROOT
 DEFAULT_RAW_ROOT = DEFAULT_RAW_BASE / "apple-music" / "musickit"
 DEFAULT_CURATED_ROOT = DEFAULT_CURATED_BASE / "apple-music" / "recent-played"
 BASE_URL = "https://api.music.apple.com/v1/me/recent/played/tracks"
@@ -62,9 +55,8 @@ def fetch_recent_tracks(developer_token: str, user_token: str) -> dict:
 
 
 def write_raw_snapshot(raw_root: Path, payload: dict) -> Path:
-    raw_root.mkdir(parents=True, exist_ok=True)
     out_path = raw_root / f"recent_played_{payload['fetched_at_utc']}.json"
-    out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    atomic_write_text(out_path, json.dumps(payload, indent=2))
     return out_path
 
 
@@ -188,6 +180,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    require_datalake()
     if not args.developer_token or not args.user_token:
         raise SystemExit(
             "Missing MusicKit tokens. Set --developer-token/--user-token or "

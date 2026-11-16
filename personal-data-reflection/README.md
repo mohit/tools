@@ -137,7 +137,8 @@ uv run reflect.py analyze                    # Run correlation analysis
 # Start dashboard
 uv run reflect.py serve                      # Launch web dashboard
 uv run reflect.py serve --port 8080          # Custom port
-uv run reflect.py serve --host 0.0.0.0       # Bind for external access
+# The dashboard binds only to localhost. From another Mac, forward the port:
+#   ssh -N -L 5000:127.0.0.1:5000 moer-mini.local   then open http://localhost:5000
 ```
 
 ### Web Dashboard
@@ -173,7 +174,7 @@ The tool creates a unified DuckDB database with the following tables:
 Create a `config.yaml` file to customize behavior:
 
 ```yaml
-database: ./data/reflection.duckdb
+# reflect.py ignores this; the database is $DATALAKE_ROOT/databases/personal-data-reflection/reflection.duckdb
 
 # Metrics to track
 metrics:

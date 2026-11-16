@@ -1,12 +1,13 @@
 import argparse
 import csv
 import json
-import os
 import re
 from datetime import UTC, datetime
 from pathlib import Path
 
-DEFAULT_RAW_BASE = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Data Exports"
+from config import CURATED_ROOT, RAW_ROOT, STATE_ROOT, require_datalake  # noqa: E402,F401
+
+DEFAULT_RAW_BASE = RAW_ROOT
 EXIT_CODE_MISSING_CSV = 3
 PLAYED_AT_COLUMNS = [
     "Event Start Timestamp",
@@ -17,8 +18,7 @@ PLAYED_AT_COLUMNS = [
 
 
 def _default_raw_root() -> Path:
-    raw_base = Path(os.environ.get("DATALAKE_RAW_ROOT", str(DEFAULT_RAW_BASE)))
-    return raw_base / "apple-music"
+    return DEFAULT_RAW_BASE / "apple-music"
 
 
 def _is_play_activity_csv_name(name: str) -> bool:

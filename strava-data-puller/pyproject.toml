@@ -7,6 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "requests>=2.31.0",
     "duckdb>=1.1.0",
+    "datalake-paths",
 ]
 
 [project.scripts]
@@ -14,3 +15,6 @@ strava-pull = "strava_pull:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0"]
+
+[tool.uv.sources]
+datalake-paths = { path = "../datalake-paths", editable = true }

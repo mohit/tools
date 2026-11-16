@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import datalake_paths as dp
+
 try:
     import duckdb
 except ImportError as exc:  # pragma: no cover - import guard
@@ -36,8 +38,9 @@ except ImportError:  # pragma: no cover - optional dependency in some environmen
     Flask = Any  # type: ignore[misc,assignment]
     HAS_FLASK = False
 
-DEFAULT_RAW_DIR = Path.home() / "datalake.me" / "raw" / "apple-health" / "auto-export"
-DEFAULT_CURATED_DIR = Path.home() / "datalake.me" / "curated" / "apple-health"
+# Derived from DATALAKE_ROOT; main() verifies the disk before ingesting or serving.
+DEFAULT_RAW_DIR = dp.configured_root() / "raw" / "apple-health" / "auto-export"
+DEFAULT_CURATED_DIR = dp.configured_root() / "curated" / "apple-health"
 _PARQUET_MERGE_LOCKS: dict[Path, threading.RLock] = {}
 _PARQUET_MERGE_LOCKS_GUARD = threading.Lock()
 
@@ -727,9 +730,14 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    try:
+        raw_dir = dp.within_root(args.raw_dir or DEFAULT_RAW_DIR)
+        curated_dir = dp.within_root(args.curated_dir or DEFAULT_CURATED_DIR)
+    except dp.DatalakeUnavailable as exc:
+        raise SystemExit(str(exc)) from None
     ingestor = HealthAutoExportIngestor(
-        raw_dir=Path(args.raw_dir) if args.raw_dir else DEFAULT_RAW_DIR,
-        curated_dir=Path(args.curated_dir) if args.curated_dir else DEFAULT_CURATED_DIR,
+        raw_dir=raw_dir,
+        curated_dir=curated_dir,
     )
 
     if args.command == "ingest-file":

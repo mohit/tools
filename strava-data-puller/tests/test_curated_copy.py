@@ -91,3 +91,21 @@ class TestCopyParquetToCurated:
             "activity_streams.parquet",
         }
         assert set(strava_pull._CURATED_PARQUET_FILES) == expected
+
+
+def test_curated_publish_preserves_hard_linked_history(tmp_path):
+    """Publishing a new curated file must not rewrite a hard-linked historical alias."""
+    import os
+
+    out_dir = tmp_path / "raw"
+    out_dir.mkdir()
+    curated_dir = tmp_path / "curated"
+    curated_dir.mkdir()
+    (curated_dir / "activities.parquet").write_bytes(b"historical")
+    os.link(curated_dir / "activities.parquet", tmp_path / "versions-activities.parquet")
+    (out_dir / "activities.parquet").write_bytes(b"fresh")
+
+    strava_pull._copy_parquet_to_curated(out_dir, curated_dir)
+
+    assert (curated_dir / "activities.parquet").read_bytes() == b"fresh"
+    assert (tmp_path / "versions-activities.parquet").read_bytes() == b"historical"

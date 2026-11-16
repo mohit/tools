@@ -5,6 +5,7 @@ Personal data tools — ingest, transform, and reflect on health/fitness/music/l
 
 ## Repo structure
 ```
+datalake-paths/          # Verified DATALAKE_ROOT locations + inode-safe atomic writes (stdlib)
 anthropic-usage-tracker/ # Anthropic API usage tracking → parquet (Python, DuckDB)
 apple-health-export/     # Apple Health XML → parquet (Python, DuckDB)
 firefox-2fa-autofill/    # Browser extension (JS, WebExtension manifest)
@@ -28,8 +29,10 @@ strava-data-puller/      # Strava API → raw JSON + curated parquet (Python, Du
 - **Raw data:** `/Volumes/MoErMedia/datalake.me/raw/<source>/`
 - **Curated data:** `/Volumes/MoErMedia/datalake.me/curated/<source>/` (parquet)
 - **State files:** `/Volumes/MoErMedia/datalake.me/state/<tool>/` (last sync timestamps, etc.)
-- Read `data-storage/README.md` before storage changes. Preserve immutable hard-linked payloads; publish replacements atomically.
-- Runtime defaults and moer-mini execution are a separate rollout; do not run legacy ingestion during migration.
+- **Databases / reports:** `databases/<tool>/`, `artifacts/<tool>/` under the same root.
+- Resolve every path through `datalake-paths/` (`DATALAKE_ROOT`); entry points must call its verification before any request or write so a missing or wrong disk fails first. Never default to `~/datalake.me`, iCloud, `./data` or `~/.local/share`.
+- Read `data-storage/README.md` before storage changes. Preserve immutable hard-linked payloads; publish replacements atomically with `datalake_paths.atomic_output`/`publish_file`, never by rewriting a file in place.
+- moer-mini is the sole production writer. Scheduled/background jobs stay disabled until step 5 of the migration.
 - Raw = immutable API dumps. Curated = cleaned, typed, deduplicated parquet.
 
 ## Coding conventions

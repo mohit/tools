@@ -72,14 +72,14 @@ python strava_pull.py --check-credentials
 
 ```bash
 python strava_pull.py \
-  --out-dir ./strava-export \
   --types Ride,VirtualRide,GravelRide,Walk,Hike \
   --after 2023-01-01 \
   --include-streams
 ```
 
 ### Options
-- `--out-dir`: Directory for exported JSON (default: `./strava-export`).
+- `--out-dir`: Raw JSON/Parquet directory (default: `$DATALAKE_ROOT/raw/strava`). Must be inside the verified datalake; a missing or wrong disk stops the run before Strava is contacted.
+- `--curated-dir`: Curated Parquet destination (default: `$DATALAKE_ROOT/curated/strava`; `""` disables). Files are published atomically so hard-linked historical versions are never modified.
 - `--types`: Comma-separated activity types to include.
 - `--after` / `--before`: ISO-8601 dates (YYYY-MM-DD) to filter activities.
 - `--include-streams`: Also fetch activity streams for detailed analysis.
@@ -115,7 +115,7 @@ Once the export completes, you can query the Parquet files using DuckDB:
 
 ```sql
 SELECT name, COUNT(*) AS total_activities
-FROM read_parquet('strava-export/activities.parquet')
+FROM read_parquet('/Volumes/MoErMedia/datalake.me/raw/strava/activities.parquet')
 GROUP BY name
 ORDER BY total_activities DESC;
 ```

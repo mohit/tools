@@ -21,9 +21,9 @@ raw or curated files in place**: atomically replace a logical file to avoid
 changing its historical aliases. Distinct byte streams are retained. Record-level
 reconciliation is explicitly deferred.
 
-Existing ingestion scripts still require a separate runtime configuration rollout.
-Do not assume their old defaults honor this contract yet. The migration does not
-create schedules, configure SSH or start dashboards.
+Runtime tools resolve and verify these locations through `datalake-paths/`
+(step 3 on moer-mini). The migration itself does not create schedules,
+configure SSH or start dashboards.
 
 ## Commands
 

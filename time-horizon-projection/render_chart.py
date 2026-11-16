@@ -7,6 +7,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "datalake-paths"))
+import datalake_paths as dp  # noqa: E402
 
 try:
     import yaml
@@ -521,8 +525,7 @@ def build_chart(
     )
 
     svg.append("</svg>")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("".join(svg))
+    dp.atomic_write_text(output_path, "".join(svg))
 
 
 def parse_args() -> argparse.Namespace:
@@ -569,9 +572,16 @@ def main() -> None:
     metric_name = SUCCESS_METRICS[args.success_level]
     points, doubling_days = load_results(args.input, metric_name=metric_name)
     points = add_custom_points(points)
-    output_path = args.output or default_output_path(
-        args.scale, args.target_months, args.success_level
-    )
+    # Charts are reports: publish them under the verified datalake artifacts area.
+    try:
+        output_path = args.output or default_output_path(
+            args.scale, args.target_months, args.success_level
+        )
+        if not output_path.is_absolute():
+            output_path = dp.artifacts("time-horizon-projection") / output_path
+        output_path = dp.within_root(output_path)
+    except dp.DatalakeUnavailable as exc:
+        raise SystemExit(str(exc)) from None
     build_chart(
         points,
         doubling_days,

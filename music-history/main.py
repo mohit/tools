@@ -4,6 +4,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
+import datalake_paths as dp
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -11,24 +12,15 @@ import requests
 
 API = "https://ws.audioscrobbler.com/2.0/"
 
-RAW_ROOT = Path(
-    os.environ.get(
-        "DATALAKE_RAW_ROOT",
-        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports",
-    )
-)
-CURATED_ROOT = Path(
-    os.environ.get(
-        "DATALAKE_CURATED_ROOT",
-        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated",
-    )
-)
+# Retired: scripts/lastfm_ingest.py is the only supported Last.fm writer.
+# Paths are kept for the helper functions' tests; nothing is created at import.
+RAW_ROOT = dp.configured_root() / "raw"
+CURATED_ROOT = dp.configured_root() / "curated"
 
 RAW = RAW_ROOT / "lastfm"
 CURATED = CURATED_ROOT / "lastfm" / "scrobbles"
 
-STATE_DIR = Path.home() / ".local" / "share" / "datalake"
-STATE_DIR.mkdir(parents=True, exist_ok=True)
+STATE_DIR = dp.configured_root() / "state" / "music-history" / "legacy-main"
 STATE_FILE = STATE_DIR / "lastfm_last_uts.txt"
 
 
@@ -69,7 +61,7 @@ def load_last_uts_from_state() -> int | None:
 
 
 def save_last_uts(v: int) -> None:
-    STATE_FILE.write_text(str(v))
+    dp.atomic_write_text(STATE_FILE, str(v))
 
 
 def extract_uts(row: dict) -> int | None:
@@ -238,6 +230,13 @@ def append_parquet_partitions(df: pd.DataFrame):
 
 
 def main():
+    raise SystemExit(
+        "music-history/main.py is retired so Last.fm has a single production writer. "
+        "Use: uv run python scripts/lastfm_ingest.py"
+    )
+
+
+def _retired_main():
     from_uts = determine_from_uts()
     all_rows = []
     page = 1

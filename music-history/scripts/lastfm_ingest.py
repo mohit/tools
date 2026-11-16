@@ -12,6 +12,7 @@ import urllib.error
 from pathlib import Path
 from typing import Any
 
+import datalake_paths as dp
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -23,13 +24,12 @@ RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 MAX_RETRIES = 5
 BASE_DELAY_SECONDS = 5
 
-DEFAULT_RAW_ROOT = Path(
-    os.environ.get("DATALAKE_RAW_ROOT", str(Path.home() / "datalake.me/raw"))
-)
-DEFAULT_CURATED_ROOT = Path(
-    os.environ.get("DATALAKE_CURATED_ROOT", str(Path.home() / "datalake.me/curated"))
-)
-STATE_DIR = Path.home() / ".local" / "share" / "datalake"
+# All locations derive from DATALAKE_ROOT; main() verifies the disk before any
+# request or write, so these import-time paths are never used unverified.
+DATALAKE_ROOT = dp.configured_root()
+DEFAULT_RAW_ROOT = DATALAKE_ROOT / "raw"
+DEFAULT_CURATED_ROOT = DATALAKE_ROOT / "curated"
+STATE_DIR = DATALAKE_ROOT / "state" / "music-history"
 STATE_FILE = STATE_DIR / "lastfm_last_uts.txt"
 CHECKPOINT_FILE = STATE_DIR / "lastfm_ingest_checkpoint.json"
 STALENESS_STATE_FILE = STATE_DIR / "lastfm_staleness.json"
@@ -38,12 +38,7 @@ STALENESS_STATE_FILE = STATE_DIR / "lastfm_staleness.json"
 STALE_THRESHOLD_DAYS: int = 7
 
 # Catalog YAML that downstream tools read for dataset metadata.
-CATALOG_FILE = Path(
-    os.environ.get(
-        "LASTFM_CATALOG_FILE",
-        str(Path.home() / "datalake.me" / "catalog" / "lastfm.yaml"),
-    )
-)
+CATALOG_FILE = DATALAKE_ROOT / "catalog" / "lastfm.yaml"
 
 
 def parse_date(value: str) -> int:
@@ -120,8 +115,7 @@ def load_last_uts(state_file: Path = STATE_FILE) -> int:
 
 
 def save_last_uts(value: int, state_file: Path = STATE_FILE) -> None:
-    state_file.parent.mkdir(parents=True, exist_ok=True)
-    state_file.write_text(str(value))
+    dp.atomic_write_text(state_file, str(value))
 
 
 def load_persisted_uts(state_file: Path = STATE_FILE) -> int | None:
@@ -160,9 +154,7 @@ def save_staleness_state(
     state: dict[str, Any],
     staleness_file: Path = STALENESS_STATE_FILE,
 ) -> None:
-    staleness_file.parent.mkdir(parents=True, exist_ok=True)
-    with staleness_file.open("w", encoding="utf-8") as handle:
-        json.dump(state, handle, sort_keys=True)
+    dp.atomic_write_text(staleness_file, json.dumps(state, sort_keys=True))
 
 
 def update_catalog_staleness(
@@ -213,7 +205,7 @@ def update_catalog_staleness(
             new_lines.append(f"stale_since: {stale_since_val}\n")
         out[insert_idx:insert_idx] = new_lines
 
-    catalog_file.write_text("".join(out), encoding="utf-8")
+    dp.atomic_write_text(catalog_file, "".join(out))
 
 
 def load_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> dict[str, Any] | None:
@@ -234,7 +226,6 @@ def save_checkpoint(
     max_uts_seen: int | None,
     checkpoint_file: Path = CHECKPOINT_FILE,
 ) -> None:
-    checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "from_uts": from_uts,
         "next_page": next_page,
@@ -242,8 +233,7 @@ def save_checkpoint(
         "max_uts_seen": max_uts_seen,
         "saved_at": int(time.time()),
     }
-    with checkpoint_file.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, sort_keys=True)
+    dp.atomic_write_text(checkpoint_file, json.dumps(payload, sort_keys=True))
 
 
 def clear_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> None:
@@ -426,12 +416,10 @@ def normalize(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def write_raw_page(raw_root: Path, run_id: int, page: int, rows: list[dict[str, Any]]) -> Path:
-    raw_root.mkdir(parents=True, exist_ok=True)
     raw_path = raw_root / f"recent_{run_id}_page_{page:04d}.jsonl"
-    with raw_path.open("w", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row, default=str, sort_keys=True))
-            handle.write("\n")
+    dp.atomic_write_text(
+        raw_path, "".join(json.dumps(row, default=str, sort_keys=True) + "\n" for row in rows)
+    )
     return raw_path
 
 
@@ -504,7 +492,8 @@ def append_parquet_partitions(
         part_dir.mkdir(parents=True, exist_ok=True)
         out_file = part_dir / f"scrobbles_{run_id}_p{page:04d}.parquet"
         table = pa.Table.from_pandas(group.drop(columns=["year", "month"]), preserve_index=False)
-        pq.write_table(table, out_file)
+        with dp.atomic_output(out_file) as tmp:
+            pq.write_table(table, tmp)
         written += len(group)
     return written
 
@@ -541,10 +530,14 @@ def resolve_start(
 
 def main() -> None:
     args = parse_args()
+    try:
+        dp.require_root(DATALAKE_ROOT)
+    except dp.DatalakeUnavailable as exc:
+        raise SystemExit(str(exc)) from None
     user = load_env("LASTFM_USER")
     api_key = load_env("LASTFM_API_KEY")
-    raw_root = Path(os.getenv("DATALAKE_RAW_ROOT", str(DEFAULT_RAW_ROOT))) / "lastfm"
-    curated_root = Path(os.getenv("DATALAKE_CURATED_ROOT", str(DEFAULT_CURATED_ROOT))) / "lastfm" / "scrobbles"
+    raw_root = DEFAULT_RAW_ROOT / "lastfm"
+    curated_root = DEFAULT_CURATED_ROOT / "lastfm" / "scrobbles"
 
     # Keep the raw persisted value separately so staleness detection can
     # distinguish "first ever run" from "last scrobble was N days ago".

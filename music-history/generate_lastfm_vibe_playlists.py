@@ -6,25 +6,25 @@ from __future__ import annotations
 import csv
 import json
 import math
-import os
 import re
 import unicodedata
 import zipfile
 from collections import defaultdict
 from dataclasses import dataclass
-from pathlib import Path
+from datetime import date
 from statistics import median
 from typing import Any
 
+import datalake_paths as dp
 import duckdb
 
-ROOT = Path(
-    os.environ.get("DATALAKE_ROOT", "/Volumes/MoErMedia/datalake.me")
-).expanduser()
+ROOT = dp.configured_root()
 LASTFM_GLOB = str(ROOT / "curated/lastfm/scrobbles/**/*.parquet")
 APPLE_TRACKS_ZIP = ROOT / "raw/apple-music/Apple Music Library Tracks.json.zip"
 APPLE_ACTIVITY_PARQUET = ROOT / "raw/apple-music/apple_music_play_activity.parquet"
-OUTPUT_DIR = ROOT / "artifacts/lastfm-vibe-playlists-2026-07-22"
+# Each run publishes a new dated folder; earlier artifacts (for example
+# lastfm-vibe-playlists-2026-07-22) are historical and never rewritten.
+OUTPUT_DIR = ROOT / "artifacts" / f"lastfm-vibe-playlists-{date.today().isoformat()}"
 APPLE_STOREFRONT = "us"
 
 EXCLUDED_TRACKS = {
@@ -1049,12 +1049,13 @@ def write_readme(results: list[dict[str, Any]], summary: dict[str, Any]) -> None
 
 
 def main() -> None:
-    if not ROOT.is_dir() or (
-        str(ROOT).startswith("/Volumes/MoErMedia/")
-        and not os.path.ismount("/Volumes/MoErMedia")
-    ):
-        raise RuntimeError(f"Datalake is not mounted: {ROOT}")
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        dp.require_root(ROOT)
+    except dp.DatalakeUnavailable as exc:
+        raise SystemExit(str(exc)) from None
+    if OUTPUT_DIR.exists():
+        raise SystemExit(f"{OUTPUT_DIR} already exists; refusing to rewrite an existing artifact.")
+    OUTPUT_DIR.mkdir(parents=True)
     rows, summary = load_lastfm_stats()
     by_artist = enrich_stats(rows)
     globally_used: set[tuple[str, str]] = set()

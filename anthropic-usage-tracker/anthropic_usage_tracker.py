@@ -16,6 +16,7 @@ from urllib import error as urlerror
 from urllib import parse as urlparse
 from urllib import request as urlrequest
 
+import datalake_paths as dp
 import duckdb
 
 API_BASE = "https://api.anthropic.com"
@@ -60,8 +61,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--datalake-root",
-        default="~/datalake.me",
-        help="Root path for datalake outputs (default: ~/datalake.me)",
+        default=None,
+        help="Verified datalake root (default: $DATALAKE_ROOT or /Volumes/MoErMedia/datalake.me)",
     )
     parser.add_argument(
         "--api-key-env",
@@ -381,9 +382,7 @@ def parse_console_csv(path: Path, snapshot_day: date) -> list[dict[str, Any]]:
 
 
 def write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True, default=str)
+    dp.atomic_write_text(path, json.dumps(payload, indent=2, sort_keys=True, default=str))
 
 
 def write_parquet(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -397,10 +396,11 @@ def write_parquet(path: Path, rows: list[dict[str, Any]]) -> None:
     con = duckdb.connect()
     try:
         in_path = str(tmp_path).replace("'", "''")
-        out_path = str(path).replace("'", "''")
-        con.execute(
-            f"COPY (SELECT * FROM read_json_auto('{in_path}')) TO '{out_path}' (FORMAT PARQUET)"
-        )
+        with dp.atomic_output(path) as staged:
+            out_path = str(staged).replace("'", "''")
+            con.execute(
+                f"COPY (SELECT * FROM read_json_auto('{in_path}')) TO '{out_path}' (FORMAT PARQUET)"
+            )
     finally:
         con.close()
         tmp_path.unlink(missing_ok=True)
@@ -493,7 +493,10 @@ def main() -> None:
     snapshot_day = parse_snapshot_date(args.date)
     start_iso, end_iso = build_time_bounds(snapshot_day)
 
-    datalake_root = Path(args.datalake_root).expanduser()
+    try:
+        datalake_root = dp.require_root(Path(args.datalake_root) if args.datalake_root else None)
+    except dp.DatalakeUnavailable as exc:
+        raise SystemExit(str(exc)) from None
     raw_usage_dir = datalake_root / "raw" / "anthropic" / "usage_report" / f"date={snapshot_day.isoformat()}"
     raw_cost_dir = datalake_root / "raw" / "anthropic" / "cost_report" / f"date={snapshot_day.isoformat()}"
 

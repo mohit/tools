@@ -299,7 +299,10 @@ def main():
         print("After authorizing, use the 'refresh_token' from the response.")
 
         print("\n--- Pulling Strava Data ---")
-        st_export_dir = strava_dir / "strava-export"
+        # The puller verifies the datalake and defaults to $DATALAKE_ROOT/raw/strava.
+        import datalake_paths as dp
+
+        st_export_dir = dp.raw("strava")
         run_cmd(["python3", "strava_pull.py", "--out-dir", str(st_export_dir)],
                 cwd=strava_dir, env=st_env)
         run_cmd(["python3", "reflect.py", "--database", str(db_path), "import-strava", str(st_export_dir)],

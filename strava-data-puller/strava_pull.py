@@ -4,12 +4,12 @@ import datetime as dt
 import json
 import os
 import shlex
-import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
 
+import datalake_paths as dp
 import duckdb
 import requests
 
@@ -297,25 +297,20 @@ def request_json(endpoint: str, token: str, params: dict | None = None) -> dict 
     raise SystemExit(f"Rate limit exceeded after {MAX_RETRIES} retries. Try again later.")
 
 
+# Raw files may share inodes with preserved historical versions, so every
+# write publishes a new file atomically instead of modifying one in place.
 def write_json(path: Path, payload: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
+    dp.atomic_write_text(path, json.dumps(payload, indent=2, sort_keys=True))
 
 
 def write_ndjson(path: Path, payloads: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        for payload in payloads:
-            handle.write(json.dumps(payload, sort_keys=True))
-            handle.write("\n")
+    dp.atomic_write_text(
+        path, "".join(json.dumps(payload, sort_keys=True) + "\n" for payload in payloads)
+    )
 
 
 def append_ndjson(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, sort_keys=True))
-        handle.write("\n")
+    dp.atomic_append_text(path, json.dumps(payload, sort_keys=True) + "\n")
 
 
 def load_existing_activities(out_dir: Path) -> tuple[list[dict], int | None]:
@@ -619,7 +614,7 @@ def _copy_parquet_to_curated(out_dir: Path, curated_dir: Path) -> None:
     for name in _CURATED_PARQUET_FILES:
         src = out_dir / name
         if src.exists():
-            shutil.copy2(src, curated_dir / name)
+            dp.publish_file(src, curated_dir / name)
             copied.append(name)
     if copied:
         print(f"Copied {len(copied)} parquet file(s) to curated dir: {curated_dir}")
@@ -720,22 +715,17 @@ def export_parquet(out_dir: Path) -> None:
             """
         )
 
-    con.execute(
-        "COPY activities TO ? (FORMAT 'parquet')",
-        [str(out_dir / "activities.parquet")],
-    )
-    con.execute("COPY athlete TO ? (FORMAT 'parquet')", [str(out_dir / "athlete.parquet")])
-    con.execute("COPY stats TO ? (FORMAT 'parquet')", [str(out_dir / "stats.parquet")])
+    def copy_to(table: str, name: str) -> None:
+        with dp.atomic_output(out_dir / name) as tmp:
+            con.execute(f"COPY {table} TO ? (FORMAT 'parquet')", [str(tmp)])
+
+    copy_to("activities", "activities.parquet")
+    copy_to("athlete", "athlete.parquet")
+    copy_to("stats", "stats.parquet")
     if (out_dir / "activity_details.ndjson").exists():
-        con.execute(
-            "COPY activity_details TO ? (FORMAT 'parquet')",
-            [str(out_dir / "activity_details.parquet")],
-        )
+        copy_to("activity_details", "activity_details.parquet")
     if (out_dir / "activity_streams.ndjson").exists():
-        con.execute(
-            "COPY activity_streams TO ? (FORMAT 'parquet')",
-            [str(out_dir / "activity_streams.parquet")],
-        )
+        copy_to("activity_streams", "activity_streams.parquet")
 
 
 def parse_types(raw_types: str | None) -> set[str]:
@@ -746,17 +736,18 @@ def parse_types(raw_types: str | None) -> set[str]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Pull Strava data locally")
-    parser.add_argument("--out-dir", default="./strava-export")
+    parser.add_argument(
+        "--out-dir",
+        default=None,
+        help="Raw output directory (default: $DATALAKE_ROOT/raw/strava). Must be inside the datalake.",
+    )
     parser.add_argument(
         "--curated-dir",
-        default=os.environ.get(
-            "DATALAKE_STRAVA_CURATED_ROOT",
-            str(Path.home() / "datalake.me" / "curated" / "strava"),
-        ),
+        default=None,
         help=(
-            "Directory to copy exported parquet files into after each sync. "
-            "Defaults to DATALAKE_STRAVA_CURATED_ROOT env var, then "
-            "~/datalake.me/curated/strava. Pass empty string to disable."
+            "Directory to publish exported parquet files into after each sync "
+            "(default: $DATALAKE_ROOT/curated/strava). Must be inside the datalake. "
+            "Pass an empty string to disable."
         ),
     )
     parser.add_argument("--types", default=None)
@@ -821,13 +812,21 @@ def main() -> None:
             print(f"- {var}: {sources[var]}")
         return
 
+    # Verify the datalake disk before contacting Strava or creating anything.
+    try:
+        out_dir = dp.within_root(args.out_dir or dp.raw("strava"))
+        curated_dir = (
+            None if args.curated_dir == "" else dp.within_root(args.curated_dir or dp.curated("strava"))
+        )
+    except dp.DatalakeUnavailable as exc:
+        raise SystemExit(str(exc)) from None
+
     client_id = credentials["STRAVA_CLIENT_ID"]
     client_secret = credentials["STRAVA_CLIENT_SECRET"]
     refresh_token = credentials["STRAVA_REFRESH_TOKEN"]
 
     access_token = get_access_token(client_id, client_secret, refresh_token)
 
-    out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Load existing activities for incremental sync
@@ -911,8 +910,7 @@ def main() -> None:
 
     if not args.skip_parquet:
         export_parquet(out_dir)
-        if args.curated_dir:
-            curated_dir = Path(args.curated_dir)
+        if curated_dir is not None:
             curated_dir.mkdir(parents=True, exist_ok=True)
             _copy_parquet_to_curated(out_dir, curated_dir)
 

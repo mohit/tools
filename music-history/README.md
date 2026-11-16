@@ -15,9 +15,7 @@ Ingests music listening data (Last.fm + Apple Music), processes it, and stores i
 |----------|----------|---------|-------------|
 | `LASTFM_USER` | Yes (Last.fm) | — | Last.fm username |
 | `LASTFM_API_KEY` | Yes (Last.fm) | — | [Get one here](https://www.last.fm/api/account/create) |
-| `DATALAKE_RAW_ROOT` | No | `~/datalake.me/raw` | Root for raw data |
-| `DATALAKE_CURATED_ROOT` | No | `~/datalake.me/curated` | Root for curated parquet |
-| `DATALAKE_ROOT` | No | `~/datalake.me` | Used by legacy ingest scripts |
+| `DATALAKE_ROOT` | No | `/Volumes/MoErMedia/datalake.me` | Verified datalake root; raw, curated, state, catalog and artifacts derive from it |
 | `APPLE_MUSIC_DEVELOPER_TOKEN` | No | — | MusicKit developer token |
 | `APPLE_MUSIC_USER_TOKEN` | No | — | MusicKit user token |
 
@@ -36,12 +34,13 @@ python scripts/lastfm_ingest.py
 ```
 
 Incremental by default:
-- Uses `~/.local/share/datalake/lastfm_last_uts.txt` as the primary cursor.
+- Uses `$DATALAKE_ROOT/state/music-history/lastfm_last_uts.txt` as the primary cursor.
 - Falls back to scanning curated parquet for latest `uts` if the state file is missing/invalid.
 - **Missing or corrupted state file triggers a full-history backfill** (from unix epoch 0) rather
   than an arbitrary recent window. If prior curated data exists without an interrupted multi-page
   run, the latest scrobble timestamp in parquet is used as the incremental start instead.
-- Resumes interrupted runs from `~/.local/share/datalake/lastfm_ingest_checkpoint.json` unless `--no-resume` is set.
+- Resumes interrupted runs from `$DATALAKE_ROOT/state/music-history/lastfm_ingest_checkpoint.json` unless `--no-resume` is set.
+- `music-history/main.py` is retired; `scripts/lastfm_ingest.py` is the only Last.fm writer.
 - Retries transient HTTP/network failures (including 5xx and timeouts) with exponential backoff.
 
 ### Options
@@ -114,7 +113,7 @@ python check_apple_music_privacy_export.py --max-age-days 45
 python apple_music_musickit_sync.py
 ```
 
-Stores raw JSON + curated parquet at `$DATALAKE_RAW_ROOT/apple-music/musickit/`.
+Stores raw JSON + curated parquet at `$DATALAKE_ROOT/raw/apple-music/musickit/`.
 
 ## Local export from Music.app
 
@@ -127,7 +126,7 @@ python ingest_apple_music.py      # Ingest into curated parquet
 
 ```sql
 SELECT artist, track, COUNT(*) as plays
-FROM read_parquet('~/datalake.me/curated/lastfm/scrobbles/year=*/month=*/*.parquet', hive_partitioning=true)
+FROM read_parquet('/Volumes/MoErMedia/datalake.me/curated/lastfm/scrobbles/year=*/month=*/*.parquet', hive_partitioning=true)
 GROUP BY artist, track
 ORDER BY plays DESC
 LIMIT 20;

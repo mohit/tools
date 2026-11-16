@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "duckdb>=1.0.0",
+  "datalake-paths",
 ]
 
 [project.optional-dependencies]
@@ -19,3 +20,6 @@ google-takeout-focused = "google_takeout_focused:main"
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.uv.sources]
+datalake-paths = { path = "../datalake-paths", editable = true }
