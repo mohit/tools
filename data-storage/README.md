@@ -59,7 +59,7 @@ remain; they contain no migrated personal payloads.
 ## Recovery
 
 The backup is a gzip-compressed tar encrypted with AES-256-GCM. Its format is
-`MOERBACKUP1\n`, 12-byte nonce, ciphertext, then a 16-byte authentication tag.
+ASCII `MOERBACKUP1` followed by a newline, a 12-byte nonce, ciphertext, then a 16-byte authentication tag.
 The magic header is authenticated as additional data. A random 256-bit key is
 stored in the macOS login Keychain under `org.moer.datalake.backup.<run-id>` for
 account `mohit`. It is never stored on either data disk or printed by the utility.
