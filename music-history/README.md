@@ -132,3 +132,16 @@ GROUP BY artist, track
 ORDER BY plays DESC
 LIMIT 20;
 ```
+
+## Consolidated storage
+
+Data now belongs under `/Volumes/MoErMedia/datalake.me`; export freshness metadata
+is stored in `state/music-history/apple_music_export_metadata.json`. Original
+versions and file provenance are recorded by the migration manifest. See
+[storage and recovery](../data-storage/README.md). Runtime path rollout and
+moer-mini scheduling are deferred: do not execute legacy ingestion defaults.
+
+`generate_lastfm_vibe_playlists.py` was recovered from edi700. Its original
+SHA-256 is in the migration manifest; only root resolution and a missing-disk
+guard were changed during relocation. It uses `DATALAKE_ROOT` or the canonical
+MoErMedia root and performs no network calls.

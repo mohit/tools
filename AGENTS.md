@@ -1,7 +1,7 @@
 # AGENTS.md — mohit/tools
 
 ## What this repo is
-Personal data tools — ingest, transform, and reflect on health/fitness/music/location data. Each top-level folder is a standalone tool. Data flows into a personal datalake (raw → curated parquet) on iCloud.
+Personal data tools — ingest, transform, and reflect on health/fitness/music/location data. Each top-level folder is a standalone tool. Data is consolidated into a personal datalake (raw → curated parquet) on MoErMedia.
 
 ## Repo structure
 ```
@@ -25,9 +25,11 @@ strava-data-puller/      # Strava API → raw JSON + curated parquet (Python, Du
 - **No monorepo build system** — each tool is independent
 
 ## Datalake conventions
-- **Raw data:** `~/datalake.me/raw/<source>/`
-- **Curated data:** `~/datalake.me/curated/<source>/` (parquet)
-- **State files:** `~/.local/share/datalake/` (last sync timestamps, etc.)
+- **Raw data:** `/Volumes/MoErMedia/datalake.me/raw/<source>/`
+- **Curated data:** `/Volumes/MoErMedia/datalake.me/curated/<source>/` (parquet)
+- **State files:** `/Volumes/MoErMedia/datalake.me/state/<tool>/` (last sync timestamps, etc.)
+- Read `data-storage/README.md` before storage changes. Preserve immutable hard-linked payloads; publish replacements atomically.
+- Runtime defaults and moer-mini execution are a separate rollout; do not run legacy ingestion during migration.
 - Raw = immutable API dumps. Curated = cleaned, typed, deduplicated parquet.
 
 ## Coding conventions

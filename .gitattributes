@@ -1,0 +1,3 @@
+
+# Preserve byte-identical retired source snapshots, including original whitespace.
+data-storage/retired-datalake-entrypoints/*.source -text -diff

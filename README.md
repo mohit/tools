@@ -15,6 +15,12 @@ A collection of personal data and productivity tools. Each tool lives in its own
 - `strava-data-puller/` — Pull Strava activities into DuckDB and Parquet
 - `scripts/gcal_backup.py` — Weekly Google Calendar backup via gog CLI
 
+## Data storage
+
+Personal exports and datalake data are consolidated on `/Volumes/MoErMedia/datalake.me`.
+See [data-storage/README.md](data-storage/README.md) for the layout, migration commands,
+verification and recovery. Execution on moer-mini is a separate deployment step.
+
 ## Repository Layout
 
 - Each tool is a top-level folder.
