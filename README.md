@@ -4,6 +4,7 @@ A collection of personal data and productivity tools. Each tool lives in its own
 
 ## Tools
 
+- `amazon-orders-sync/` — Chrome + Safari extension (shared code) that syncs Amazon orders, items and returns to a Tailscale-hosted ingest server, caching while offline
 - `anthropic-usage-tracker/` — Track Anthropic API token usage and estimated cost into daily datalake snapshots
 - `apple-health-export/` — Export and analyze Apple Health and Fitness data on macOS
 - `firefox-2fa-autofill/` — Browser extension that auto-fills 2FA codes from Google Voice SMS
