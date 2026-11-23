@@ -89,7 +89,13 @@ def load_env(var_name: str) -> str:
     return value
 
 
-def load_last_uts_if_valid(state_file: Path = STATE_FILE) -> int | None:
+# Path parameters default to None and resolve the module constant at call time.
+# A ``= STATE_FILE`` default would be frozen at import, so tests that patch the
+# constant would still write to the real datalake.
+
+
+def load_last_uts_if_valid(state_file: Path | None = None) -> int | None:
+    state_file = STATE_FILE if state_file is None else state_file
     if not state_file.exists():
         return None
     try:
@@ -98,7 +104,7 @@ def load_last_uts_if_valid(state_file: Path = STATE_FILE) -> int | None:
         return None
 
 
-def load_last_uts(state_file: Path = STATE_FILE) -> int:
+def load_last_uts(state_file: Path | None = None) -> int:
     """Return the saved last-ingested Unix timestamp, defaulting to 0.
 
     **First-run / missing-state behaviour:** when the state file does not exist
@@ -114,17 +120,19 @@ def load_last_uts(state_file: Path = STATE_FILE) -> int:
     return loaded if loaded is not None else 0
 
 
-def save_last_uts(value: int, state_file: Path = STATE_FILE) -> None:
+def save_last_uts(value: int, state_file: Path | None = None) -> None:
+    state_file = STATE_FILE if state_file is None else state_file
     dp.atomic_write_text(state_file, str(value))
 
 
-def load_persisted_uts(state_file: Path = STATE_FILE) -> int | None:
+def load_persisted_uts(state_file: Path | None = None) -> int | None:
     """Return the persisted last-scrobble UTS, or *None* when no state file exists yet.
 
     Unlike :func:`load_last_uts`, this never synthesises a fallback value, so
     callers can distinguish "never seen a scrobble" from "last scrobble was N
     days ago".
     """
+    state_file = STATE_FILE if state_file is None else state_file
     if state_file.exists():
         try:
             return int(state_file.read_text().strip())
@@ -134,13 +142,14 @@ def load_persisted_uts(state_file: Path = STATE_FILE) -> int | None:
 
 
 def load_staleness_state(
-    staleness_file: Path = STALENESS_STATE_FILE,
+    staleness_file: Path | None = None,
 ) -> dict[str, Any]:
     """Load the persisted staleness state dict.
 
     Returns ``{"stale": False, "stale_since": None}`` if the file is absent
     or unreadable.
     """
+    staleness_file = STALENESS_STATE_FILE if staleness_file is None else staleness_file
     if staleness_file.exists():
         try:
             with staleness_file.open("r", encoding="utf-8") as handle:
@@ -152,15 +161,16 @@ def load_staleness_state(
 
 def save_staleness_state(
     state: dict[str, Any],
-    staleness_file: Path = STALENESS_STATE_FILE,
+    staleness_file: Path | None = None,
 ) -> None:
+    staleness_file = STALENESS_STATE_FILE if staleness_file is None else staleness_file
     dp.atomic_write_text(staleness_file, json.dumps(state, sort_keys=True))
 
 
 def update_catalog_staleness(
     stale: bool,
     stale_since: str | None,
-    catalog_file: Path = CATALOG_FILE,
+    catalog_file: Path | None = None,
 ) -> None:
     """Upsert ``stale`` and ``stale_since`` fields in the Last.fm YAML catalog.
 
@@ -169,6 +179,7 @@ def update_catalog_staleness(
     touched; the rest of the file is preserved byte-for-byte.
     If the file does not exist the function returns silently.
     """
+    catalog_file = CATALOG_FILE if catalog_file is None else catalog_file
     if not catalog_file.exists():
         return
 
@@ -208,7 +219,8 @@ def update_catalog_staleness(
     dp.atomic_write_text(catalog_file, "".join(out))
 
 
-def load_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> dict[str, Any] | None:
+def load_checkpoint(checkpoint_file: Path | None = None) -> dict[str, Any] | None:
+    checkpoint_file = CHECKPOINT_FILE if checkpoint_file is None else checkpoint_file
     if not checkpoint_file.exists():
         return None
     try:
@@ -224,8 +236,9 @@ def save_checkpoint(
     next_page: int,
     run_id: int,
     max_uts_seen: int | None,
-    checkpoint_file: Path = CHECKPOINT_FILE,
+    checkpoint_file: Path | None = None,
 ) -> None:
+    checkpoint_file = CHECKPOINT_FILE if checkpoint_file is None else checkpoint_file
     payload = {
         "from_uts": from_uts,
         "next_page": next_page,
@@ -236,7 +249,8 @@ def save_checkpoint(
     dp.atomic_write_text(checkpoint_file, json.dumps(payload, sort_keys=True))
 
 
-def clear_checkpoint(checkpoint_file: Path = CHECKPOINT_FILE) -> None:
+def clear_checkpoint(checkpoint_file: Path | None = None) -> None:
+    checkpoint_file = CHECKPOINT_FILE if checkpoint_file is None else checkpoint_file
     if checkpoint_file.exists():
         checkpoint_file.unlink()
 
