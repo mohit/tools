@@ -1,0 +1,19 @@
+{
+  "name": "amazon-orders-sync-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome + Safari extension that syncs Amazon orders, items and returns to a Tailscale-hosted server",
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.mjs all",
+    "build:chrome": "node scripts/build.mjs chrome",
+    "build:safari": "node scripts/build.mjs safari",
+    "safari:xcode": "node scripts/build.mjs safari && xcrun safari-web-extension-converter dist/safari --project-location dist/xcode --app-name \"Amazon Orders Sync\" --bundle-identifier com.mohit.tools.amazon-orders-sync --macos-only --no-open --no-prompt --force",
+    "test": "node --test test/*.test.js",
+    "e2e": "node scripts/build.mjs chrome && node test/e2e/chrome-e2e.mjs"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.8",
+    "jsdom": "^26.1.0"
+  }
+}

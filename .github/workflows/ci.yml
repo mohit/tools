@@ -12,6 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/ruff-action@v3
+        with:
+          # Pinned: ruff 0.16+ enables new default rules that flag ~100 existing findings
+          # across the repo. Bump deliberately together with those fixes.
+          version: "0.15.12"
 
   test:
     runs-on: ubuntu-latest
@@ -19,6 +23,7 @@ jobs:
       fail-fast: false
       matrix:
         tool:
+          - amazon-orders-sync/server
           - anthropic-usage-tracker
           - apple-health-export
           - google-takeout-focused
@@ -38,3 +43,17 @@ jobs:
           uv sync --dev 2>/dev/null || uv pip install -e ".[dev]" 2>/dev/null || uv pip install -e .
           uv pip install pytest
           python -m pytest tests/ -v --tb=short || echo "No tests or tests failed"
+
+  extension:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: amazon-orders-sync/extension
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm test
+      - run: node scripts/build.mjs all
