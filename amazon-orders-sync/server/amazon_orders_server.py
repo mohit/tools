@@ -55,6 +55,10 @@ SCHEMA_VERSION = 1
 MAX_BODY_BYTES = 32 * 1024 * 1024
 MAX_DECOMPRESSED_BYTES = 256 * 1024 * 1024
 BATCH_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+# Browser origins that may call the API: the extension's own pages (Chrome/Edge, Safari, Firefox).
+EXTENSION_ORIGIN_RE = re.compile(
+    r"^(chrome-extension|safari-web-extension|moz-extension)://[A-Za-z0-9._-]+$"
+)
 RECORD_TYPES = {"order", "return"}
 
 # --- schema ------------------------------------------------------------------------------
@@ -192,6 +196,14 @@ class Config:
     )
     export_delay_s: float = 15.0
     allow_no_auth: bool = False
+    # Extra exact browser origins allowed besides extension pages (comma list in env).
+    allowed_origins: frozenset[str] = field(
+        default_factory=lambda: frozenset(
+            o.strip().rstrip("/")
+            for o in os.environ.get("AMAZON_SYNC_ALLOWED_ORIGINS", "").split(",")
+            if o.strip()
+        )
+    )
 
 
 # --- value coercion ------------------------------------------------------------------------
@@ -746,17 +758,33 @@ def create_app(config: Config, store: Store | None = None) -> Flask:
                 return jsonify(error="unauthorized"), 401
         return None
 
+    def origin_allowed(origin: str) -> bool:
+        return bool(EXTENSION_ORIGIN_RE.match(origin)) or origin in config.allowed_origins
+
+    @app.before_request
+    def reject_foreign_origins() -> Response | None:
+        # Browsers attach Origin to cross-site requests. This API holds personal data and has no
+        # web UI, so only the extension's pages (and explicitly configured origins) may call it
+        # from a browser. Without this, a web page could POST records with a "simple" request
+        # (no preflight), or read everything when the server runs with --no-auth.
+        # Non-browser clients (curl, scripts) send no Origin and are unaffected.
+        origin = request.headers.get("Origin")
+        if origin is not None and not origin_allowed(origin):
+            return jsonify(error="origin not allowed"), 403
+        return None
+
     @app.after_request
     def cors(resp: Response) -> Response:
-        # The extension calls from a chrome-extension:// or safari-web-extension:// origin.
-        # Auth is a bearer token (not cookies), so a wildcard origin is safe here.
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Headers"] = (
-            "Authorization, Content-Type, Content-Encoding"
-        )
-        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        resp.headers["Access-Control-Allow-Private-Network"] = "true"
-        resp.headers["Access-Control-Max-Age"] = "600"
+        origin = request.headers.get("Origin")
+        if origin and origin_allowed(origin):
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Access-Control-Allow-Headers"] = (
+                "Authorization, Content-Type, Content-Encoding"
+            )
+            resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            resp.headers["Access-Control-Allow-Private-Network"] = "true"
+            resp.headers["Access-Control-Max-Age"] = "600"
+        resp.headers["Vary"] = "Origin"
         return resp
 
     # CORS preflight (OPTIONS) is answered by Flask's automatic OPTIONS handling + the hook above.

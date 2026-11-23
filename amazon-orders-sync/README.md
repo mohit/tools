@@ -68,6 +68,7 @@ reboots, use [`server/launchd/com.mohit.tools.amazon-orders-server.plist`](serve
 |---|---|---|
 | `AMAZON_SYNC_TOKEN` | — (required unless `--no-auth`) | Bearer token the extension sends |
 | `AMAZON_SYNC_TAILSCALE_USERS` | — | Optional comma list of tailnet logins allowed (checks the `Tailscale-User-Login` header set by `tailscale serve`) |
+| `AMAZON_SYNC_ALLOWED_ORIGINS` | — | Extra browser origins allowed to call the API. Extension pages (`chrome-extension://`, `safari-web-extension://`, `moz-extension://`) are always allowed; any other browser `Origin` gets 403, so web pages can't read or write your orders even with `--no-auth`. Clients without an `Origin` (curl, scripts) are unaffected. |
 | `DATALAKE_ROOT` | `/Volumes/MoErMedia/datalake.me` | Verified datalake root (see [`datalake-paths/`](../datalake-paths/README.md)). Raw batches go to `raw/amazon/batches/YYYY/MM/DD/`, parquet to `curated/amazon/`, the serving DuckDB to `databases/amazon-orders-sync/amazon.duckdb` |
 | `AMAZON_SYNC_HOST` / `AMAZON_SYNC_PORT` | `127.0.0.1` / `8765` | Bind address |
 

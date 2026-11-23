@@ -40,15 +40,9 @@ This tool consolidates data from Apple Health and Strava into a unified DuckDB d
 
 ## Screenshots
 
-### Dashboard
-![Dashboard](docs/assets/screenshots/dashboard.png)
-
-### Monthly Analysis
-![Analyze](docs/assets/screenshots/analyze.png)
-
-### Goals Editor
-![Goals](docs/assets/screenshots/goals.png)
-
+None are committed: screenshots of a personal dashboard are data (see the data policy in
+`AGENTS.md`). To show the UI, run it against synthetic data from `generate_sample_data.py`
+and keep the images out of the repo.
 
 ## Installation
 

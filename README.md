@@ -14,7 +14,8 @@ A collection of personal data and productivity tools. Each tool lives in its own
 - `personal-assistant-ios/` — iOS app with Apple Health, CloudKit sync, and Google services integration
 - `personal-data-reflection/` — Health and fitness data dashboard (Flask + DuckDB)
 - `strava-data-puller/` — Pull Strava activities into DuckDB and Parquet
-- `scripts/gcal_backup.py` — Weekly Google Calendar backup via gog CLI
+- `scripts/gcal_backup.py` — Weekly Google Calendar backup via gog CLI (calendars listed in `$DATALAKE_ROOT/state/gcal-backup/calendars.json`, not in the repo)
+- `scripts/check_public_safety.py` — CI check: no personal data or secrets in tracked files
 
 - `time-horizon-projection/` — Render METR-style horizon charts and projections from benchmark YAML
 
