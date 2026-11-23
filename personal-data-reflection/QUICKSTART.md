@@ -120,13 +120,13 @@ The tool automatically generates insights like:
 
 Your data is stored locally at:
 ```
-./data/reflection.duckdb
+/Volumes/MoErMedia/datalake.me/databases/personal-data-reflection/reflection.duckdb
 ```
 
 You can query it directly using DuckDB:
 
 ```bash
-duckdb data/reflection.duckdb
+duckdb /Volumes/MoErMedia/datalake.me/databases/personal-data-reflection/reflection.duckdb
 ```
 
 ```sql
@@ -147,7 +147,7 @@ Edit `config.yaml` to customize:
 
 **No data showing up?**
 - Check that you've imported data: `ls data/`
-- Verify the database exists: `ls data/reflection.duckdb`
+- Verify the database exists: `ls /Volumes/MoErMedia/datalake.me/databases/personal-data-reflection/reflection.duckdb`
 - Re-import with verbose output to see any errors
 
 **Dashboard not loading?**

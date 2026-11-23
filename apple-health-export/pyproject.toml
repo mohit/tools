@@ -22,6 +22,7 @@ classifiers = [
 dependencies = [
     "duckdb>=1.1.0",
     "flask>=3.0.0",
+    "datalake-paths",
 ]
 
 [project.optional-dependencies]
@@ -66,3 +67,6 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
 ]
+
+[tool.uv.sources]
+datalake-paths = { path = "../datalake-paths", editable = true }

@@ -6,12 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Personal Health Reflection</title>
 
+    <!-- Served at / locally and under /reflection/ on the tailnet: keep a trailing
+         slash so the relative static/ and api/ URLs resolve under the prefix. -->
+    <script>if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' + location.search + location.hash);</script>
+
     <!-- Design System -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-tokens.css') }}?v=2">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v=2">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}?v=2">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/correlation-cards.css') }}?v=2">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard-enhanced.css') }}?v=2">
+    <link rel="stylesheet" href="static/css/design-tokens.css?v=2">
+    <link rel="stylesheet" href="static/css/main.css?v=2">
+    <link rel="stylesheet" href="static/css/components.css?v=2">
+    <link rel="stylesheet" href="static/css/correlation-cards.css?v=2">
+    <link rel="stylesheet" href="static/css/dashboard-enhanced.css?v=2">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
@@ -68,9 +72,9 @@
     </div>
 
     <!-- Application Logic -->
-    <script src="{{ url_for('static', filename='js/dashboard-math.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/components.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=2"></script>
+    <script src="static/js/dashboard-math.js?v=2"></script>
+    <script src="static/js/components.js?v=2"></script>
+    <script src="static/js/app.js?v=2"></script>
 </body>
 
 </html>

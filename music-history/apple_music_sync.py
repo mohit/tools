@@ -7,19 +7,10 @@ from pathlib import Path
 import apple_music_monitor as monitor
 import apple_music_musickit_sync as musickit
 import apple_music_processor as processor
+from config import CURATED_ROOT, RAW_ROOT, STATE_ROOT, require_datalake  # noqa: F401
 
-DEFAULT_RAW_BASE = Path(
-    os.environ.get(
-        "DATALAKE_RAW_ROOT",
-        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports",
-    )
-)
-DEFAULT_CURATED_BASE = Path(
-    os.environ.get(
-        "DATALAKE_CURATED_ROOT",
-        "/Users/mohit/Library/Mobile Documents/com~apple~CloudDocs/Data Exports/datalake/curated",
-    )
-)
+DEFAULT_RAW_BASE = RAW_ROOT
+DEFAULT_CURATED_BASE = CURATED_ROOT
 DEFAULT_PLAY_ACTIVITY_RAW = DEFAULT_RAW_BASE / "apple-music"
 DEFAULT_PLAY_ACTIVITY_CURATED = DEFAULT_CURATED_BASE / "apple-music" / "play-activity"
 DEFAULT_MUSICKIT_RAW = DEFAULT_RAW_BASE / "apple-music" / "musickit"
@@ -52,6 +43,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def run_sync(args: argparse.Namespace) -> tuple[dict, int]:
+    require_datalake()
     summary: dict = {
         "play_activity": {
             "processed": False,

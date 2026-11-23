@@ -2,7 +2,8 @@
 """Weekly Google Calendar backup via gog CLI.
 
 Exports configured calendars to dated JSON snapshots:
-~/datalake.me/raw/google-calendar/<calendar-name>/YYYY-MM-DD.json
+$DATALAKE_ROOT/raw/google-calendar/<calendar-name>/YYYY-MM-DD.json
+(DATALAKE_ROOT defaults to /Volumes/MoErMedia/datalake.me and is verified first).
 """
 
 from __future__ import annotations
@@ -17,6 +18,9 @@ import sys
 from datetime import date
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "datalake-paths"))
+import datalake_paths as dp
 
 CALENDARS = [
     {
@@ -53,7 +57,6 @@ ITEM_KEYS = ("items", "events")
 
 def parse_args() -> argparse.Namespace:
     default_account = os.environ.get("GOG_ACCOUNT", "mohit.ed@gmail.com")
-    default_root = Path.home() / "datalake.me" / "raw" / "google-calendar"
     parser = argparse.ArgumentParser(
         description="Back up configured Google Calendars into dated JSON snapshots."
     )
@@ -65,8 +68,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=default_root,
-        help="Snapshot root path (default: %(default)s).",
+        default=None,
+        help="Snapshot root inside the datalake (default: $DATALAKE_ROOT/raw/google-calendar).",
     )
     parser.add_argument(
         "--date",
@@ -185,9 +188,7 @@ def write_snapshot(
     calendar_id: str,
     events: list[dict[str, Any]],
 ) -> Path:
-    output_dir = output_root / calendar_folder
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / f"{snapshot_date}.json"
+    output_file = output_root / calendar_folder / f"{snapshot_date}.json"
 
     payload = {
         "backup_date": snapshot_date,
@@ -200,15 +201,19 @@ def write_snapshot(
         "event_count": len(events),
         "events": events,
     }
-    output_file.write_text(
-        json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
-        encoding="utf-8",
+    dp.atomic_write_text(
+        output_file, json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
     )
     return output_file
 
 
 def main() -> int:
     args = parse_args()
+    try:
+        output_root = dp.within_root(args.output_root or dp.raw("google-calendar"))
+    except dp.DatalakeUnavailable as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
 
     if shutil.which("gog") is None:
         print("ERROR: gog CLI not found on PATH.", file=sys.stderr)
@@ -258,7 +263,7 @@ def main() -> int:
                 max_results=args.max_events_page,
             )
             path = write_snapshot(
-                output_root=args.output_root.expanduser(),
+                output_root=output_root,
                 snapshot_date=args.date,
                 account=args.account,
                 calendar_name=calendar["name"],

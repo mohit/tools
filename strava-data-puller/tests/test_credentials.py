@@ -604,8 +604,10 @@ class TestCredentials(TestCase):
         mock_fetch_athlete.return_value = 123
         mock_fetch_activities.return_value = []
 
+        # The datalake disk guard is exercised in datalake-paths; allow the temp dir here.
         try:
-            strava_pull.main()
+            with patch.object(strava_pull.dp, "within_root", side_effect=lambda p: Path(p)):
+                strava_pull.main()
         finally:
             out_dir.rmdir()
 

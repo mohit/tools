@@ -44,3 +44,9 @@ apple-health-export/apple_health_export/
 catalog.yaml
 music-history/apple_music_history.jsonl
 *.egg-info/
+
+# Local agent configuration and generated Safari projects
+.cursor/
+.claude/settings.local.json
+firefox-2fa-autofill/safari/
+time-horizon-projection/output/

@@ -156,7 +156,7 @@ const App = {
 
     fetchGoals: async function () {
         try {
-            const res = await fetch('/api/goals');
+            const res = await fetch('api/goals');
             this.state.goals = await res.json();
         } catch (e) {
             console.error('Failed to fetch goals', e);
@@ -213,7 +213,7 @@ const App = {
             const dateStr = this.state.date.toISOString().split('T')[0];
 
             // Fetch Summary (Monthly)
-            const summaryRes = await fetch(`/api/summary?period=month&date=${dateStr}`);
+            const summaryRes = await fetch(`api/summary?period=month&date=${dateStr}`);
             const summaryData = await summaryRes.json();
 
             if (summaryData.error) throw new Error(summaryData.error);
@@ -231,11 +231,11 @@ const App = {
             const startStr = monthStart.toISOString().split('T')[0];
             const endStr = monthEnd.toISOString().split('T')[0];
 
-            const dailyRes = await fetch(`/api/daily/${startStr}/${endStr}`);
+            const dailyRes = await fetch(`api/daily/${startStr}/${endStr}`);
             const dailyData = await dailyRes.json();
 
             // Fetch Insights for Dashboard
-            const insightRes = await fetch(`/api/insights/${dateStr.split('-')[0]}/${dateStr.split('-')[1]}`);
+            const insightRes = await fetch(`api/insights/${dateStr.split('-')[0]}/${dateStr.split('-')[1]}`);
             const insightData = await insightRes.json();
 
             // Merge insights into summaryData
@@ -519,7 +519,7 @@ const App = {
         `;
 
         try {
-            const res = await fetch(`/api/daily/${start.toISOString().split('T')[0]}/${end.toISOString().split('T')[0]}`);
+            const res = await fetch(`api/daily/${start.toISOString().split('T')[0]}/${end.toISOString().split('T')[0]}`);
             const data = await res.json();
 
             // Render Chart
@@ -572,12 +572,12 @@ const App = {
             });
 
             // Load correlations
-            const corrRes = await fetch(`/api/correlations/${start.toISOString().split('T')[0]}/${end.toISOString().split('T')[0]}`);
+            const corrRes = await fetch(`api/correlations/${start.toISOString().split('T')[0]}/${end.toISOString().split('T')[0]}`);
             const corrData = await corrRes.json();
             const corrContainer = document.getElementById('correlations-container');
 
             // Load patterns for Analyze view
-            const patRes = await fetch(`/api/patterns/${start.toISOString().split('T')[0]}/${end.toISOString().split('T')[0]}`);
+            const patRes = await fetch(`api/patterns/${start.toISOString().split('T')[0]}/${end.toISOString().split('T')[0]}`);
             const patData = await patRes.json();
             const patContainer = document.getElementById('patterns-container');
 
@@ -673,7 +673,7 @@ const App = {
         try {
             const year = this.state.date.getFullYear();
             const month = this.state.date.getMonth() + 1;
-            const res = await fetch(`/api/monthly/${year}/${month}`);
+            const res = await fetch(`api/monthly/${year}/${month}`);
             const data = await res.json();
 
             const renderSection = (title, items, tone) => {
@@ -747,7 +747,7 @@ const App = {
             const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
             const monthLabel = `${monthNames[selectedMonth]} ${selectedYear}`;
 
-            const res = await fetch(`/api/patterns/${startDate}/${endDate}`);
+            const res = await fetch(`api/patterns/${startDate}/${endDate}`);
             const data = await res.json();
 
             const renderDayList = (title, days) => `
@@ -833,7 +833,7 @@ const App = {
             const start = startDate.toISOString().split('T')[0];
             const end = endDate.toISOString().split('T')[0];
 
-            const res = await fetch(`/api/daily/${start}/${end}`);
+            const res = await fetch(`api/daily/${start}/${end}`);
             const data = await res.json();
 
             container.innerHTML = `
@@ -868,7 +868,7 @@ const App = {
 
     updateGoal: async function (metric, value) {
         try {
-            const res = await fetch('/api/goals', {
+            const res = await fetch('api/goals', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ metric, target: value })

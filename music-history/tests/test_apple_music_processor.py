@@ -1,8 +1,6 @@
-import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 import apple_music_processor as processor
 import duckdb
@@ -63,33 +61,15 @@ ORDER BY played_at_utc
             selected = processor.discover_csv(raw_root=tmp_path, explicit_file=None)
             self.assertEqual(selected, csv_path)
 
-    def test_default_roots_use_environment_variables(self) -> None:
-        with mock.patch.dict(
-            os.environ,
-            {
-                "DATALAKE_RAW_ROOT": "/tmp/custom-raw",
-                "DATALAKE_CURATED_ROOT": "/tmp/custom-curated",
-            },
-            clear=False,
-        ):
-            raw_root, curated_root = processor._default_roots()
+    def test_default_roots_derive_from_datalake_root(self):
+        import config
 
-        self.assertEqual(raw_root, Path("/tmp/custom-raw/apple-music"))
-        self.assertEqual(curated_root, Path("/tmp/custom-curated/apple-music/play-activity"))
+        raw_root, curated_root = processor._default_roots()
 
-    def test_default_roots_use_raw_root_for_curated_when_curated_env_missing(self) -> None:
-        with mock.patch.dict(
-            os.environ,
-            {
-                "DATALAKE_RAW_ROOT": "/tmp/custom-raw",
-            },
-            clear=True,
-        ):
-            raw_root, curated_root = processor._default_roots()
-
-        self.assertEqual(raw_root, Path("/tmp/custom-raw/apple-music"))
-        self.assertEqual(curated_root, Path("/tmp/custom-raw/datalake/curated/apple-music/play-activity"))
-
+        self.assertEqual(raw_root, config.DATALAKE_ROOT / "raw" / "apple-music")
+        self.assertEqual(
+            curated_root, config.DATALAKE_ROOT / "curated" / "apple-music" / "play-activity"
+        )
 
 if __name__ == "__main__":
     unittest.main()
