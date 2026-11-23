@@ -47,6 +47,21 @@ jobs:
         working-directory: ${{ matrix.tool }}
         run: uv run --no-sync python -m pytest tests/ -v --tb=short
 
+  # Shared storage code uses stdlib unittest rather than a pytest project.
+  # unittest exits non-zero on failures and when no tests are found.
+  storage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Test datalake-paths (stdlib only)
+        run: uv run --no-project --python 3.13 python -m unittest discover -s datalake-paths/tests -v
+      - name: Test data-storage (pinned requirements)
+        run: >-
+          uv run --no-project --python 3.13
+          --with-requirements data-storage/requirements.txt
+          python -m unittest discover -s data-storage/tests -v
+
   extension:
     runs-on: ubuntu-latest
     defaults:
