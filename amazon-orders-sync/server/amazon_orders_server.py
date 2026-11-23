@@ -5,14 +5,19 @@ Runs on an always-on machine in the tailnet. The extension POSTs batches of obse
 records (orders with their items, and returns); this server:
 
 1. writes every accepted batch, exactly as received, to the raw layer
-   (``~/datalake.me/raw/amazon/batches/YYYY/MM/DD/*.json.gz``, immutable);
-2. merges the records into a DuckDB database (``~/.local/share/datalake/amazon/amazon.duckdb``,
-   kept off iCloud on purpose) using "newest observation wins, never overwrite a value with
-   null" semantics;
-3. exports curated parquet (``~/datalake.me/curated/amazon/{orders,order_items,returns}.parquet``)
-   shortly after each ingest, written atomically so other tools can read it at any time.
+   (``$DATALAKE_ROOT/raw/amazon/batches/YYYY/MM/DD/*.json.gz``, immutable);
+2. merges the records into a DuckDB database
+   (``$DATALAKE_ROOT/databases/amazon-orders-sync/amazon.duckdb``) using "newest observation
+   wins, never overwrite a value with null" semantics;
+3. exports curated parquet (``$DATALAKE_ROOT/curated/amazon/{orders,order_items,returns}.parquet``)
+   shortly after each ingest, published atomically so other tools can read it at any time.
 
 Because (2) and (3) are derived from (1), ``rebuild`` can always regenerate them from raw.
+
+All default locations come from the shared ``datalake-paths`` package, which verifies the
+MoErMedia volume before anything is written (``DATALAKE_ROOT``, default
+``/Volumes/MoErMedia/datalake.me``). Passing all of ``--db``, ``--raw-dir`` and
+``--curated-dir`` runs against those paths only (tests, e2e) and never touches the lake.
 
 Subcommands::
 
@@ -34,13 +39,13 @@ import re
 import shutil
 import sys
 import threading
-import uuid
 import zlib
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import datalake_paths as dp
 import duckdb
 from flask import Flask, Response, jsonify, request
 
@@ -163,31 +168,18 @@ MONEY_TYPE = "DECIMAL(12,2)"
 # --- config ------------------------------------------------------------------------------
 
 
-def _env_path(name: str, default: Path) -> Path:
-    value = os.environ.get(name)
-    return Path(value).expanduser() if value else default
+TOOL = "amazon-orders-sync"
+SOURCE = "amazon"
+DB_FILENAME = "amazon.duckdb"
 
 
 @dataclass
 class Config:
-    raw_dir: Path = field(
-        default_factory=lambda: (
-            _env_path("DATALAKE_RAW_ROOT", Path.home() / "datalake.me" / "raw")
-            / "amazon"
-        )
-    )
-    curated_dir: Path = field(
-        default_factory=lambda: (
-            _env_path("DATALAKE_CURATED_ROOT", Path.home() / "datalake.me" / "curated")
-            / "amazon"
-        )
-    )
-    db_path: Path = field(
-        default_factory=lambda: _env_path(
-            "AMAZON_SYNC_DB",
-            Path.home() / ".local" / "share" / "datalake" / "amazon" / "amazon.duckdb",
-        )
-    )
+    # Callers either pass all three paths explicitly (tests) or use resolve_storage(),
+    # which derives them from the verified datalake root.
+    raw_dir: Path
+    curated_dir: Path
+    db_path: Path
     token: str | None = field(
         default_factory=lambda: os.environ.get("AMAZON_SYNC_TOKEN") or None
     )
@@ -327,14 +319,14 @@ def write_raw_batch(
         / f"{received_at:%m}"
         / f"{received_at:%d}"
     )
-    day_dir.mkdir(parents=True, exist_ok=True)
     name = f"{received_at:%Y%m%dT%H%M%S%f}Z_{envelope['batch_id']}.json.gz"
     final = day_dir / name
-    tmp = day_dir / f".{name}.{uuid.uuid4().hex}.tmp"
+    if final.exists():
+        # Raw is immutable: a batch file is written once and never replaced.
+        raise FileExistsError(f"raw batch already exists: {final}")
     payload = {"received_at": received_at.isoformat() + "Z", "envelope": envelope}
-    with gzip.open(tmp, "wt", encoding="utf-8") as fh:
+    with dp.atomic_output(final) as tmp, gzip.open(tmp, "wt", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False)
-    os.replace(tmp, final)
     return final
 
 
@@ -609,7 +601,6 @@ class Store:
 
     # -- curated export --
     def export_curated(self, curated_dir: Path) -> dict[str, str]:
-        curated_dir.mkdir(parents=True, exist_ok=True)
         written = {}
         orderings = {
             "orders": "order_date, order_id",
@@ -619,11 +610,12 @@ class Store:
         with self.lock:
             for table, ordering in orderings.items():
                 final = curated_dir / f"{table}.parquet"
-                tmp = curated_dir / f".{table}.{uuid.uuid4().hex}.parquet.tmp"
-                self.con.execute(
-                    f"COPY (SELECT * EXCLUDE ({FIELD_TS}) FROM {table} ORDER BY {ordering}) TO '{_sql_str(tmp)}' (FORMAT 'parquet')"
-                )
-                os.replace(tmp, final)
+                # Publish a new file and rename it over the old one; the existing inode
+                # (and any hard-linked historical version) is never modified.
+                with dp.atomic_output(final) as tmp:
+                    self.con.execute(
+                        f"COPY (SELECT * EXCLUDE ({FIELD_TS}) FROM {table} ORDER BY {ordering}) TO '{_sql_str(tmp)}' (FORMAT 'parquet')"
+                    )
                 written[table] = str(final)
         return written
 
@@ -868,14 +860,42 @@ def create_app(config: Config, store: Store | None = None) -> Flask:
 # --- CLI -----------------------------------------------------------------------------------
 
 
+def resolve_storage(
+    db: str | Path | None = None,
+    raw_dir: str | Path | None = None,
+    curated_dir: str | Path | None = None,
+) -> tuple[Path, Path, Path]:
+    """Return (db_path, raw_dir, curated_dir), verifying the datalake before any write.
+
+    If every path is given explicitly the datalake is not involved at all (scratch runs,
+    tests, the extension e2e). Otherwise the root is verified first, missing paths are
+    derived from it, and explicit overrides must lie inside it.
+    """
+    explicit = [Path(p).expanduser() if p else None for p in (db, raw_dir, curated_dir)]
+    if all(explicit):
+        return explicit[0], explicit[1], explicit[2]
+    try:
+        dp.require_root()
+        defaults = (
+            dp.databases(TOOL, DB_FILENAME),
+            dp.raw(SOURCE),
+            dp.curated(SOURCE),
+        )
+        return tuple(  # type: ignore[return-value]
+            dp.within_root(path) if path else default
+            for path, default in zip(explicit, defaults, strict=True)
+        )
+    except dp.DatalakeUnavailable as exc:
+        raise SystemExit(str(exc)) from None
+
+
 def config_from_args(args: argparse.Namespace) -> Config:
-    cfg = Config()
-    if getattr(args, "raw_dir", None):
-        cfg.raw_dir = Path(args.raw_dir).expanduser()
-    if getattr(args, "curated_dir", None):
-        cfg.curated_dir = Path(args.curated_dir).expanduser()
-    if getattr(args, "db", None):
-        cfg.db_path = Path(args.db).expanduser()
+    db_path, raw_dir, curated_dir = resolve_storage(
+        getattr(args, "db", None),
+        getattr(args, "raw_dir", None),
+        getattr(args, "curated_dir", None),
+    )
+    cfg = Config(raw_dir=raw_dir, curated_dir=curated_dir, db_path=db_path)
     if getattr(args, "export_delay", None) is not None:
         cfg.export_delay_s = args.export_delay
     if getattr(args, "no_auth", False):
@@ -957,15 +977,17 @@ def build_parser() -> argparse.ArgumentParser:
     def common(p: argparse.ArgumentParser) -> None:
         p.add_argument(
             "--db",
-            help="DuckDB path (env AMAZON_SYNC_DB; default ~/.local/share/datalake/amazon/amazon.duckdb)",
+            help=f"DuckDB path (default $DATALAKE_ROOT/databases/{TOOL}/{DB_FILENAME})",
         )
         p.add_argument(
             "--raw-dir",
-            help="Raw batch dir (default $DATALAKE_RAW_ROOT/amazon or ~/datalake.me/raw/amazon)",
+            help=f"Raw batch dir (default $DATALAKE_ROOT/raw/{SOURCE})",
         )
         p.add_argument(
             "--curated-dir",
-            help="Curated parquet dir (default $DATALAKE_CURATED_ROOT/amazon or ~/datalake.me/curated/amazon)",
+            help=f"Curated parquet dir (default $DATALAKE_ROOT/curated/{SOURCE}). "
+            "Overrides must be inside the datalake unless --db, --raw-dir and "
+            "--curated-dir are all given.",
         )
 
     serve = sub.add_parser("serve", help="Run the ingest/query HTTP API")

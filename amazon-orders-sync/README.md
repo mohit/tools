@@ -68,10 +68,16 @@ reboots, use [`server/launchd/com.mohit.tools.amazon-orders-server.plist`](serve
 |---|---|---|
 | `AMAZON_SYNC_TOKEN` | — (required unless `--no-auth`) | Bearer token the extension sends |
 | `AMAZON_SYNC_TAILSCALE_USERS` | — | Optional comma list of tailnet logins allowed (checks the `Tailscale-User-Login` header set by `tailscale serve`) |
-| `DATALAKE_RAW_ROOT` | `~/datalake.me/raw` | Raw batches go to `<root>/amazon/batches/YYYY/MM/DD/` |
-| `DATALAKE_CURATED_ROOT` | `~/datalake.me/curated` | Parquet goes to `<root>/amazon/` |
-| `AMAZON_SYNC_DB` | `~/.local/share/datalake/amazon/amazon.duckdb` | Serving database (deliberately not on iCloud) |
+| `DATALAKE_ROOT` | `/Volumes/MoErMedia/datalake.me` | Verified datalake root (see [`datalake-paths/`](../datalake-paths/README.md)). Raw batches go to `raw/amazon/batches/YYYY/MM/DD/`, parquet to `curated/amazon/`, the serving DuckDB to `databases/amazon-orders-sync/amazon.duckdb` |
 | `AMAZON_SYNC_HOST` / `AMAZON_SYNC_PORT` | `127.0.0.1` / `8765` | Bind address |
+
+Every subcommand verifies the datalake root (volume UUID, `.volume-identity.json`, mount
+point) before it opens the database or writes anything, so an unplugged or wrong disk fails
+with "no data was written". moer-mini is the only production writer. `--db`, `--raw-dir` and
+`--curated-dir` override single locations but must stay inside the datalake; pass all three
+to run against throwaway paths without touching the lake (tests and `npm run e2e` do this).
+Curated parquet is published atomically (new file renamed over the old one); raw batches are
+written once and never replaced.
 
 Other commands:
 
@@ -100,7 +106,7 @@ curl -s -H "Authorization: Bearer $AMAZON_SYNC_TOKEN" https://<host>.<tailnet>.t
 | GET | `/v1/returns?status=&order_id=&since=` | |
 | POST | `/v1/admin/export` | Write parquet now |
 
-### Curated tables (`~/datalake.me/curated/amazon/*.parquet`)
+### Curated tables (`$DATALAKE_ROOT/curated/amazon/*.parquet`)
 
 - **orders** — one row per order: date, status, totals (`total_amount`, `subtotal`, `shipping`, `promotion`, `tax`, `grand_total`, `refund_total`), payment method/last4, ship-to, links, `has_detail`, first/last observed.
 - **order_items** — one row per (order, item): ASIN, title, quantity, unit price, seller, condition, delivery status, return status and return-window dates.
@@ -109,7 +115,7 @@ curl -s -H "Authorization: Bearer $AMAZON_SYNC_TOKEN" https://<host>.<tailnet>.t
 ```sql
 -- duckdb
 SELECT date_trunc('month', order_date) AS month, sum(grand_total) - coalesce(sum(refund_total), 0) AS net
-FROM '~/datalake.me/curated/amazon/orders.parquet' GROUP BY 1 ORDER BY 1;
+FROM '/Volumes/MoErMedia/datalake.me/curated/amazon/orders.parquet' GROUP BY 1 ORDER BY 1;
 ```
 
 ## 2. Install the extension
