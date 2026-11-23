@@ -37,7 +37,8 @@ amazon-orders-sync/
 │   ├── scripts/build.mjs      # copies src → dist/<browser>, merges manifest, draws icons
 │   └── test/                  # node:test unit tests, fixtures, Chrome e2e
 └── server/
-    ├── amazon_orders_server.py  # Flask API + DuckDB + parquet export; serve|curate|rebuild|status
+    ├── amazon_orders_server.py  # Flask API + DuckDB + parquet export; serve|curate|rebuild|status|import-export
+    ├── amazon_export_import.py  # Amazon "Request your data" export → the same records the extension sends
     ├── tests/
     └── launchd/               # LaunchAgent to keep it running on macOS
 ```
@@ -118,6 +119,35 @@ curl -s -H "Authorization: Bearer $AMAZON_SYNC_TOKEN" https://<host>.<tailnet>.t
 SELECT date_trunc('month', order_date) AS month, sum(grand_total) - coalesce(sum(refund_total), 0) AS net
 FROM '/Volumes/MoErMedia/datalake.me/curated/amazon/orders.parquet' GROUP BY 1 ORDER BY 1;
 ```
+
+### Bootstrap from Amazon's data export
+
+The extension only reaches history by crawling. For everything back to your first order
+(including Whole Foods in-store purchases), request your data at Amazon (*Account → Request
+your data → Your Orders*), unzip it, and import the `Your Orders` folder once:
+
+```bash
+uv run python amazon_orders_server.py import-export --dry-run ~/Downloads/"Your Orders"   # counts only
+```
+
+```bash
+uv run python amazon_orders_server.py import-export ~/Downloads/"Your Orders"
+```
+
+- The folder is copied unchanged to `raw/amazon/exports/<export-date>/` with a `MANIFEST.json`
+  of SHA-256 hashes. Re-running with the same files is a no-op; different files under the same
+  date are refused (raw is immutable; pass `--label`).
+- Order History, Digital Content Orders, Returns Status, Refund Details, Return Requests and
+  Digital Returns become the same `order`/`return` records the extension sends (same keys:
+  ASIN item keys, `<order>:<item>` / `<order>:order` returns). They're stored as one raw batch,
+  so `rebuild` replays them, and merged with the usual rules, observed at the export time
+  (`--exported-at`, default: newest timestamp in the files). Anything the extension sees later
+  wins; the export never overwrites newer data.
+- Order dates are converted to `--timezone` (default `America/Los_Angeles`), as Amazon's pages
+  show them. Fully cancelled orders get no totals. Shipping addresses aren't split into name
+  and address; order-details crawls fill those.
+- Cart history, Kindle loans, payment plans, delivery photos and invoice PDFs stay in raw only.
+- Stop the server first (DuckDB has a single writer).
 
 ## 2. Install the extension
 
