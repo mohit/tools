@@ -996,6 +996,75 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_import_export(args: argparse.Namespace) -> int:
+    """Bootstrap from Amazon's "Request your data" export. See amazon_export_import."""
+    import hashlib
+    from zoneinfo import ZoneInfo
+
+    import amazon_export_import as ax
+
+    export_dir = Path(args.export_dir).expanduser().resolve()
+    if not (export_dir / ax.ORDER_HISTORY).exists():
+        raise SystemExit(
+            f"{export_dir} has no '{ax.ORDER_HISTORY}': pass the unzipped 'Your Orders' folder"
+        )
+    tz = ZoneInfo(args.timezone)
+    exported_at = parse_ts(args.exported_at) if args.exported_at else None
+    if exported_at is None:
+        latest = ax.latest_timestamp(export_dir)
+        if latest is None:
+            raise SystemExit("could not infer the export time; pass --exported-at")
+        exported_at = latest.replace(tzinfo=None)
+    label = args.label or f"{exported_at:%Y-%m-%d}"
+    manifest = ax.manifest_for(export_dir)
+    digest = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()[:12]
+    batch_id = f"privacy-export-{label}-{digest}"
+    built = ax.build_records(export_dir, exported_at.replace(tzinfo=dt.UTC), tz)
+    summary = {
+        "export_dir": str(export_dir),
+        "files": len(manifest),
+        "label": label,
+        "observed_at": exported_at.isoformat() + "Z",
+        "batch_id": batch_id,
+        "records": len(built.records),
+        **dict(built.counts),
+    }
+    for warning in built.warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    if args.dry_run:
+        print(json.dumps({"dry_run": True, **summary}, indent=2))
+        return 0
+
+    cfg = config_from_args(args)  # verifies the datalake before any write
+    store = _open_store_or_explain(cfg, read_only=False)
+    try:
+        dest = cfg.raw_dir / "exports" / label
+        summary["raw_export"] = str(dest)
+        summary["raw_copy"] = ax.copy_to_raw(export_dir, dest, manifest)
+        if store.has_batch(batch_id):
+            summary["batch"] = "already imported"
+        else:
+            envelope = {
+                "source": "amazon",
+                "schema_version": SCHEMA_VERSION,
+                "batch_id": batch_id,
+                "sent_at": exported_at.isoformat() + "Z",
+                "client": {"browser": ax.SOURCE_TAG, "extension_version": None, "install_id": None},
+                "records": built.records,
+            }
+            validate_envelope(envelope)
+            received_at = utcnow()
+            raw_path = write_raw_batch(cfg.raw_dir, envelope, received_at)
+            summary["batch"] = str(raw_path)
+            summary["merged"] = store.apply_envelope(envelope, raw_path, received_at)
+        summary["curated"] = store.export_curated(cfg.curated_dir)
+        summary["tables"] = store.stats()["tables"]
+    finally:
+        store.close()
+    print(json.dumps(to_jsonable(summary), indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -1047,6 +1116,30 @@ def build_parser() -> argparse.ArgumentParser:
         p = sub.add_parser(name, help=help_text)
         common(p)
         p.set_defaults(func=func)
+
+    imp = sub.add_parser(
+        "import-export",
+        help="Bootstrap from Amazon's 'Request your data' export (the 'Your Orders' folder)",
+    )
+    common(imp)
+    imp.add_argument("export_dir", help="Unzipped 'Your Orders' folder")
+    imp.add_argument(
+        "--exported-at",
+        help="When Amazon generated the export (ISO-8601 UTC). Default: newest timestamp in it",
+    )
+    imp.add_argument(
+        "--label",
+        help="Folder name under raw/amazon/exports/ (default: the export date)",
+    )
+    imp.add_argument(
+        "--timezone",
+        default="America/Los_Angeles",
+        help="Zone Amazon shows your order dates in (default America/Los_Angeles)",
+    )
+    imp.add_argument(
+        "--dry-run", action="store_true", help="Parse and summarise; write nothing"
+    )
+    imp.set_defaults(func=cmd_import_export)
     return parser
 
 
