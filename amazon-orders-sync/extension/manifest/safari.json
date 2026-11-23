@@ -1,4 +1,5 @@
 {
-  "background": { "scripts": [], "persistent": false },
+  "background": { "scripts": [] },
+  "options_ui": { "open_in_tab": null },
   "browser_specific_settings": { "safari": { "strict_min_version": "16.4" } }
 }

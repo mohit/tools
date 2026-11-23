@@ -135,13 +135,21 @@ npm run build          # → dist/chrome and dist/safari
 **Safari (macOS, needs Xcode):**
 
 ```bash
-npm run safari:xcode   # wraps dist/safari in an Xcode app project at dist/xcode
+npm run safari:app     # build:safari → Xcode project at dist/xcode → ad-hoc signed Debug .app
 ```
 
-Open the project in Xcode, pick your personal team for signing, Run, then enable the extension
-in Safari → Settings → Extensions. For local development without signing, enable
-*Develop → Allow Unsigned Extensions*. The Xcode project references `dist/safari`, so after
-`npm run build:safari` just re-run from Xcode.
+```bash
+open "dist/xcode/build/Build/Products/Debug/Amazon Orders Sync.app"   # registers the extension
+```
+
+An ad-hoc signed extension only loads with *Safari → Develop → Allow Unsigned Extensions* on
+(asks for your password, resets when Safari quits). Then enable it in Safari → Settings →
+Extensions and allow it on `www.amazon.com` and your `*.ts.net` server. To sign with your
+personal team instead, `npm run safari:xcode` and open `dist/xcode/Amazon Orders Sync` in Xcode.
+The project references `dist/safari`, so after `npm run build:safari` just re-run the app.
+
+`safari:xcode` also rewrites the converter's app bundle id: Xcode 26/27's converter derives it
+from the app name, which breaks the app/extension id prefix rule and fails the build.
 
 Then open the extension's **Settings**: set the server URL (`https://<host>.<tailnet>.ts.net`)
 and token, and press **Test connection**.

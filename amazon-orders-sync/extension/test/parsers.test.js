@@ -20,7 +20,7 @@ test("order list: orders, header fields and items", () => {
   assert.equal(first.order_date, "2025-11-03");
   assert.equal(first.total_amount, 1042.17);
   assert.equal(first.currency, "USD");
-  assert.equal(first.ship_to_name, "Alex Example");
+  assert.equal("ship_to_name" in first, false, "recipient comes from order details only");
   assert.equal(first.status, "Delivered November 5");
   assert.match(first.detail_url, /^https:\/\/www\.amazon\.com\/your-orders\/order-details\?orderID=112-1234567-7654321/);
   assert.match(first.invoice_url, /invoice/);
@@ -184,4 +184,43 @@ test("year-less return deadline is resolved forward from the observation date", 
   );
   const { orders } = parsers.parseOrderList(parseHtml(html, url), { url, observedAt: "2025-12-01T10:00:00Z" });
   assert.equal(orders[0].items[0].return_eligible_until, "2026-01-31");
+});
+
+test("order list: live page and crawled copy of the same card fingerprint identically", () => {
+  // Live DOM: Amazon's JS fills the recipient popover and swaps in 2x images under /images/W/.
+  // Crawled HTML (fetch + DOMParser, no JS): empty #shipToInsertionNode, 1x images.
+  const { fingerprint } = load("outbox.js");
+  const live = fixture("order-list.html").replace(
+    /src="https:\/\/m\.media-amazon\.com\/images\/I\/([^."]+)\.jpg"/g,
+    'src="https://m.media-amazon.com/images/W/MEDIAX_1234-T4/images/I/$1._SS284_.jpg"',
+  );
+  const crawled = fixture("order-list.html").replace(
+    /<div class="a-row yohtmlc-recipient">[\s\S]*?<\/div>/g,
+    '<div class="a-row yohtmlc-recipient"><div id="shipToInsertionNode-shippingAddress-abc"></div></div>',
+  );
+  assert.ok(live.includes("._SS284_.jpg") && crawled.includes("shipToInsertionNode"), "variants applied");
+  const url = "https://www.amazon.com/your-orders/orders?timeFilter=months-3";
+  const parse = (html) => parsers.parseOrderList(parseHtml(html, url), { url, observedAt: OBSERVED }).records;
+  const a = parse(live);
+  const b = parse(crawled);
+  assert.equal(a.length, b.length);
+  a.forEach((rec, i) => assert.equal(fingerprint(rec), fingerprint(b[i]), `${rec.type} ${rec.key} differs`));
+});
+
+test("labeledValue ignores ancestor text that doesn't start with the label", () => {
+  const { labeledValue } = parsers._internal;
+  const doc = parseHtml(`<ul id="h"><div><span>Order placed</span><span>May 5, 2026</span></div>
+    <div><div><span>Ship to</span></div><div><div id="shipToInsertionNode-x"></div></div></div></ul>`);
+  assert.equal(labeledValue(doc.getElementById("h"), ["ship to"]), null);
+  assert.equal(labeledValue(doc.getElementById("h"), ["order placed"]), "May 5, 2026");
+});
+
+test("imageUrl canonicalises Amazon image renditions and leaves other hosts alone", () => {
+  const { imageUrl } = parsers._internal;
+  const base = "https://www.amazon.com/your-orders/orders";
+  const want = "https://m.media-amazon.com/images/I/00TEST+IMG1L.jpg";
+  assert.equal(imageUrl("https://m.media-amazon.com/images/I/00TEST+IMG1L._SS142_.jpg", base), want);
+  assert.equal(imageUrl("https://m.media-amazon.com/images/W/MEDIAX_1/images/I/00TEST+IMG1L._SS284_.jpg", base), want);
+  assert.equal(imageUrl("https://m.media-amazon.com/images/I/00TEST+IMG2L._AC_SX90_SY90_.gif", base), "https://m.media-amazon.com/images/I/00TEST+IMG2L.gif");
+  assert.equal(imageUrl("https://example.com/a._SS142_.jpg", base), "https://example.com/a._SS142_.jpg");
 });
