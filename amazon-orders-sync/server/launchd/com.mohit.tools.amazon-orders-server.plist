@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Keeps the ingest server running on the always-on Mac in the tailnet.
+
+  1. Store the token in the login keychain (once):
+       security add-generic-password -s com.mohit.tools.amazon-orders-sync -a "$USER" -w "$(openssl rand -hex 24)"
+  2. Adjust the repo path below if it isn't ~/code/tools.
+  3. cp this file ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.mohit.tools.amazon-orders-server.plist
+  4. Expose it on the tailnet with HTTPS:  tailscale serve --bg 8765
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mohit.tools.amazon-orders-server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>cd "$HOME/code/tools/amazon-orders-sync/server" &amp;&amp; AMAZON_SYNC_TOKEN="$(security find-generic-password -s com.mohit.tools.amazon-orders-sync -w)" exec uv run python amazon_orders_server.py serve</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/amazon-orders-server.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/amazon-orders-server.log</string>
+</dict>
+</plist>

@@ -1,0 +1,66 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #5f6368;
+  --border: #dadce0;
+  --accent: #232f3e;
+  --accent-fg: #ffffff;
+  --ok: #2e7d32;
+  --warn: #c77700;
+  --err: #b3261e;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1f1f1f;
+    --fg: #e8eaed;
+    --muted: #9aa0a6;
+    --border: #3c4043;
+    --accent: #febd69;
+    --accent-fg: #111111;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+h1 { font-size: 15px; margin: 0 0 8px; }
+h2 { font-size: 13px; margin: 16px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; }
+.row .k { color: var(--muted); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.err { background: var(--err); }
+button {
+  font: inherit;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.msg { margin-top: 8px; color: var(--muted); min-height: 1.4em; }
+.msg.err { color: var(--err); }
+a { color: inherit; }
+label { display: block; margin: 12px 0 4px; font-weight: 600; }
+.hint { color: var(--muted); font-weight: 400; font-size: 12px; margin-top: 2px; }
+input[type=text], input[type=password], input[type=number], input[type=url] {
+  width: 100%;
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+}
+.popup { width: 320px; padding: 14px; }
+.page { max-width: 560px; margin: 0 auto; padding: 24px 16px; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }

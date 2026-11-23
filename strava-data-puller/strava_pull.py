@@ -339,7 +339,7 @@ def load_existing_activities(out_dir: Path) -> tuple[list[dict], int | None]:
                 start_date_str = activity.get("start_date")
                 if start_date_str:
                     # Parse ISO format like "2024-01-15T10:30:00Z"
-                    parsed = dt.datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
+                    parsed = dt.datetime.fromisoformat(start_date_str)
                     ts = int(parsed.timestamp())
                     if latest_timestamp is None or ts > latest_timestamp:
                         latest_timestamp = ts
@@ -443,7 +443,7 @@ def collect_in_scope_activity_ids(
         start_date_str = activity.get("start_date")
         if start_date_str:
             try:
-                parsed = dt.datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
+                parsed = dt.datetime.fromisoformat(start_date_str)
                 ts = int(parsed.timestamp())
                 if after is not None and ts < after:
                     continue
@@ -481,7 +481,7 @@ def find_missing_detail_ids(
         start_date_str = activity.get("start_date")
         if start_date_str:
             try:
-                parsed = dt.datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
+                parsed = dt.datetime.fromisoformat(start_date_str)
                 ts = int(parsed.timestamp())
                 if after is not None and ts < after:
                     continue

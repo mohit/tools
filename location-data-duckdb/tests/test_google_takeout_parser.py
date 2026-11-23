@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from location_pipeline.sources.google_takeout import _e7_to_float, _parse_ts_millis, load_google_takeout
+from location_pipeline.sources.google_takeout import (
+    _e7_to_float,
+    _parse_ts_millis,
+    load_google_takeout,
+)
 
 
 def _write_json(path: Path, payload: object) -> None:

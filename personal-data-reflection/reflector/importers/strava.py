@@ -178,7 +178,7 @@ class StravaImporter:
             # Insert as workout
             if activity.get('moving_time', 0) > 0:
                 start_time = datetime.fromisoformat(
-                    activity['start_date_local'].replace('Z', '+00:00')
+                    activity['start_date_local']
                 )
                 end_time = start_time.replace(
                     microsecond=0

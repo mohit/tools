@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 
@@ -126,12 +126,12 @@ def _from_unix(value: int | str | None) -> datetime | None:
     if value is None:
         return None
     try:
-        return datetime.utcfromtimestamp(int(value))
+        return datetime.fromtimestamp(int(value), tz=timezone.utc).replace(tzinfo=None)
     except (ValueError, TypeError):
         return None
 
 
-def _safe_float(value: float | str | int | None) -> float | None:
+def _safe_float(value: float | str | None) -> float | None:
     if value is None:
         return None
     try:

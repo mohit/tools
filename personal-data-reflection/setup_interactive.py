@@ -53,7 +53,7 @@ def run_cmd(cmd, cwd=None, env=None):
     uv_cmd = ["uv", "run"] + cmd
 
     print(f"Running: {' '.join(uv_cmd)}")
-    result = subprocess.run(uv_cmd, cwd=cwd, env=env)
+    result = subprocess.run(uv_cmd, cwd=cwd, env=env, check=False)
     return result.returncode == 0
 
 def main():
@@ -257,8 +257,8 @@ def main():
         try:
             res = conn.execute("SELECT COUNT(*) FROM health_metrics").fetchone()
             has_health = res[0] > 0
-        except Exception:
-            pass
+        except duckdb.Error:
+            pass  # table not created yet -> treat as no health data
 
     # Extract & Parse Health
     if do_health and not has_health:

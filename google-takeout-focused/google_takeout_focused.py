@@ -522,7 +522,7 @@ def main() -> None:
             result = _process_one_takeout(copied_source, curated_root)
             processed[token] = {
                 "path": str(source),
-                "processed_at": datetime.utcnow().isoformat() + "Z",
+                "processed_at": datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z",
                 "rows": result,
             }
             for key, value in result.items():

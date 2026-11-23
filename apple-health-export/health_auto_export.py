@@ -64,7 +64,7 @@ def _parse_datetime(value: str | None) -> str | None:
         return None
 
     for parser in (
-        lambda v: datetime.fromisoformat(v.replace("Z", "+00:00")),
+        lambda v: datetime.fromisoformat(v),
         lambda v: datetime.strptime(v, "%Y-%m-%d %H:%M:%S %z"),
     ):
         try:

@@ -99,7 +99,7 @@ def run_gog_json(args: list[str], account: str) -> Any:
         account,
         *args,
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         err = proc.stderr.strip() or proc.stdout.strip() or "unknown gog error"
         raise RuntimeError(f"gog command failed: {' '.join(cmd)}\n{err}")
@@ -128,7 +128,7 @@ def extract_items_and_token(payload: Any) -> tuple[list[dict[str, Any]], str | N
                 return [payload], None
             return [], None
         if not isinstance(items, list):
-            raise RuntimeError("Unexpected gog JSON shape: items is not a list")
+            raise TypeError("Unexpected gog JSON shape: items is not a list")
         token = None
         for key in TOKEN_KEYS:
             value = payload.get(key)
