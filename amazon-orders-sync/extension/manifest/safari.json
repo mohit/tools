@@ -1,0 +1,4 @@
+{
+  "background": { "scripts": [], "persistent": false },
+  "browser_specific_settings": { "safari": { "strict_min_version": "16.4" } }
+}

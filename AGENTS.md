@@ -5,6 +5,7 @@ Personal data tools — ingest, transform, and reflect on health/fitness/music/l
 
 ## Repo structure
 ```
+amazon-orders-sync/      # Amazon orders/items/returns: Chrome+Safari extension (JS) → Flask+DuckDB ingest server on Tailscale
 anthropic-usage-tracker/ # Anthropic API usage tracking → parquet (Python, DuckDB)
 apple-health-export/     # Apple Health XML → parquet (Python, DuckDB)
 firefox-2fa-autofill/    # Browser extension (JS, WebExtension manifest)
@@ -40,6 +41,7 @@ strava-data-puller/      # Strava API → raw JSON + curated parquet (Python, Du
 ## Testing
 - `personal-data-reflection/` has pytest tests in `tests/`
 - `location-data-duckdb/` has tests in `tests/`
+- `amazon-orders-sync/` has `extension/test/` (`npm test`, `npm run e2e`) and `server/tests/` (pytest)
 - Other tools: add tests if making non-trivial changes
 - Run with: `cd <tool> && python -m pytest tests/`
 
