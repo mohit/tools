@@ -39,9 +39,9 @@ class AppleMusicMonitorTests(unittest.TestCase):
         with (
             mock.patch("apple_music_monitor.parse_args", return_value=args),
             mock.patch("apple_music_monitor.discover_csv", side_effect=FileNotFoundError("missing csv")),
+            self.assertRaises(SystemExit) as cm,
         ):
-            with self.assertRaises(SystemExit) as cm:
-                monitor.main()
+            monitor.main()
 
         self.assertEqual(cm.exception.code, monitor.EXIT_CODE_MISSING_CSV)
 

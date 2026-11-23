@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 import duckdb
 import requests
@@ -37,7 +37,7 @@ def enrich_places(conn: duckdb.DuckDBPyConnection, api_key_env: str, max_rows_pe
             """,
             [
                 place_id,
-                datetime.utcnow(),
+                datetime.now(timezone.utc).replace(tzinfo=None),
                 result.get("formatted_address"),
                 result.get("rating"),
                 result.get("user_ratings_total"),

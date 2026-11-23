@@ -78,14 +78,12 @@ class TestCredentials(TestCase):
     def test_parse_dotenv_supports_export_and_quotes(self):
         env_file = Path(__file__).resolve().parent / "tmp_parse.env"
         env_file.write_text(
-            "\n".join(
-                [
-                    "# comment",
-                    "export STRAVA_CLIENT_ID=12345",
-                    'STRAVA_CLIENT_SECRET="secret-value"',
-                    "STRAVA_REFRESH_TOKEN='refresh-token'",
-                    "IGNORED_LINE",
-                ]
+            (
+                "# comment\n"
+                "export STRAVA_CLIENT_ID=12345\n"
+                'STRAVA_CLIENT_SECRET="secret-value"\n'
+                "STRAVA_REFRESH_TOKEN='refresh-token'\n"
+                "IGNORED_LINE"
             ),
             encoding="utf-8",
         )
@@ -106,11 +104,9 @@ class TestCredentials(TestCase):
     ):
         env_path = Path(__file__).resolve().parent / "tmp_resolve.env"
         env_path.write_text(
-            "\n".join(
-                [
-                    "STRAVA_CLIENT_ID=dotenv-client-id",
-                    "STRAVA_CLIENT_SECRET=dotenv-client-secret",
-                ]
+            (
+                "STRAVA_CLIENT_ID=dotenv-client-id\n"
+                "STRAVA_CLIENT_SECRET=dotenv-client-secret"
             ),
             encoding="utf-8",
         )
@@ -263,11 +259,9 @@ class TestCredentials(TestCase):
         env_file = Path(__file__).resolve().parent / "tmp_resolve_after_dir.env"
         env_dir.mkdir(exist_ok=True)
         env_file.write_text(
-            "\n".join(
-                [
-                    "STRAVA_CLIENT_ID=dotenv-client-id",
-                    "STRAVA_CLIENT_SECRET=dotenv-client-secret",
-                ]
+            (
+                "STRAVA_CLIENT_ID=dotenv-client-id\n"
+                "STRAVA_CLIENT_SECRET=dotenv-client-secret"
             ),
             encoding="utf-8",
         )
@@ -302,12 +296,10 @@ class TestCredentials(TestCase):
         readable = Path(__file__).resolve().parent / "tmp_readable.env"
         unreadable.write_text("STRAVA_CLIENT_ID=bad-value", encoding="utf-8")
         readable.write_text(
-            "\n".join(
-                [
-                    "STRAVA_CLIENT_ID=dotenv-client-id",
-                    "STRAVA_CLIENT_SECRET=dotenv-client-secret",
-                    "STRAVA_REFRESH_TOKEN=dotenv-refresh-token",
-                ]
+            (
+                "STRAVA_CLIENT_ID=dotenv-client-id\n"
+                "STRAVA_CLIENT_SECRET=dotenv-client-secret\n"
+                "STRAVA_REFRESH_TOKEN=dotenv-refresh-token"
             ),
             encoding="utf-8",
         )

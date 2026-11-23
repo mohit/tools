@@ -93,7 +93,7 @@ def _safe_dt(value: str | None) -> datetime | None:
         return None
 
 
-def _safe_float(value: str | float | int | None) -> float | None:
+def _safe_float(value: str | float | None) -> float | None:
     if value is None or value == "":
         return None
     try:
