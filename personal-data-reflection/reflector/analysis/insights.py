@@ -155,7 +155,7 @@ class InsightGenerator:
         if len(bad_days) > 5:  # More than 5 bad days
             lowlights.append({
                 'title': f"{len(bad_days)} Challenging Days",
-                'description': f"You had {len(bad_days)} days that didn't meet health goals. Common issues: {', '.join(set([issue for day in bad_days[:5] for issue in day['issues']]))}.",
+                'description': f"You had {len(bad_days)} days that didn't meet health goals. Common issues: {', '.join({issue for day in bad_days[:5] for issue in day['issues']})}.",
                 'confidence': 1.0,
                 'metrics': ['steps', 'sleep_hours', 'exercise_minutes'],
                 'data': {'bad_day_count': len(bad_days), 'sample_issues': bad_days[:5]}

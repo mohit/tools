@@ -24,7 +24,7 @@ class PatternDetector:
         self,
         start_date: str,
         end_date: str,
-        criteria: dict = None
+        criteria: dict | None = None
     ) -> list[dict]:
         """Find days that meet 'good day' criteria.
 
@@ -78,7 +78,7 @@ class PatternDetector:
         self,
         start_date: str,
         end_date: str,
-        criteria: dict = None
+        criteria: dict | None = None
     ) -> list[dict]:
         """Find days that meet 'bad day' criteria.
 

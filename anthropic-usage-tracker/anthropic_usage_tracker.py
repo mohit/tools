@@ -22,11 +22,11 @@ API_BASE = "https://api.anthropic.com"
 ANTHROPIC_VERSION = "2023-06-01"
 
 DEFAULT_PRICING = {
-    "claude-opus-4-1": {"input_per_million": Decimal("15"), "output_per_million": Decimal("75")},
-    "claude-opus-4": {"input_per_million": Decimal("15"), "output_per_million": Decimal("75")},
-    "claude-sonnet-4-5": {"input_per_million": Decimal("3"), "output_per_million": Decimal("15")},
-    "claude-sonnet-4": {"input_per_million": Decimal("3"), "output_per_million": Decimal("15")},
-    "claude-3-7-sonnet-latest": {"input_per_million": Decimal("3"), "output_per_million": Decimal("15")},
+    "claude-opus-4-1": {"input_per_million": Decimal(15), "output_per_million": Decimal(75)},
+    "claude-opus-4": {"input_per_million": Decimal(15), "output_per_million": Decimal(75)},
+    "claude-sonnet-4-5": {"input_per_million": Decimal(3), "output_per_million": Decimal(15)},
+    "claude-sonnet-4": {"input_per_million": Decimal(3), "output_per_million": Decimal(15)},
+    "claude-3-7-sonnet-latest": {"input_per_million": Decimal(3), "output_per_million": Decimal(15)},
 }
 
 
@@ -131,8 +131,8 @@ def load_pricing(path: str | None) -> dict[str, dict[str, Decimal]]:
     for model, entry in raw.items():
         if not isinstance(entry, dict):
             raise SystemExit(f"Pricing for model '{model}' must be an object")
-        in_price = decimal_from_any(entry.get("input_per_million"), Decimal("0"))
-        out_price = decimal_from_any(entry.get("output_per_million"), Decimal("0"))
+        in_price = decimal_from_any(entry.get("input_per_million"), Decimal(0))
+        out_price = decimal_from_any(entry.get("output_per_million"), Decimal(0))
         pricing[str(model)] = {
             "input_per_million": in_price,
             "output_per_million": out_price,
@@ -211,7 +211,7 @@ def int_from_any(value: Any) -> int:
     return 0
 
 
-def decimal_from_any(value: Any, default: Decimal = Decimal("0")) -> Decimal:
+def decimal_from_any(value: Any, default: Decimal = Decimal(0)) -> Decimal:
     if value is None:
         return default
     if isinstance(value, Decimal):
@@ -291,13 +291,13 @@ def extract_usage_rows(
         if not (input_tokens or output_tokens or cache_creation or cache_read):
             continue
 
-        model_price = pricing.get(model, {"input_per_million": Decimal("0"), "output_per_million": Decimal("0")})
-        input_price = model_price.get("input_per_million", Decimal("0"))
-        output_price = model_price.get("output_per_million", Decimal("0"))
+        model_price = pricing.get(model, {"input_per_million": Decimal(0), "output_per_million": Decimal(0)})
+        input_price = model_price.get("input_per_million", Decimal(0))
+        output_price = model_price.get("output_per_million", Decimal(0))
 
         estimated = (
-            (Decimal(input_tokens + cache_creation + cache_read) / Decimal("1000000")) * input_price
-            + (Decimal(output_tokens) / Decimal("1000000")) * output_price
+            (Decimal(input_tokens + cache_creation + cache_read) / Decimal(1000000)) * input_price
+            + (Decimal(output_tokens) / Decimal(1000000)) * output_price
         )
 
         out.append(
@@ -343,7 +343,7 @@ def extract_cost_map(raw_items: list[dict[str, Any]]) -> dict[tuple[str, str | N
             continue
 
         key = (model, api_key_id)
-        out[key] = out.get(key, Decimal("0")) + value
+        out[key] = out.get(key, Decimal(0)) + value
 
     return out
 
@@ -409,7 +409,7 @@ def write_parquet(path: Path, rows: list[dict[str, Any]]) -> None:
 def print_summary(snapshot_day: date, usage_rows: list[UsageRow], api_total_cost: Decimal | None) -> None:
     total_in = sum(row.input_tokens + row.cache_creation_input_tokens + row.cache_read_input_tokens for row in usage_rows)
     total_out = sum(row.output_tokens for row in usage_rows)
-    est_total = sum((row.estimated_cost_usd for row in usage_rows), Decimal("0"))
+    est_total = sum((row.estimated_cost_usd for row in usage_rows), Decimal(0))
 
     print(f"Date: {snapshot_day.isoformat()}")
     print(f"Total input tokens: {total_in}")
@@ -419,7 +419,7 @@ def print_summary(snapshot_day: date, usage_rows: list[UsageRow], api_total_cost
         print(f"API reported cost (USD): {api_total_cost.quantize(Decimal('0.0001'))}")
 
     by_model: dict[str, dict[str, Decimal | int]] = defaultdict(
-        lambda: {"input": 0, "output": 0, "estimated": Decimal("0")}
+        lambda: {"input": 0, "output": 0, "estimated": Decimal(0)}
     )
     for row in usage_rows:
         model = row.model
@@ -443,8 +443,8 @@ def build_model_parquet_rows(snapshot_day: date, usage_rows: list[UsageRow]) -> 
             "output_tokens": 0,
             "cache_creation_input_tokens": 0,
             "cache_read_input_tokens": 0,
-            "estimated_cost_usd": Decimal("0"),
-            "api_reported_cost_usd_sum": Decimal("0"),
+            "estimated_cost_usd": Decimal(0),
+            "api_reported_cost_usd_sum": Decimal(0),
             "has_api_reported_cost": False,
             "ingested_at": datetime.now(UTC).isoformat(),
         }
@@ -616,7 +616,7 @@ def main() -> None:
 
     api_total_cost = None
     if cost_payload:
-        api_total_cost = sum((extract_cost_map(cost_payload.get("data", [])).values()), Decimal("0"))
+        api_total_cost = sum((extract_cost_map(cost_payload.get("data", [])).values()), Decimal(0))
 
     print_summary(snapshot_day, usage_rows, api_total_cost)
     print(f"Usage parquet: {usage_out}")

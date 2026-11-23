@@ -101,7 +101,7 @@ def test_ingest_warns_and_continues_when_stale(
     )
 
     # Prevent the rest of ingest() from running (no real JSONL / DuckDB available).
-    def _fake_ingest_body(*_, **__):  # noqa: ANN001, ANN002, ANN003
+    def _fake_ingest_body(*_, **__):
         raise StopIteration("body reached")
 
     # Patch duckdb.connect to stop early — we only care about the warning path.
