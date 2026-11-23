@@ -76,10 +76,12 @@
   /**
    * Find the first calendar date in free text. Handles "November 3, 2025", "Nov 3 2025",
    * "3 November 2025", "2025-11-03". Returns "YYYY-MM-DD" or null. Year-less dates
-   * ("Delivered Nov 3") are resolved against `referenceDate` (defaults to today) and
-   * assumed to be in the past.
+   * ("Delivered Nov 3") are resolved against `referenceDate` (defaults to today): with
+   * direction "past" (delivery/refund history) a date more than a week ahead is taken as
+   * last year; with "future" (deadlines such as "Eligible through Jan 31") a date more than
+   * a week behind is taken as next year.
    */
-  function parseDate(value, referenceDate) {
+  function parseDate(value, referenceDate, direction = "past") {
     const text = cleanText(value);
     if (!text) return null;
     let m = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
@@ -94,7 +96,12 @@
       const month = MONTHS[m[1].toLowerCase()];
       let year = ref.getUTCFullYear();
       const candidate = Date.UTC(year, month - 1, +m[2]);
-      if (candidate > ref.getTime() + 7 * 86400000) year -= 1;
+      const week = 7 * 86400000;
+      if (direction === "future") {
+        if (candidate < ref.getTime() - week) year += 1;
+      } else if (candidate > ref.getTime() + week) {
+        year -= 1;
+      }
       return isoDate(year, month, +m[2]);
     }
     return null;

@@ -84,6 +84,7 @@ ORDER_COLUMNS: dict[str, str] = {
     "last_detail_at": "TIMESTAMP",
     "last_source": "VARCHAR",
     "last_batch_id": "VARCHAR",
+    "field_observed_at": "VARCHAR",
 }
 
 ITEM_COLUMNS: dict[str, str] = {
@@ -107,6 +108,7 @@ ITEM_COLUMNS: dict[str, str] = {
     "first_observed_at": "TIMESTAMP",
     "last_observed_at": "TIMESTAMP",
     "last_source": "VARCHAR",
+    "field_observed_at": "VARCHAR",
 }
 
 RETURN_COLUMNS: dict[str, str] = {
@@ -123,6 +125,7 @@ RETURN_COLUMNS: dict[str, str] = {
     "first_observed_at": "TIMESTAMP",
     "last_observed_at": "TIMESTAMP",
     "last_source": "VARCHAR",
+    "field_observed_at": "VARCHAR",
 }
 
 BATCH_COLUMNS: dict[str, str] = {
@@ -144,7 +147,10 @@ TABLES = {
 }
 
 # Columns the merge never takes from an incoming observation directly.
+# Per-column observation times (JSON). Internal: not exported to parquet or the API.
+FIELD_TS = "field_observed_at"
 BOOKKEEPING = {
+    FIELD_TS,
     "first_observed_at",
     "last_observed_at",
     "last_detail_at",
@@ -257,36 +263,52 @@ def merge_row(
 ) -> dict[str, Any]:
     """Merge one observation into the stored row.
 
-    Newest observation wins per column, but a NULL never overwrites a known value. This lets
-    the sparse order-list view and the rich order-detail view of the same order coexist, and
-    makes replaying batches out of order (cache flushed after days offline) converge to the
-    same result.
+    Per column, the newest observation that actually supplied a value wins, and a NULL never
+    overwrites a known value. Freshness is tracked per column (``field_observed_at``), so a
+    sparse observation (the order-list view) never blocks a later-arriving but newer value
+    from a rich one (the order-detail view). Replaying the same observations in any order
+    (cache flushed after days offline, two browsers) therefore converges to the same row.
     """
+    stamp = observed_at.isoformat()
     if existing is None:
         row = dict(incoming)
+        row[FIELD_TS] = json.dumps(
+            {c: stamp for c, v in incoming.items() if v is not None}, sort_keys=True
+        )
         row["first_observed_at"] = observed_at
         row["last_observed_at"] = observed_at
         row["last_source"] = source
         return row
     last_seen = existing.get("last_observed_at") or dt.datetime.min
-    newer = observed_at >= last_seen
+    try:
+        field_ts = json.loads(existing.get(FIELD_TS) or "{}")
+    except ValueError:
+        field_ts = {}
     row = dict(existing)
     for col, new in incoming.items():
-        old = existing.get(col)
         if new is None:
             continue
-        if old is None or newer:
+        seen = (
+            dt.datetime.fromisoformat(field_ts[col]) if col in field_ts else last_seen
+        )
+        if existing.get(col) is None or observed_at >= seen:
             row[col] = new
+            field_ts[col] = (
+                max(seen, observed_at).isoformat()
+                if existing.get(col) is not None
+                else stamp
+            )
     if "has_detail" in incoming:
         # Once an order's detail page has been seen it stays "has_detail", whatever arrives later.
         row["has_detail"] = bool(existing.get("has_detail")) or bool(
             incoming.get("has_detail")
         )
+    row[FIELD_TS] = json.dumps(field_ts, sort_keys=True)
     row["first_observed_at"] = min(
         existing.get("first_observed_at") or observed_at, observed_at
     )
     row["last_observed_at"] = max(last_seen, observed_at)
-    if newer:
+    if observed_at >= last_seen:
         row["last_source"] = source
     return row
 
@@ -380,14 +402,24 @@ class Store:
         self.lock = threading.RLock()
         if not read_only:
             with self.lock:
-                for table in TABLES:
+                for table, (columns, _suffix) in TABLES.items():
                     self.con.execute(_ddl(table))
+                    for name, sql_type in columns.items():
+                        if "PRIMARY KEY" not in sql_type:
+                            self.con.execute(
+                                f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {name} {sql_type}"
+                            )
 
     def close(self) -> None:
         with self.lock:
             self.con.close()
 
     # -- helpers --
+    def _public(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        for row in rows:
+            row.pop(FIELD_TS, None)
+        return rows
+
     def _fetch_dicts(
         self, sql: str, params: list[Any] | None = None
     ) -> list[dict[str, Any]]:
@@ -480,14 +512,23 @@ class Store:
 
     def _apply_return(self, rec, observed_at, source, counts) -> None:
         incoming = project({**rec["data"], "return_key": rec["key"]}, RETURN_COLUMNS)
+        order_id = incoming.get("order_id")
+        # A bare "Refund total" line yields an order-level placeholder (item_key NULL). Item-level
+        # returns for the same order supersede it, whichever arrives first, so refunds aren't
+        # double counted.
+        if not incoming.get("item_key") and order_id:
+            has_items = self.con.execute(
+                "SELECT 1 FROM returns WHERE order_id = ? AND item_key IS NOT NULL LIMIT 1",
+                [order_id],
+            ).fetchone()
+            if has_items:
+                return
         existing = self._get("returns", {"return_key": rec["key"]})
         self._put("returns", merge_row(existing, incoming, observed_at, source))
-        # An item-level return supersedes the order-level placeholder created from a bare
-        # "Refund total" line, so refunds aren't double counted.
-        if incoming.get("item_key") and incoming.get("order_id"):
+        if incoming.get("item_key") and order_id:
             self.con.execute(
-                "DELETE FROM returns WHERE return_key = ?",
-                [f"{incoming['order_id']}:order"],
+                "DELETE FROM returns WHERE order_id = ? AND item_key IS NULL",
+                [order_id],
             )
         counts["returns"] += 1
 
@@ -545,19 +586,24 @@ class Store:
         )
         sql += f" ORDER BY {order_col} DESC NULLS LAST LIMIT ? OFFSET ?"
         with self.lock:
-            return self._fetch_dicts(sql, [*params, limit, offset])
+            return self._public(self._fetch_dicts(sql, [*params, limit, offset]))
 
     def order_bundle(self, order_id: str) -> dict[str, Any] | None:
         with self.lock:
             order = self._get("orders", {"order_id": order_id})
             if not order:
                 return None
-            order["items"] = self._fetch_dicts(
-                "SELECT * FROM order_items WHERE order_id = ? ORDER BY item_key",
-                [order_id],
+            order.pop(FIELD_TS, None)
+            order["items"] = self._public(
+                self._fetch_dicts(
+                    "SELECT * FROM order_items WHERE order_id = ? ORDER BY item_key",
+                    [order_id],
+                )
             )
-            order["returns"] = self._fetch_dicts(
-                "SELECT * FROM returns WHERE order_id = ?", [order_id]
+            order["returns"] = self._public(
+                self._fetch_dicts(
+                    "SELECT * FROM returns WHERE order_id = ?", [order_id]
+                )
             )
         return order
 
@@ -575,7 +621,7 @@ class Store:
                 final = curated_dir / f"{table}.parquet"
                 tmp = curated_dir / f".{table}.{uuid.uuid4().hex}.parquet.tmp"
                 self.con.execute(
-                    f"COPY (SELECT * FROM {table} ORDER BY {ordering}) TO '{_sql_str(tmp)}' (FORMAT 'parquet')"
+                    f"COPY (SELECT * EXCLUDE ({FIELD_TS}) FROM {table} ORDER BY {ordering}) TO '{_sql_str(tmp)}' (FORMAT 'parquet')"
                 )
                 os.replace(tmp, final)
                 written[table] = str(final)

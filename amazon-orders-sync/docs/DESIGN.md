@@ -103,11 +103,14 @@ Wire record (extension → server):
 ```
 Envelope: `{schema_version: 1, source: "amazon", batch_id, sent_at, client: {browser, extension_version, install_id}, records}`.
 
-Merge rule on the server: **per column, the newest observation wins, and a NULL never
-overwrites a known value.** This lets the sparse list view and the rich detail view of the
-same order complement each other. Batches can arrive out of order (a cache flushed days
-later) and the result is the same. `rebuild` replays raw and reproduces the live database;
-a test checks this.
+Merge rule on the server: **per column, the newest observation that supplied a value wins,
+and a NULL never overwrites a known value.** Freshness is tracked per column (an internal
+`field_observed_at` JSON column, not exported), so the sparse list view never blocks a newer
+value from the detail view. Observations can arrive in any order (a cache flushed days later,
+two browsers) and the result is the same; a test checks every permutation. `rebuild` replays
+raw and reproduces the live database; a test checks this too. Order-level refund placeholders
+(from a bare "Refund total" line) are dropped whenever item-level returns exist for that order,
+whichever arrives first.
 
 ### Security and privacy
 - Order data only ever goes to your server. There's no third-party service and no analytics.
@@ -124,13 +127,13 @@ a test checks this.
 
 | Area | Done | Verified by |
 |---|---|---|
-| Parsers (list, detail current + legacy layouts, returns page, sign-in/CAPTCHA detection) | ✅ | 10 fixture tests |
+| Parsers (list, detail current + legacy layouts, returns page, sign-in/CAPTCHA detection) | ✅ | 11 fixture tests |
 | Crawler (pagination, detail planning, CSD fallback, year discovery, returns, abort) | ✅ | 4 tests with a fake site |
 | Offline outbox (IndexedDB, dedupe, FIFO batches, dead-letter, export, reset) | ✅ | 4 tests (fake-indexeddb) |
 | Delivery (gzip, idempotent batch ids, offline/auth/413/poison handling) | ✅ | 6 tests |
 | Background, popup, options, badge, auto-crawl, progress toast | ✅ | Chrome e2e |
 | Chrome + Safari builds from one tree; icons generated | ✅ | build test; Chrome e2e |
-| Server: ingest, raw layer, merge, parquet, query API, CORS, auth, rebuild, status | ✅ | 20 pytest tests |
+| Server: ingest, raw layer, merge, parquet, query API, CORS, auth, rebuild, status | ✅ | 24 pytest tests |
 | **End to end in real Chromium:** passive capture offline → crawl offline → reconnect → flush → server merge → no re-sends | ✅ | `npm run e2e` |
 | Safari runtime | ⚠️ build only | Needs a Mac: `npm run safari:xcode` |
 | Real Amazon pages | ⚠️ not yet | Fixtures are synthetic. First real run is phase 1 below |
@@ -205,8 +208,8 @@ Each entry gives what I chose and the alternative. ★ marks the ones where your
    - Alternative: parsed JSON only.
 5. **Auth = tailnet + bearer token**, with an optional Tailscale identity allow-list. Without
    the token, anything on the tailnet could write to the server.
-6. **Merge = newest non-null wins per column**, keeping `first_observed_at` and
-   `last_observed_at`. This version keeps no observation history in the database; history
+6. **Merge = newest non-null wins per column** (per-column freshness), keeping
+   `first_observed_at` and `last_observed_at`. This version keeps no observation history in the database; history
    lives in raw. Alternative: an SCD2 history table if you want status timelines in SQL.
 7. **Cache = IndexedDB outbox with fingerprint dedupe.** Records move to a dead-letter store
    after 8 rejections. There is no size cap yet.

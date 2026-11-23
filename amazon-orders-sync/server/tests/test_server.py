@@ -1,5 +1,6 @@
 import datetime as dt
 import gzip
+import itertools
 import json
 from decimal import Decimal
 
@@ -376,18 +377,68 @@ def test_merge_row_semantics():
     t1 = dt.datetime(2025, 1, 1)
     t2 = dt.datetime(2025, 1, 2)
     row = srv.merge_row(None, {"a": 1, "b": None}, t2, "order_list")
-    assert row == {
+    assert {k: v for k, v in row.items() if k != srv.FIELD_TS} == {
         "a": 1,
         "b": None,
         "first_observed_at": t2,
         "last_observed_at": t2,
         "last_source": "order_list",
     }
+    assert json.loads(row[srv.FIELD_TS]) == {"a": t2.isoformat()}
     older = srv.merge_row(row, {"a": 0, "b": 5}, t1, "order_detail")
     assert older["a"] == 1  # stale value does not win
     assert older["b"] == 5  # but fills a gap
     assert older["first_observed_at"] == t1
     assert older["last_source"] == "order_list"
+
+
+def test_merge_is_order_independent_per_field():
+    """Review finding: a sparse newer observation must not block a newer value for a field it
+    didn't supply (detail t1 refund=0, list t3 no refund, detail t2 refund=25 → 25)."""
+    t1, t2, t3 = (dt.datetime(2025, 1, d) for d in (1, 2, 3))
+    obs = [
+        ({"refund_total": 0, "status": "Delivered"}, t1, "order_detail"),
+        ({"refund_total": None, "status": "Return complete"}, t3, "order_list"),
+        ({"refund_total": 25, "status": "Return started"}, t2, "order_detail"),
+    ]
+    results = set()
+    for perm in itertools.permutations(obs):
+        row = None
+        for data, ts, source in perm:
+            row = srv.merge_row(row, dict(data), ts, source)
+        results.add((row["refund_total"], row["status"], row["last_source"]))
+    assert results == {(25, "Return complete", "order_list")}
+
+
+def test_order_refund_placeholder_after_item_return_is_suppressed(client):
+    """Review finding: placeholder arriving after the item-level return must not be stored."""
+    post(client, envelope([return_record("113-7777777-1111111:B07RETURN1")], "b-1"))
+    post(client, envelope([return_record("113-7777777-1111111:order")], "b-2"))
+    rows = client.get("/v1/returns", headers=auth()).json["rows"]
+    assert [r["return_key"] for r in rows] == ["113-7777777-1111111:B07RETURN1"]
+
+
+def test_field_timestamps_not_exposed(client, cfg):
+    post(client, envelope([order_record(), return_record()]))
+    order = client.get("/v1/orders/112-1234567-7654321", headers=auth()).json
+    assert srv.FIELD_TS not in order
+    assert all(srv.FIELD_TS not in i for i in order["items"])
+    assert srv.FIELD_TS not in client.get("/v1/returns", headers=auth()).json["rows"][0]
+    cols = duckdb.sql(
+        f"DESCRIBE SELECT * FROM '{cfg.curated_dir / 'orders.parquet'}'"
+    ).fetchall()
+    assert srv.FIELD_TS not in {c[0] for c in cols}
+
+
+def test_schema_migration_adds_new_columns(tmp_path):
+    db = tmp_path / "old.duckdb"
+    con = duckdb.connect(str(db))
+    con.execute("CREATE TABLE orders (order_id VARCHAR PRIMARY KEY, status VARCHAR)")
+    con.close()
+    store = srv.Store(db)
+    cols = {r[0] for r in store.con.execute("DESCRIBE orders").fetchall()}
+    store.close()
+    assert set(srv.ORDER_COLUMNS) <= cols
 
 
 def test_coerce():

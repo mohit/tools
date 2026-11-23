@@ -192,7 +192,7 @@
     return_in_transit: 3, replacement: 2, return_started: 1,
   };
 
-  function returnInfo(texts) {
+  function returnInfo(texts, refDate) {
     let best = null;
     for (const t of texts) {
       if (!t || RETURN_WINDOW_RE.test(t)) continue;
@@ -211,24 +211,25 @@
     return {
       status: best.status,
       status_text: best.text,
-      event_date: parseDate(best.text) || (refundLine ? parseDate(refundLine) : null),
+      event_date: parseDate(best.text, refDate) || (refundLine ? parseDate(refundLine, refDate) : null),
       refund_amount: refund ? refund.amount : null,
       currency: refund ? refund.currency : null,
     };
   }
 
-  function itemReturnWindow(texts) {
+  function itemReturnWindow(texts, refDate) {
     const out = { return_policy_text: null, return_eligible_until: null, return_window_closed_on: null };
     for (const t of texts) {
       if (!t || !/return/i.test(t)) continue;
       if (/window closed|no longer eligible/i.test(t)) {
         out.return_policy_text = t;
-        out.return_window_closed_on = parseDate(t);
+        out.return_window_closed_on = parseDate(t, refDate, "past");
         break;
       }
       if (/eligible|return or replace/i.test(t)) {
         out.return_policy_text = t;
-        out.return_eligible_until = parseDate(t);
+        // A deadline: year-less dates resolve forward ("through January 31" seen in December).
+        out.return_eligible_until = parseDate(t, refDate, "future");
         break;
       }
     }
@@ -307,8 +308,8 @@
     const subscriptionLine = findLine(itemEl, /^auto-delivered\s*:/i);
 
     const returnEls = qsa(itemEl, SEL.itemReturn.join(", ")).map(textOf);
-    const retWindow = itemReturnWindow(returnEls.concat(lines));
-    const ret = returnInfo(lines.concat(extra.statusText ? [extra.statusText] : []));
+    const retWindow = itemReturnWindow(returnEls.concat(lines), ctx.observedAt);
+    const ret = returnInfo(lines.concat(extra.statusText ? [extra.statusText] : []), ctx.observedAt);
 
     return {
       asin: asin || null,
@@ -461,7 +462,7 @@
 
     const order = {
       order_id: orderId,
-      order_date: parseDate(dateText),
+      order_date: parseDate(dateText, ctx.observedAt),
       total_amount: total ? total.amount : null,
       currency: (total && total.currency) || ctx.currency || null,
       status,
@@ -572,7 +573,7 @@
 
     const order = {
       order_id: orderId,
-      order_date: parseDate(dateText),
+      order_date: parseDate(dateText, ctx.observedAt),
       status: firstStatus,
       is_cancelled: /\bcancell?ed\b/i.test(firstStatus || "") || null,
       is_digital: orderId.startsWith("D") || null,
@@ -638,7 +639,7 @@
     for (const card of outermost(cards)) {
       const orderId = extractOrderId(textOf(card));
       const lines = textBearers(card).map(textOf).filter(Boolean);
-      const info = returnInfo(lines) || { status: "unknown", status_text: lines.find((l) => /return|refund/i.test(l)) || null };
+      const info = returnInfo(lines, ctx.observedAt) || { status: "unknown", status_text: lines.find((l) => /return|refund/i.test(l)) || null };
       const refundLine = lines.find((l) => /refund/i.test(l) && parseMoney(l));
       const refund = refundLine ? parseMoney(refundLine, ctx.currency) : null;
       const containers = itemContainersFromLinks(card);
@@ -653,7 +654,7 @@
           title: item ? item.title : null,
           status: info.status,
           status_text: info.status_text,
-          event_date: info.event_date || parseDate(lines.find((l) => parseDate(l)) || ""),
+          event_date: info.event_date || parseDate(lines.find((l) => parseDate(l, ctx.observedAt)) || "", ctx.observedAt),
           refund_amount: info.refund_amount ?? (refund ? refund.amount : null),
           currency: info.currency || (refund && refund.currency) || ctx.currency || null,
           source: ctx.source,

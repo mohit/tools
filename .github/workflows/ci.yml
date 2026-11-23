@@ -12,6 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/ruff-action@v3
+        with:
+          # Pinned: ruff 0.16+ enables new default rules that flag ~100 existing findings
+          # across the repo. Bump deliberately together with those fixes.
+          version: "0.15.12"
 
   test:
     runs-on: ubuntu-latest

@@ -24,6 +24,16 @@ test("parseDate handles Amazon date styles", () => {
   assert.equal(util.parseDate("no date here"), null);
 });
 
+test("parseDate resolves year-less deadlines forward", () => {
+  // Seen on Dec 1: "through January 31" is next January, not last.
+  assert.equal(util.parseDate("Eligible through January 31", "2025-12-01T00:00:00Z", "future"), "2026-01-31");
+  assert.equal(util.parseDate("Eligible through December 20", "2025-12-01T00:00:00Z", "future"), "2025-12-20");
+  // A deadline a few days ago stays in the current year.
+  assert.equal(util.parseDate("Eligible through November 28", "2025-12-01T00:00:00Z", "future"), "2025-11-28");
+  // Explicit years are never shifted.
+  assert.equal(util.parseDate("Eligible through January 31, 2025", "2025-12-01T00:00:00Z", "future"), "2025-01-31");
+});
+
 test("order id and ASIN extraction", () => {
   assert.equal(util.extractOrderId("Order # 112-1234567-7654321"), "112-1234567-7654321");
   assert.equal(util.extractOrderId("D01-5555555-2222222"), "D01-5555555-2222222");

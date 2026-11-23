@@ -173,3 +173,15 @@ test("blocked page detection", () => {
   const captcha = parseHtml('<form action="/errors/validateCaptcha"><input id="captchacharacters"></form>');
   assert.equal(parsers.detectBlocked(captcha, "https://www.amazon.com/your-orders/orders"), "captcha");
 });
+
+test("year-less return deadline is resolved forward from the observation date", () => {
+  const url = "https://www.amazon.com/your-orders/orders";
+  const html = fixture("order-list-last-page.html").replace(
+    '<div class="item-box"><div class="yohtmlc-product-title"><a href="/dp/B000000001">Notebook</a></div></div>',
+    '<div class="item-box"><div class="yohtmlc-product-title"><a href="/dp/B000000001">Notebook</a></div>' +
+      '<span>Return or replace items: Eligible through January 31</span>' +
+      '<span>Return window closed on Nov 20</span></div>',
+  );
+  const { orders } = parsers.parseOrderList(parseHtml(html, url), { url, observedAt: "2025-12-01T10:00:00Z" });
+  assert.equal(orders[0].items[0].return_eligible_until, "2026-01-31");
+});
