@@ -8,6 +8,10 @@
   2. Adjust the repo path below if it isn't ~/code/tools.
   3. cp this file ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.mohit.tools.amazon-orders-server.plist
   4. Expose it on the tailnet with HTTPS:  tailscale serve --bg 8765
+
+  Run this only on moer-mini (the sole production datalake writer). Storage is resolved
+  through datalake-paths under DATALAKE_ROOT (default /Volumes/MoErMedia/datalake.me); if
+  the disk is not mounted the server exits before writing and launchd retries.
 -->
 <plist version="1.0">
 <dict>
@@ -19,6 +23,13 @@
     <string>-lc</string>
     <string>cd "$HOME/code/tools/amazon-orders-sync/server" &amp;&amp; AMAZON_SYNC_TOKEN="$(security find-generic-password -s com.mohit.tools.amazon-orders-sync -w)" exec uv run python amazon_orders_server.py serve</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DATALAKE_ROOT</key>
+    <string>/Volumes/MoErMedia/datalake.me</string>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>

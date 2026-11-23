@@ -59,7 +59,8 @@ content script (amazon.com)  ──observations──►  background  ──batc
    comes back `online`, and when you press *Send cache now*. A record leaves the cache only
    after the server acknowledges it.
 4. **Store.** The server first writes each batch verbatim to the raw layer, then merges it
-   into DuckDB. It then exports curated parquet, debounced to 15 s and written atomically.
+   into DuckDB. It then exports curated parquet, debounced to 15 s and published atomically.
+   All locations come from `datalake-paths/` under the verified `DATALAKE_ROOT`.
 
 ### Crawl strategy
 - **Recent** (default and auto): history filter `months-3`, all pages, then the returns page.
@@ -200,8 +201,10 @@ Each entry gives what I chose and the alternative. ★ marks the ones where your
    - Alternatives: Postgres or SQLite with a REST layer, which allows multiple readers on the
      DB but adds another stack; or writing straight to iCloud files, which risks sync
      conflicts and has no "server is reachable" signal.
-3. **DuckDB file at `~/.local/share/datalake/amazon/`, off iCloud.** Raw and curated go in the
-   iCloud datalake as usual. A live DuckDB file in an iCloud folder risks corruption.
+3. **Storage under the verified `DATALAKE_ROOT`** (MoErMedia volume on moer-mini, resolved
+   through `datalake-paths/`): raw batches in `raw/amazon/`, parquet in `curated/amazon/`,
+   the live DuckDB in `databases/amazon-orders-sync/`. Nothing is on iCloud, and every entry
+   point verifies the disk before writing.
 4. ★ **Raw layer = the received batch, including sanitised HTML snippets** (on by default).
    - It gives re-parseability, at the cost of size: roughly 5–50 KB per order, so a few
      hundred MB for a long history (gzipped on disk).
