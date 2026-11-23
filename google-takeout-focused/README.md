@@ -42,8 +42,8 @@ Process one zip/folder now:
 ```bash
 google-takeout-focused process \
   --source ~/Downloads/takeout-2026-02-10T120000Z-001.zip \
-  --raw-root ~/datalake.me/raw \
-  --curated-root ~/datalake.me/curated
+  --raw-root $DATALAKE_ROOT/raw \
+  --curated-root $DATALAKE_ROOT/curated
 ```
 
 Quarterly (or scheduled) sync of all new exports in a drop folder:
@@ -51,8 +51,8 @@ Quarterly (or scheduled) sync of all new exports in a drop folder:
 ```bash
 google-takeout-focused sync \
   --takeout-dir ~/Downloads/takeout-drop \
-  --raw-root ~/datalake.me/raw \
-  --curated-root ~/datalake.me/curated
+  --raw-root $DATALAKE_ROOT/raw \
+  --curated-root $DATALAKE_ROOT/curated
 ```
 
 `sync` tracks processed exports in:
@@ -62,12 +62,12 @@ google-takeout-focused sync \
 ## Output layout
 
 - Raw archive copy:
-  - `~/datalake.me/raw/google_takeout/archives/*.zip`
+  - `$DATALAKE_ROOT/raw/google_takeout/archives/*.zip`
 - Curated parquet datasets:
-  - `~/datalake.me/curated/google_takeout/location_visits/year=YYYY/month=MM/*.parquet`
-  - `~/datalake.me/curated/google_takeout/location_routes/year=YYYY/month=MM/*.parquet`
-  - `~/datalake.me/curated/google_takeout/search_history/year=YYYY/month=MM/*.parquet`
-  - `~/datalake.me/curated/google_takeout/youtube_music_history/year=YYYY/month=MM/*.parquet`
+  - `$DATALAKE_ROOT/curated/google_takeout/location_visits/year=YYYY/month=MM/*.parquet`
+  - `$DATALAKE_ROOT/curated/google_takeout/location_routes/year=YYYY/month=MM/*.parquet`
+  - `$DATALAKE_ROOT/curated/google_takeout/search_history/year=YYYY/month=MM/*.parquet`
+  - `$DATALAKE_ROOT/curated/google_takeout/youtube_music_history/year=YYYY/month=MM/*.parquet`
 
 ## Notes
 

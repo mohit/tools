@@ -1,6 +1,8 @@
 # Personal Data Reflection Tool Configuration
 
 # Database settings
+# Not used by reflect.py: the database is
+# $DATALAKE_ROOT/databases/personal-data-reflection/reflection.duckdb
 database: ./data/reflection.duckdb
 
 # Metrics to track and analyze

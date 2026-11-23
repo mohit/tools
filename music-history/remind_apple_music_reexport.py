@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
+from config import CURATED_ROOT, RAW_ROOT, STATE_ROOT, require_datalake  # noqa: F401
+
 
 @dataclass(frozen=True)
 class AppleMusicSnapshot:
@@ -23,7 +25,7 @@ class AppleMusicSnapshot:
 
 
 SNAPSHOT = AppleMusicSnapshot(
-    location=Path("~/datalake.me/raw/apple-music/").expanduser(),
+    location=RAW_ROOT / "apple-music",
     rows=88_949,
     range_start=date(2015, 7, 2),
     range_end=date(2023, 11, 9),

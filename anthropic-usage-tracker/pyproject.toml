@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "duckdb>=1.1.0",
+  "datalake-paths",
 ]
 
 [project.scripts]
@@ -13,3 +14,6 @@ anthropic-usage-track = "anthropic_usage_tracker:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0"]
+
+[tool.uv.sources]
+datalake-paths = { path = "../datalake-paths", editable = true }

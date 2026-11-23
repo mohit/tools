@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import datalake_paths as dp
 import yaml
 
 from .database import connect, init_db
@@ -14,12 +15,35 @@ def _load_config(path: str) -> dict:
         return yaml.safe_load(f)
 
 
+def _db_path(value: str | None) -> Path:
+    """Database location inside the verified datalake (verified before any write)."""
+    try:
+        return dp.within_root(value or dp.databases("location-data-duckdb", "location.duckdb"))
+    except dp.DatalakeUnavailable as exc:
+        raise SystemExit(str(exc)) from None
+
+
+def _verify_source_paths(cfg: dict) -> None:
+    """Writable caches named in the config must also live inside the datalake."""
+    for source_cfg in (cfg.get("sources") or {}).values():
+        cache = (source_cfg or {}).get("places_cache_path")
+        if cache:
+            try:
+                source_cfg["places_cache_path"] = str(dp.within_root(cache))
+            except dp.DatalakeUnavailable as exc:
+                raise SystemExit(str(exc)) from None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="location-pipeline")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     init_parser = subparsers.add_parser("init-db")
-    init_parser.add_argument("--db-path", required=True)
+    init_parser.add_argument(
+        "--db-path",
+        default=None,
+        help="Default: $DATALAKE_ROOT/databases/location-data-duckdb/location.duckdb",
+    )
 
     run_source_parser = subparsers.add_parser("run-source")
     run_source_parser.add_argument("--config", required=True)
@@ -31,16 +55,18 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "init-db":
-        Path(args.db_path).parent.mkdir(parents=True, exist_ok=True)
-        conn = connect(args.db_path)
+        db_path = _db_path(args.db_path)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = connect(str(db_path))
         init_db(conn)
-        print(f"Initialized DB at {args.db_path}")
+        print(f"Initialized DB at {db_path}")
         return
 
     cfg = _load_config(args.config)
-    db_path = cfg["db_path"]
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    conn = connect(db_path)
+    db_path = _db_path(cfg.get("db_path"))
+    _verify_source_paths(cfg)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = connect(str(db_path))
     init_db(conn)
 
     if args.command == "run-source":

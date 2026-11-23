@@ -36,10 +36,10 @@ Run for a specific day:
 anthropic-usage-track --date 2026-02-11
 ```
 
-Point at a specific datalake root (default: `~/datalake.me`):
+Point at a specific datalake root (default: `$DATALAKE_ROOT`):
 
 ```bash
-anthropic-usage-track --datalake-root ~/datalake.me
+anthropic-usage-track --datalake-root $DATALAKE_ROOT
 ```
 
 Map API key ids to agent/session names:
@@ -64,7 +64,7 @@ anthropic-usage-track --pricing-json ./anthropic_pricing.json
 
 ## Output layout
 
-Under `<datalake-root>` (default `~/datalake.me`):
+Under `<datalake-root>` (default `$DATALAKE_ROOT`):
 
 - Raw snapshots:
   - `raw/anthropic/usage_report/date=YYYY-MM-DD/usage_<timestamp>.json`

@@ -169,6 +169,8 @@ class TestBackfill(TestCase):
 
             def execute(self, sql, params=None):
                 self.statements.append((sql, params))
+                if sql.startswith("COPY") and params:
+                    Path(params[0]).write_bytes(b"")  # writer output for atomic publish
                 if "PRAGMA table_info('activity_streams_raw')" in sql:
                     # Match DuckDB PRAGMA table_info shape: cid, name, type, ...
                     return FakeResult(
@@ -218,6 +220,8 @@ class TestBackfill(TestCase):
 
             def execute(self, sql, params=None):
                 self.statements.append((sql, params))
+                if sql.startswith("COPY") and params:
+                    Path(params[0]).write_bytes(b"")  # writer output for atomic publish
                 return self
 
         fake_con = FakeConnection()
@@ -256,6 +260,8 @@ class TestBackfill(TestCase):
 
             def execute(self, sql, params=None):
                 self.statements.append((sql, params))
+                if sql.startswith("COPY") and params:
+                    Path(params[0]).write_bytes(b"")  # writer output for atomic publish
                 return self
 
         fake_con = FakeConnection()

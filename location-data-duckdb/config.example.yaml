@@ -1,4 +1,5 @@
-db_path: ./data/location.duckdb
+# Must be inside $DATALAKE_ROOT; omit to use databases/location-data-duckdb/location.duckdb
+db_path: /Volumes/MoErMedia/datalake.me/databases/location-data-duckdb/location.duckdb
 
 sources:
   google_takeout:
@@ -15,7 +16,7 @@ sources:
     enabled: true
     path: ./imports/foursquare
     places_api_key_env: FOURSQUARE_PLACES_API_KEY
-    places_cache_path: ./data/foursquare_places_cache.json
+    places_cache_path: /Volumes/MoErMedia/datalake.me/state/location-data-duckdb/foursquare_places_cache.json
     places_api_base_url: https://api.foursquare.com/v3/places
 
   manual_csv:

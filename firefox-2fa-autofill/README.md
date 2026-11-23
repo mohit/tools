@@ -2,7 +2,7 @@
 
 A browser extension that monitors Google Voice for SMS verification codes and helps autofill them on websites.
 
-Works on **Firefox** and **Chrome/Chromium** browsers.
+Works on **Firefox**, **Chrome/Chromium**, and **Safari**.
 
 ## Features
 
@@ -41,6 +41,31 @@ Works on **Firefox** and **Chrome/Chromium** browsers.
 4. Click **"Load unpacked"**
 5. Select this extension folder
 
+### Safari (macOS)
+
+1. Run the helper script:
+   ```bash
+   ./build-safari.sh
+   ```
+   Optional: pass a custom output directory:
+   ```bash
+   ./build-safari.sh /path/to/output-dir
+   ```
+2. Alternatively, switch to the Safari manifest and convert manually:
+   ```bash
+   cp manifest_safari.json manifest.json
+   ```
+3. Convert the WebExtension to a Safari project:
+   ```bash
+   xcrun safari-web-extension-converter . --project-location ./safari --copy-resources --no-open
+   ```
+4. Open `safari/Google Voice 2FA Autofill.xcodeproj` in Xcode
+5. In Xcode, build and run the extension target
+6. In Safari, enable the extension in **Settings > Extensions**
+
+The helper stages Safari resources in a temporary directory and leaves the active
+manifest unchanged. Native Safari build and browser acceptance remain manual.
+
 ## Usage
 
 1. **Open Google Voice** - Navigate to [voice.google.com](https://voice.google.com) and ensure you're logged in
@@ -69,6 +94,8 @@ The extension detects codes in messages containing keywords like:
 ├── manifest.json           # Active manifest (Firefox V2 by default)
 ├── manifest_firefox.json   # Firefox Manifest V2
 ├── manifest_chrome.json    # Chrome Manifest V3
+├── manifest_safari.json    # Safari Manifest V2
+├── build-safari.sh         # Safari converter helper script
 ├── background.js           # Coordinates between tabs, stores codes
 ├── content-google-voice.js # Monitors Google Voice for SMS codes
 ├── content-2fa-detector.js # Detects 2FA fields, shows suggestion popup
@@ -88,6 +115,9 @@ The extension detects codes in messages containing keywords like:
    > Your verification code is 123456
 5. The code should appear in the test page's suggestion popup
 
+Run API compatibility tests with `node --test test-browser-compat.js test_patterns.js`.
+Generated Safari projects belong in `safari/` and are ignored by Git.
+
 ### Debugging
 
 Open the browser's Developer Tools console to see logs prefixed with `[2FA Autofill]`:
@@ -102,6 +132,9 @@ cp manifest_firefox.json manifest.json
 
 # For Chrome/Chromium
 cp manifest_chrome.json manifest.json
+
+# For Safari
+cp manifest_safari.json manifest.json
 ```
 
 ## Privacy

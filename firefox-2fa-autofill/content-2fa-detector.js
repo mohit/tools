@@ -1,5 +1,22 @@
-// Cross-browser compatibility: use browserAPI.* or chrome.*
-const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
+// Cross-browser compatibility: use browser.* when available, fallback to chrome.*
+const hasBrowserNamespace = typeof browser !== 'undefined';
+const browserAPI = hasBrowserNamespace ? browser : chrome;
+
+function sendRuntimeMessage(message) {
+  if (hasBrowserNamespace) {
+    return browserAPI.runtime.sendMessage(message);
+  }
+  return new Promise((resolve, reject) => {
+    browserAPI.runtime.sendMessage(message, (response) => {
+      const err = browserAPI.runtime?.lastError;
+      if (err) {
+        reject(new Error(err.message));
+        return;
+      }
+      resolve(response);
+    });
+  });
+}
 
 // Content script for detecting 2FA input fields and showing code suggestions
 
@@ -363,7 +380,7 @@ function fillSplitCode(firstField, code) {
 // Request current code from background
 async function requestCode() {
   try {
-    const response = await browserAPI.runtime.sendMessage({ type: 'GET_ALL_CODES' });
+    const response = await sendRuntimeMessage({ type: 'GET_ALL_CODES' });
     if (response?.codes) {
       // Add all codes (they'll be deduplicated by addCode)
       for (const codeData of response.codes) {
@@ -404,7 +421,7 @@ function addCode(code, timestamp, isNew, source = null) {
 // Notify background that code was filled
 async function notifyCodeFilled(code) {
   try {
-    await browserAPI.runtime.sendMessage({ type: 'CODE_FILLED', code });
+    await sendRuntimeMessage({ type: 'CODE_FILLED', code });
     // Mark the code as not new anymore
     const item = availableCodes.find(c => c.code === code);
     if (item) item.isNew = false;

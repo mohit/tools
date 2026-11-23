@@ -1,0 +1,13 @@
+[project]
+name = "datalake-paths"
+version = "0.1.0"
+description = "Verified MoErMedia datalake locations and inode-safe atomic writes"
+requires-python = ">=3.10"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["datalake_paths"]

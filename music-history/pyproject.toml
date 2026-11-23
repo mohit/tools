@@ -9,7 +9,11 @@ dependencies = [
     "pandas>=2.3.3",
     "pyarrow>=22.0.0",
     "requests>=2.32.5",
+    "datalake-paths",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0"]
+
+[tool.uv.sources]
+datalake-paths = { path = "../datalake-paths", editable = true }

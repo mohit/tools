@@ -11,6 +11,8 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+import datalake_paths as dp
+
 
 def trigger_health_export(output_dir=None):
     """
@@ -161,7 +163,7 @@ def check_freshness(data_dir=None, threshold_days=30):
 
     Args:
         data_dir: Directory containing the raw Apple Health files.
-                  Defaults to ``~/datalake.me/raw/apple-health/``.
+                  Defaults to ``$DATALAKE_ROOT/raw/apple-health/``.
         threshold_days: Maximum acceptable age in days (default 30).
 
     Returns:
@@ -171,7 +173,7 @@ def check_freshness(data_dir=None, threshold_days=30):
                     does not exist yet).
     """
     if data_dir is None:
-        data_dir = Path.home() / "datalake.me" / "raw" / "apple-health"
+        data_dir = dp.configured_root() / "raw" / "apple-health"
     data_dir = Path(data_dir)
 
     if not data_dir.exists():

@@ -11,7 +11,8 @@ requires-python = ">=3.10"
 dependencies = [
   "duckdb>=1.0.0",
   "pyyaml>=6.0.0",
-  "requests>=2.31.0"
+  "requests>=2.31.0",
+  "datalake-paths",
 ]
 
 [project.scripts]
@@ -22,3 +23,6 @@ packages = ["location_pipeline", "location_pipeline.sources", "location_pipeline
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0"]
+
+[tool.uv.sources]
+datalake-paths = { path = "../datalake-paths", editable = true }

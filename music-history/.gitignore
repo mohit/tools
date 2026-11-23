@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Personal payloads and runtime metadata live on MoErMedia
+apple_music_history.jsonl
+apple_music_export_metadata.json

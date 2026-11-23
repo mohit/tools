@@ -1,14 +1,14 @@
 import argparse
 import csv
-import os
 import re
 import shutil
 import time
 from pathlib import Path
 
 import duckdb
+from config import CURATED_ROOT, RAW_ROOT, STATE_ROOT, require_datalake  # noqa: F401
 
-DEFAULT_RAW_BASE = Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Data Exports"
+DEFAULT_RAW_BASE = RAW_ROOT
 
 
 TRACK_COLUMNS = [
@@ -38,10 +38,7 @@ PLAY_COUNT_COLUMNS = [
 
 
 def _default_roots() -> tuple[Path, Path]:
-    raw_base = Path(os.environ.get("DATALAKE_RAW_ROOT", str(DEFAULT_RAW_BASE)))
-    curated_root_env = os.environ.get("DATALAKE_CURATED_ROOT")
-    curated_base = Path(curated_root_env) if curated_root_env else raw_base / "datalake/curated"
-    return raw_base / "apple-music", curated_base / "apple-music" / "play-activity"
+    return DEFAULT_RAW_BASE / "apple-music", CURATED_ROOT / "apple-music" / "play-activity"
 
 
 def _is_play_activity_csv_name(name: str) -> bool:
@@ -285,6 +282,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    require_datalake()
 
     raw_root = Path(args.raw_root).expanduser()
     csv_file = Path(args.csv_file).expanduser() if args.csv_file else None

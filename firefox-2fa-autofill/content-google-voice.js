@@ -1,5 +1,22 @@
-// Cross-browser compatibility: use browserAPI.* or chrome.*
-const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
+// Cross-browser compatibility: use browser.* when available, fallback to chrome.*
+const hasBrowserNamespace = typeof browser !== 'undefined';
+const browserAPI = hasBrowserNamespace ? browser : chrome;
+
+function sendRuntimeMessage(message) {
+  if (hasBrowserNamespace) {
+    return browserAPI.runtime.sendMessage(message);
+  }
+  return new Promise((resolve, reject) => {
+    browserAPI.runtime.sendMessage(message, (response) => {
+      const err = browserAPI.runtime?.lastError;
+      if (err) {
+        reject(new Error(err.message));
+        return;
+      }
+      resolve(response);
+    });
+  });
+}
 
 // Content script for Google Voice - monitors for new SMS messages with 2FA codes
 
@@ -509,7 +526,7 @@ function scanForCode() {
   lastSentCode = code;
   lastSentTime = Date.now();
 
-  browserAPI.runtime.sendMessage({
+  sendRuntimeMessage({
     type: 'NEW_CODE',
     code: code,
     source: source,

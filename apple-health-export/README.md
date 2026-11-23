@@ -151,8 +151,8 @@ python3 health_auto_export.py serve \
   --host 0.0.0.0 \
   --port 8787 \
   --token "$HEALTH_AUTO_EXPORT_TOKEN" \
-  --raw-dir ~/datalake.me/raw/apple-health/auto-export \
-  --curated-dir ~/datalake.me/curated/apple-health
+  --raw-dir $DATALAKE_ROOT/raw/apple-health/auto-export \
+  --curated-dir $DATALAKE_ROOT/curated/apple-health
 ```
 
 > **Note:** `serve` uses Flask's built-in development server, which is suitable for personal/local use. If you need to expose this endpoint on a network, consider fronting with a production WSGI server such as gunicorn. The bearer token is the only auth layer.
@@ -165,20 +165,20 @@ Endpoint: `POST /v1/health/auto-export`
 
 Curated outputs are updated on each successful request:
 
-- `~/datalake.me/curated/apple-health/health_records.parquet`
-- `~/datalake.me/curated/apple-health/health_workouts.parquet`
+- `$DATALAKE_ROOT/curated/apple-health/health_records.parquet`
+- `$DATALAKE_ROOT/curated/apple-health/health_workouts.parquet`
 
 Raw payloads are stored immutably under:
 
-- `~/datalake.me/raw/apple-health/auto-export/YYYY/MM/DD/*.json`
+- `$DATALAKE_ROOT/raw/apple-health/auto-export/YYYY/MM/DD/*.json`
 
 You can also ingest a JSON file directly:
 
 ```bash
 python3 health_auto_export.py ingest-file \
   --file sample_auto_export.json \
-  --raw-dir ~/datalake.me/raw/apple-health/auto-export \
-  --curated-dir ~/datalake.me/curated/apple-health
+  --raw-dir $DATALAKE_ROOT/raw/apple-health/auto-export \
+  --curated-dir $DATALAKE_ROOT/curated/apple-health
 ```
 
 Health Auto Export merge behavior:

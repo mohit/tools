@@ -1,11 +1,12 @@
 # AGENTS.md — mohit/tools
 
 ## What this repo is
-Personal data tools — ingest, transform, and reflect on health/fitness/music/location data. Each top-level folder is a standalone tool. Data flows into a personal datalake (raw → curated parquet) on iCloud.
+Personal data tools — ingest, transform, and reflect on health/fitness/music/location data. Each top-level folder is a standalone tool. Data is consolidated into a personal datalake (raw → curated parquet) on MoErMedia.
 
 ## Repo structure
 ```
 amazon-orders-sync/      # Amazon orders/items/returns: Chrome+Safari extension (JS) → Flask+DuckDB ingest server on Tailscale
+datalake-paths/          # Verified DATALAKE_ROOT locations + inode-safe atomic writes (stdlib)
 anthropic-usage-tracker/ # Anthropic API usage tracking → parquet (Python, DuckDB)
 apple-health-export/     # Apple Health XML → parquet (Python, DuckDB)
 firefox-2fa-autofill/    # Browser extension (JS, WebExtension manifest)
@@ -26,9 +27,13 @@ strava-data-puller/      # Strava API → raw JSON + curated parquet (Python, Du
 - **No monorepo build system** — each tool is independent
 
 ## Datalake conventions
-- **Raw data:** `~/datalake.me/raw/<source>/`
-- **Curated data:** `~/datalake.me/curated/<source>/` (parquet)
-- **State files:** `~/.local/share/datalake/` (last sync timestamps, etc.)
+- **Raw data:** `/Volumes/MoErMedia/datalake.me/raw/<source>/`
+- **Curated data:** `/Volumes/MoErMedia/datalake.me/curated/<source>/` (parquet)
+- **State files:** `/Volumes/MoErMedia/datalake.me/state/<tool>/` (last sync timestamps, etc.)
+- **Databases / reports:** `databases/<tool>/`, `artifacts/<tool>/` under the same root.
+- Resolve every path through `datalake-paths/` (`DATALAKE_ROOT`); entry points must call its verification before any request or write so a missing or wrong disk fails first. Never default to `~/datalake.me`, iCloud, `./data` or `~/.local/share`.
+- Read `data-storage/README.md` before storage changes. Preserve immutable hard-linked payloads; publish replacements atomically with `datalake_paths.atomic_output`/`publish_file`, never by rewriting a file in place.
+- moer-mini is the sole production writer. Scheduled/background jobs stay disabled until step 5 of the migration.
 - Raw = immutable API dumps. Curated = cleaned, typed, deduplicated parquet.
 
 ## Coding conventions

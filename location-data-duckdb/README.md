@@ -82,7 +82,7 @@ cp config.example.yaml config.yaml
 Initialize the DuckDB file:
 
 ```bash
-location-pipeline init-db --db-path ./data/location.duckdb
+location-pipeline init-db   # $DATALAKE_ROOT/databases/location-data-duckdb/location.duckdb
 ```
 
 Run all configured sources:
