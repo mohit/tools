@@ -417,8 +417,8 @@ class TestPrintFreshnessReport(unittest.TestCase):
             {
                 "name": "health_workouts.parquet",
                 "path": Path("/fake/health_workouts.parquet"),
-                "age_days": 137,
-                "mtime": "2026-02-07",
+                "age_days": 100,
+                "mtime": "2020-01-01",
             }
         ]
         result = health_export.print_freshness_report(stale, threshold_days=30)
@@ -430,8 +430,8 @@ class TestPrintFreshnessReport(unittest.TestCase):
             {
                 "name": "export.xml",
                 "path": Path("/fake/export.xml"),
-                "age_days": 155,
-                "mtime": "2026-01-20",
+                "age_days": 100,
+                "mtime": "2020-01-01",
             }
         ]
         import io
