@@ -8,9 +8,10 @@
     "build": "node scripts/build.mjs all",
     "build:chrome": "node scripts/build.mjs chrome",
     "build:safari": "node scripts/build.mjs safari",
-    "safari:xcode": "node scripts/build.mjs safari && xcrun safari-web-extension-converter dist/safari --project-location dist/xcode --app-name \"Amazon Orders Sync\" --bundle-identifier com.mohit.tools.amazon-orders-sync --macos-only --no-open --no-prompt --force",
+    "safari:xcode": "node scripts/safari-xcode.mjs",
     "test": "node --test test/*.test.js",
-    "e2e": "node scripts/build.mjs chrome && node test/e2e/chrome-e2e.mjs"
+    "e2e": "node scripts/build.mjs chrome && node test/e2e/chrome-e2e.mjs",
+    "safari:app": "node scripts/safari-xcode.mjs --build"
   },
   "devDependencies": {
     "fake-indexeddb": "^6.2.8",

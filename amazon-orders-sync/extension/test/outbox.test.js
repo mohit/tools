@@ -62,3 +62,11 @@ test("order states merge and reset", async () => {
   assert.deepEqual(await ob.getOrderStates(["O1"]), {});
   assert.deepEqual(await ob.observe([rec("A", { s: 1 })]), { queued: 1, unchanged: 0 });
 });
+
+test("fingerprint ignores item order but not item content", () => {
+  const { fingerprint } = require("../src/shared/outbox.js");
+  const items = [{ item_key: "A", title: "a" }, { item_key: "B", title: "b" }];
+  const rec = (its) => ({ type: "order", key: "1", data: { order_id: "1", items: its } });
+  assert.equal(fingerprint(rec(items)), fingerprint(rec([...items].reverse())));
+  assert.notEqual(fingerprint(rec(items)), fingerprint(rec([{ item_key: "A", title: "a" }, { item_key: "B", title: "c" }])));
+});

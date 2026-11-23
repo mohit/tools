@@ -156,13 +156,40 @@
         while (sib && !textOf(sib)) sib = sib.nextElementSibling;
         if (sib) return textOf(sib);
         node = node.parentElement;
+        // "Label value" in one element: only when the text really starts with the label, else
+        // slicing by the label's length returns unrelated text (e.g. the whole order header
+        // when the value node is still empty because Amazon fills it in with JS).
         if (node && node !== rootEl) {
-          const rest = cleanText(textOf(node).slice(textOf(el).length));
-          if (rest) return rest;
+          const nodeText = textOf(node);
+          if (nodeText.toLowerCase().startsWith(textOf(el).toLowerCase())) {
+            const rest = cleanText(nodeText.slice(textOf(el).length));
+            if (rest) return rest;
+          }
         }
       }
     }
     return null;
+  }
+
+  /**
+   * Canonical Amazon product image URL. The live page swaps in a 2x rendition (._SS284_) and an
+   * experiment path (/images/W/<weblab>/) that fetched HTML doesn't have; without this the same
+   * item fingerprints differently in passive capture vs crawl and is re-sent forever.
+   */
+  function imageUrl(href, base) {
+    const url = absUrl(href, base);
+    if (!url || !/(^|\.)media-amazon\.com$|(^|\.)ssl-images-amazon\.com$/.test(safeHost(url))) return url;
+    return url
+      .replace(/\/images\/W\/[^/]+\/images\/I\//, "/images/I/")
+      .replace(/\._[^/]*_\.(jpe?g|png|gif|webp)$/i, ".$1");
+  }
+
+  function safeHost(url) {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return "";
+    }
   }
 
   function absUrl(href, base) {
@@ -315,7 +342,7 @@
       asin: asin || null,
       title: title || null,
       item_url: absUrl(href, ctx.url),
-      image_url: img ? absUrl(img.getAttribute("src") || img.getAttribute("data-src"), ctx.url) : null,
+      image_url: img ? imageUrl(img.getAttribute("src") || img.getAttribute("data-src"), ctx.url) : null,
       quantity: quantity || 1,
       unit_price: price ? price.amount : null,
       currency: (price && price.currency) || ctx.currency || null,
@@ -454,7 +481,6 @@
       findLine(header, /order placed|ordered on/i);
     const totalText = textOf(first(card, SEL.orderTotal)) || labeledValue(header, ["total", "order total"]);
     const total = parseMoney(totalText, ctx.currency);
-    const shipTo = labeledValue(header, ["ship to", "deliver to", "sent to"]);
     const detailEl = first(card, SEL.detailLink);
     const invoiceEl = first(card, SEL.invoiceLink);
     const status = textOf(first(card, SEL.shipmentStatus)) || null;
@@ -468,7 +494,9 @@
       status,
       is_cancelled: /\bcancell?ed\b/i.test(status || "") || null,
       is_digital: orderId.startsWith("D") || /digital order/i.test(cardText) || null,
-      ship_to_name: shipTo ? shipTo.split(/\s{2,}|\n/)[0] : null,
+      // No ship_to_name here: the list's recipient node is filled in by Amazon's JS, so the live
+      // page and a crawled copy disagree (and the merge would let the newer, worse one win).
+      // The order-details page has name + address in static HTML.
       detail_url: detailEl ? absUrl(detailEl.getAttribute("href"), ctx.url) : null,
       invoice_url: invoiceEl ? absUrl(invoiceEl.getAttribute("href"), ctx.url) : null,
       items: parseItemsWithShipments(card, ctx, status),
@@ -681,6 +709,6 @@
 
   return {
     SEL, parseOrderList, parseOrderDetail, parseReturnsPage, detectBlocked, hasNextPage, discoverTimeFilters,
-    _internal: { labeledValue, returnInfo, itemReturnWindow, parseSubtotals, findItemContainers, textBearers },
+    _internal: { labeledValue, imageUrl, returnInfo, itemReturnWindow, parseSubtotals, findItemContainers, textBearers },
   };
 });

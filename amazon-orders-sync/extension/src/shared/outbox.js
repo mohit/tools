@@ -37,8 +37,15 @@
   }
 
   /** Fingerprint of a record's content: ignores when/where it was observed and the raw HTML. */
+  // Item order is not data (the server keys items by order_id + item_key), and Amazon doesn't
+  // list multi-item orders in a stable order, so sort before hashing.
   function fingerprint(record) {
-    return util.hashObject({ type: record.type, key: record.key, data: record.data });
+    let data = record.data;
+    if (data && Array.isArray(data.items)) {
+      const items = [...data.items].sort((a, b) => String(a && a.item_key).localeCompare(String(b && b.item_key)));
+      data = { ...data, items };
+    }
+    return util.hashObject({ type: record.type, key: record.key, data });
   }
 
   function fpKey(record) {

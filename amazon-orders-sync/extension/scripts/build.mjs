@@ -5,7 +5,8 @@
 //
 // Output: dist/chrome and dist/safari. The only per-browser differences are the manifest's
 // `background` entry (Chrome: service worker that importScripts() the shared modules;
-// Safari: non-persistent background page listing the same files) and browser_specific_settings.
+// Safari: MV3 background scripts — always non-persistent — listing the same files),
+// browser_specific_settings, and Safari dropping keys it doesn't support (options open_in_tab).
 // No bundler: every source file is copied verbatim, so what you debug is what you wrote.
 
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -39,9 +40,14 @@ export const CONTENT_SCRIPTS = [
 
 const readJson = (p) => JSON.parse(readFileSync(p, "utf8"));
 
+// Deep merge; a `null` in the override deletes that key (e.g. keys Safari doesn't support).
 function merge(base, override) {
   const out = { ...base };
   for (const [k, v] of Object.entries(override)) {
+    if (v === null) {
+      delete out[k];
+      continue;
+    }
     out[k] = v && typeof v === "object" && !Array.isArray(v) && base[k] && typeof base[k] === "object"
       ? merge(base[k], v)
       : v;
