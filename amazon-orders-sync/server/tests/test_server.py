@@ -131,15 +131,46 @@ def test_requires_token_unless_no_auth(cfg):
         srv.create_app(cfg)
 
 
-def test_health_is_public_and_cors(client):
+EXT = "safari-web-extension://3F1C2B7A-1234-4C2E-9F00-ABCDEF012345"
+
+
+def test_health_is_public_and_cors_is_extension_only(client):
     res = client.get("/v1/health")
     assert res.status_code == 200
     assert res.json["service"] == "amazon-orders-sync"
-    assert res.headers["Access-Control-Allow-Origin"] == "*"
-    pre = client.options("/v1/ingest")
-    assert pre.status_code in (200, 204)
-    assert "Authorization" in pre.headers["Access-Control-Allow-Headers"]
-    assert pre.headers["Access-Control-Allow-Private-Network"] == "true"
+    assert "Access-Control-Allow-Origin" not in res.headers, "no CORS for non-browser clients"
+    for origin in (EXT, "chrome-extension://abcdefghijklmnopabcdefghijklmnop", "moz-extension://a1b2-c3"):
+        pre = client.options("/v1/ingest", headers={"Origin": origin})
+        assert pre.status_code in (200, 204)
+        assert pre.headers["Access-Control-Allow-Origin"] == origin
+        assert "Authorization" in pre.headers["Access-Control-Allow-Headers"]
+        assert pre.headers["Access-Control-Allow-Private-Network"] == "true"
+
+
+@pytest.mark.parametrize("origin", ["https://evil.example", "null", "http://localhost:3000",
+                                    "chrome-extension://x/../evil", "https://chrome-extension.evil"])
+def test_web_pages_cannot_read_or_write(client, origin):
+    res = client.get("/v1/orders", headers={"Origin": origin, **auth()})
+    assert res.status_code == 403
+    assert "Access-Control-Allow-Origin" not in res.headers
+    res = client.post("/v1/ingest", data="{}", headers={"Origin": origin, "Content-Type": "text/plain"})
+    assert res.status_code == 403
+
+
+def test_no_auth_server_still_refuses_web_pages(cfg):
+    cfg.token = None
+    cfg.allow_no_auth = True
+    client = srv.create_app(cfg).test_client()
+    assert client.get("/v1/orders").status_code == 200
+    assert client.get("/v1/orders", headers={"Origin": "https://evil.example"}).status_code == 403
+    assert client.get("/v1/orders", headers={"Origin": EXT}).status_code == 200
+
+
+def test_configured_extra_origin(cfg):
+    cfg.allowed_origins = frozenset({"https://dash.example.ts.net"})
+    client = srv.create_app(cfg).test_client()
+    res = client.get("/v1/health", headers={"Origin": "https://dash.example.ts.net"})
+    assert res.headers["Access-Control-Allow-Origin"] == "https://dash.example.ts.net"
 
 
 def test_auth_required(client):

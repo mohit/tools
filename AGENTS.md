@@ -3,6 +3,38 @@
 ## What this repo is
 Personal data tools — ingest, transform, and reflect on health/fitness/music/location data. Each top-level folder is a standalone tool. Data is consolidated into a personal datalake (raw → curated parquet) on MoErMedia.
 
+## Data policy (read first): code is public, data never is
+This repository is **public**. It may contain only **code, workflows, processes and
+documentation**. It must never contain **data** — anything that came from, describes, or could
+be used to reconstruct the user's life, accounts, devices or infrastructure.
+
+**Never in the repo** (files, tests, fixtures, docs, screenshots, commit messages, PR/issue
+text, branch names):
+- Real data in any form or format: exports, API dumps, databases, parquet, page captures, logs,
+  screenshots or charts of real data, sample rows copied from real files.
+- Identifiers: names, emails, accounts, calendar/device/volume IDs, addresses, coordinates,
+  card or account digits, order/activity/transaction IDs, tailnet or host names, IPs, file
+  paths that reveal personal structure beyond the documented datalake layout.
+- Figures derived from real data: counts, totals, date ranges, "N orders since YYYY", top
+  artists, averages — including in commit messages and PR descriptions.
+- Secrets: tokens, keys, passwords, cookies (use environment variables or the Keychain).
+
+**Test data must be synthetic and non-reconstructable.** Invent it; never derive it from real
+data. Do not copy real rows and edit a few fields, keep real values "because they're
+realistic", or reuse real IDs, prices, timestamps, titles or coordinates. Use obviously fake
+values (`Alex Example`, `example.com`, `111-0000001-0000001`, `B000000001`, round numbers,
+fixed dates such as `2020-01-01`). A fixture must reveal nothing about the user even when
+combined with other public information.
+
+**Where data and personal configuration go instead:** the datalake (`raw/`, `curated/`,
+`databases/`, `state/<tool>/` — e.g. `state/gcal-backup/calendars.json`), environment
+variables, or the Keychain. Code reads them at runtime.
+
+**Enforcement:** CI runs `scripts/check_public_safety.py` and gitleaks. Run the script before
+pushing. It catches patterns, not intent: a clean scan does not make real data acceptable.
+If real data is ever committed, treat it as already public: tell the user, remove it from all
+branches and history, and request a cache purge from GitHub.
+
 ## Repo structure
 ```
 amazon-orders-sync/      # Amazon orders/items/returns: Chrome+Safari extension (JS) → Flask+DuckDB ingest server on Tailscale

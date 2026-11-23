@@ -45,7 +45,7 @@ def test_main_returns_stale_error(tmp_path: Path, capsys: pytest.CaptureFixture[
     write_csv(
         csv_path,
         "Track Name,Play Date UTC\n"
-        "Song A,2023-11-05T03:22:36Z\n",
+        "Song A,2020-01-01T00:00:00Z\n",
     )
 
     exit_code = main(["--csv-path", str(csv_path), "--max-age-days", "7"])
@@ -53,7 +53,7 @@ def test_main_returns_stale_error(tmp_path: Path, capsys: pytest.CaptureFixture[
     out = capsys.readouterr()
     assert exit_code == 2
     assert "Apple Music play history export is stale." in out.err
-    assert "2023-11-05T03:22:36Z" in out.err
+    assert "2020-01-01T00:00:00Z" in out.err
     assert "privacy.apple.com" in out.err
 
 

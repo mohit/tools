@@ -22,33 +22,40 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "datalake-paths"))
 import datalake_paths as dp
 
-CALENDARS = [
-    {
-        "name": "you@example.com",
-        "folder": "you@example.com",
-        "id": "primary",
-    },
-    {
-        "name": "Burp",
-        "folder": "Burp",
-        "id": "calendar-1@group.calendar.example",
-    },
-    {
-        "name": "Family",
-        "folder": "Family",
-        "id": "calendar-4@group.calendar.example",
-    },
-    {
-        "name": "Tarzan",
-        "folder": "Tarzan",
-        "id": "calendar-2@group.calendar.example",
-    },
-    {
-        "name": "Work-ish",
-        "folder": "Work-ish",
-        "id": "calendar-3@group.calendar.example",
-    },
-]
+# Which account and calendars to back up is personal, so it lives in the datalake, not in this
+# public repo: $DATALAKE_ROOT/state/gcal-backup/calendars.json (override with --config):
+#
+#   {
+#     "account": "you@example.com",
+#     "calendars": [
+#       {"name": "Personal", "folder": "Personal", "id": "primary"},
+#       {"name": "Family", "folder": "Family", "id": "<id>@group.calendar.google.com"}
+#     ]
+#   }
+#
+# `folder` names the snapshot directory under raw/google-calendar/; keep it stable.
+CONFIG_TOOL = "gcal-backup"
+CONFIG_NAME = "calendars.json"
+
+
+def load_config(path: Path) -> dict[str, Any]:
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise SystemExit(
+            f"ERROR: calendar config not found at {path}. See the comment at the top of "
+            "scripts/gcal_backup.py for the format."
+        ) from None
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"ERROR: {path} is not valid JSON: {exc}") from None
+    calendars = config.get("calendars")
+    if not isinstance(calendars, list) or not calendars:
+        raise SystemExit(f"ERROR: {path} must list at least one calendar under 'calendars'.")
+    for i, cal in enumerate(calendars):
+        if not isinstance(cal, dict) or not cal.get("id") or not (cal.get("name") or cal.get("folder")):
+            raise SystemExit(f"ERROR: {path}: calendars[{i}] needs 'id' and 'name' or 'folder'.")
+    return config
+
 
 ALLOWED_ACCESS_ROLES = {"owner", "writer"}
 TOKEN_KEYS = ("nextPageToken", "next_page_token", "nextPage", "next_page")
@@ -56,14 +63,19 @@ ITEM_KEYS = ("items", "events")
 
 
 def parse_args() -> argparse.Namespace:
-    default_account = os.environ.get("GOG_ACCOUNT", "you@example.com")
     parser = argparse.ArgumentParser(
         description="Back up configured Google Calendars into dated JSON snapshots."
     )
     parser.add_argument(
         "--account",
-        default=default_account,
-        help="Google account for gog auth (default: %(default)s).",
+        default=os.environ.get("GOG_ACCOUNT"),
+        help="Google account for gog auth (default: $GOG_ACCOUNT, else 'account' in the config).",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help=f"Calendar config (default: $DATALAKE_ROOT/state/{CONFIG_TOOL}/{CONFIG_NAME}).",
     )
     parser.add_argument(
         "--output-root",
@@ -211,8 +223,14 @@ def main() -> int:
     args = parse_args()
     try:
         output_root = dp.within_root(args.output_root or dp.raw("google-calendar"))
+        config_path = args.config or dp.state(CONFIG_TOOL, CONFIG_NAME)
     except dp.DatalakeUnavailable as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    config = load_config(config_path)
+    args.account = args.account or config.get("account")
+    if not args.account:
+        print("ERROR: no Google account: pass --account, set GOG_ACCOUNT or add 'account' to the config.", file=sys.stderr)
         return 1
 
     if shutil.which("gog") is None:
@@ -226,9 +244,10 @@ def main() -> int:
     configured = [
         {
             **calendar,
-            "folder": safe_folder_name(calendar["folder"] or calendar["name"]),
+            "name": calendar.get("name") or calendar["folder"],
+            "folder": safe_folder_name(calendar.get("folder") or calendar["name"]),
         }
-        for calendar in CALENDARS
+        for calendar in config["calendars"]
     ]
 
     access = {}
