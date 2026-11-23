@@ -12,6 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/ruff-action@v3
+        with:
+          # Pinned so new default rules in a ruff release can't break CI on unrelated PRs.
+          # Bump deliberately: run `uvx ruff@<new> check .` and fix findings in the same PR.
+          version: "0.17.6"
 
   test:
     runs-on: ubuntu-latest

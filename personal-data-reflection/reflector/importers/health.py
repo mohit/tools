@@ -4,6 +4,7 @@ import csv
 import json
 from datetime import date, datetime
 from pathlib import Path
+from typing import ClassVar
 
 import duckdb
 
@@ -12,7 +13,7 @@ class HealthImporter:
     """Import Apple Health data into the reflection database."""
 
     # Mapping of Apple Health types to our metrics
-    METRIC_MAPPING = {
+    METRIC_MAPPING: ClassVar[dict[str, str]] = {
         "HKQuantityTypeIdentifierStepCount": "steps",
         "HKQuantityTypeIdentifierDistanceWalkingRunning": "distance",
         "HKQuantityTypeIdentifierActiveEnergyBurned": "active_energy",
@@ -110,7 +111,7 @@ class HealthImporter:
                 return
 
             # Parse ISO datetime
-            record_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00')).date()
+            record_date = datetime.fromisoformat(start_date_str).date()
 
             # Handle value based on metric type
             value = 0.0
@@ -172,7 +173,7 @@ class HealthImporter:
             if not start_date_str:
                 return
 
-            record_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00')).date()
+            record_date = datetime.fromisoformat(start_date_str).date()
 
             # Handle value based on metric type
             value = 0.0
@@ -213,8 +214,8 @@ class HealthImporter:
     def _calculate_sleep_hours(self, row: dict) -> float:
         """Calculate sleep hours from a sleep record."""
         try:
-            start = datetime.fromisoformat(row['startDate'].replace('Z', '+00:00'))
-            end = datetime.fromisoformat(row['endDate'].replace('Z', '+00:00'))
+            start = datetime.fromisoformat(row['startDate'])
+            end = datetime.fromisoformat(row['endDate'])
             duration = (end - start).total_seconds() / 3600  # Convert to hours
             return duration
         except (ValueError, KeyError):
@@ -224,8 +225,8 @@ class HealthImporter:
         """Process a workout record from CSV."""
         try:
             workout_type = row.get('workoutActivityType', 'Unknown')
-            start_time = datetime.fromisoformat(row['startDate'].replace('Z', '+00:00'))
-            end_time = datetime.fromisoformat(row['endDate'].replace('Z', '+00:00'))
+            start_time = datetime.fromisoformat(row['startDate'])
+            end_time = datetime.fromisoformat(row['endDate'])
 
             duration_minutes = (end_time - start_time).total_seconds() / 60
             distance_km = float(row.get('totalDistance', 0))
@@ -261,8 +262,8 @@ class HealthImporter:
         """Process a workout record from JSON."""
         try:
             workout_type = workout.get('workoutActivityType', 'Unknown')
-            start_time = datetime.fromisoformat(workout['startDate'].replace('Z', '+00:00'))
-            end_time = datetime.fromisoformat(workout['endDate'].replace('Z', '+00:00'))
+            start_time = datetime.fromisoformat(workout['startDate'])
+            end_time = datetime.fromisoformat(workout['endDate'])
 
             duration_minutes = (end_time - start_time).total_seconds() / 60
             distance_km = float(workout.get('totalDistance', 0))

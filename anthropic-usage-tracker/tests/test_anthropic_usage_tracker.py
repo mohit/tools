@@ -3,7 +3,12 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from anthropic_usage_tracker import UsageRow, build_model_parquet_rows, extract_cost_map, extract_usage_rows
+from anthropic_usage_tracker import (
+    UsageRow,
+    build_model_parquet_rows,
+    extract_cost_map,
+    extract_usage_rows,
+)
 
 
 def test_extract_usage_rows_with_nested_results() -> None:
@@ -37,8 +42,8 @@ def test_extract_usage_rows_with_nested_results() -> None:
     ]
 
     pricing = {
-        "claude-opus-4-1": {"input_per_million": Decimal("15"), "output_per_million": Decimal("75")},
-        "claude-sonnet-4-5": {"input_per_million": Decimal("3"), "output_per_million": Decimal("15")},
+        "claude-opus-4-1": {"input_per_million": Decimal(15), "output_per_million": Decimal(75)},
+        "claude-sonnet-4-5": {"input_per_million": Decimal(3), "output_per_million": Decimal(15)},
     }
     agent_map = {"key_opus": "opus-main", "key_sonnet": "sonnet-silt"}
 
@@ -117,7 +122,7 @@ def test_extract_cost_map_skips_unparseable_or_missing_cost_values() -> None:
 
     assert ("claude-opus-4-1", "key_missing") not in cost_map
     assert ("claude-opus-4-1", "key_invalid") not in cost_map
-    assert cost_map[("claude-opus-4-1", "key_valid")] == Decimal("0")
+    assert cost_map[("claude-opus-4-1", "key_valid")] == Decimal(0)
 
 
 def test_build_model_parquet_rows_keeps_api_cost_nullable_without_mapped_costs() -> None:
@@ -235,7 +240,7 @@ def test_build_model_parquet_rows_keeps_mapped_zero_api_cost_as_real_value() -> 
             cache_creation_input_tokens=0,
             cache_read_input_tokens=0,
             estimated_cost_usd=Decimal("1.25"),
-            api_reported_cost_usd=Decimal("0"),
+            api_reported_cost_usd=Decimal(0),
         ),
     ]
 

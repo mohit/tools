@@ -87,7 +87,7 @@ class HealthDataParser:
                 record_date_str = record.get('startDate', '')
                 if record_date_str:
                     try:
-                        record_date = datetime.fromisoformat(record_date_str.replace('Z', '+00:00'))
+                        record_date = datetime.fromisoformat(record_date_str)
                         # Convert the filter dates to offset-aware by adding UTC timezone
                         if start_date:
                             start_dt = datetime.fromisoformat(start_date).replace(tzinfo=UTC)
@@ -233,7 +233,7 @@ class HealthDataParser:
             date_str = record.get('startDate', '')
             if date_str:
                 try:
-                    date = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                    date = datetime.fromisoformat(date_str)
                     all_dates.append(date)
                 except ValueError:
                     pass

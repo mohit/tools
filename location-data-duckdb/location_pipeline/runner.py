@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import duckdb
@@ -55,7 +55,7 @@ def run_source(conn: duckdb.DuckDBPyConnection, source_name: str, source_cfg: di
 
 def run_with_audit(conn: duckdb.DuckDBPyConnection, source_name: str, source_cfg: dict) -> tuple[int, int, int, int]:
     run_id = str(uuid4())
-    started = datetime.utcnow()
+    started = datetime.now(timezone.utc).replace(tzinfo=None)
     conn.execute(
         "insert into ingestion_runs (run_id, source_name, started_at, status, message) values (?, ?, ?, ?, ?)",
         [run_id, source_name, started, "running", None],
@@ -70,7 +70,7 @@ def run_with_audit(conn: duckdb.DuckDBPyConnection, source_name: str, source_cfg
             where run_id = ?
             """,
             [
-                datetime.utcnow(),
+                datetime.now(timezone.utc).replace(tzinfo=None),
                 "success",
                 f"raw={raw_count}, visits={visit_count}, saved={saved_count}, reviews={review_count}",
                 run_id,
@@ -85,7 +85,7 @@ def run_with_audit(conn: duckdb.DuckDBPyConnection, source_name: str, source_cfg
             set finished_at = ?, status = ?, message = ?
             where run_id = ?
             """,
-            [datetime.utcnow(), "failed", str(exc), run_id],
+            [datetime.now(timezone.utc).replace(tzinfo=None), "failed", str(exc), run_id],
         )
         raise
 

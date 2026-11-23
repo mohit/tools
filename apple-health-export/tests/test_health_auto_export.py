@@ -748,9 +748,11 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
                 return False
 
         self.ingestor._parquet_merge_lock = _InlineLock()
-        with mock.patch.object(self.ingestor, "_acquire_process_merge_lock", fake_process_lock):
-            with self.ingestor._acquire_merge_lock():
-                events.append("inside")
+        with (
+            mock.patch.object(self.ingestor, "_acquire_process_merge_lock", fake_process_lock),
+            self.ingestor._acquire_merge_lock(),
+        ):
+            events.append("inside")
 
         self.assertEqual(
             events,
@@ -1583,9 +1585,9 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         with (
             mock.patch.object(health_auto_export, "fcntl", None),
             mock.patch.object(health_auto_export, "msvcrt", mock_msvcrt),
+            self.ingestor._acquire_process_merge_lock(),
         ):
-            with self.ingestor._acquire_process_merge_lock():
-                pass
+            pass
 
         self.assertEqual(mock_msvcrt.locking.call_count, 2)
         lock_call = mock_msvcrt.locking.call_args_list[0]
@@ -1597,10 +1599,10 @@ class TestHealthAutoExportIngestor(unittest.TestCase):
         with (
             mock.patch.object(health_auto_export, "fcntl", None),
             mock.patch.object(health_auto_export, "msvcrt", None),
+            self.assertRaises(RuntimeError),
+            self.ingestor._acquire_process_merge_lock(),
         ):
-            with self.assertRaises(RuntimeError):
-                with self.ingestor._acquire_process_merge_lock():
-                    pass
+            pass
 
 
 @unittest.skipUnless(health_auto_export.HAS_FLASK, "flask not installed")

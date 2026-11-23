@@ -1,2 +1,14 @@
 [lint]
 ignore = ["SIM103"]
+
+[lint.per-file-ignores]
+# Tests catch Exception inside worker threads to hand it back to the main thread,
+# where it is asserted on; narrowing would let unexpected errors vanish silently.
+"**/tests/**" = ["BLE001"]
+# Top-level CLI command handlers: report any failure with a traceback and exit non-zero.
+"personal-data-reflection/reflect.py" = ["BLE001"]
+
+# location-data-duckdb declares requires-python >=3.10; keep 3.11-only rewrites
+# (datetime.UTC, fromisoformat accepting "Z") from being suggested there.
+[per-file-target-version]
+"location-data-duckdb/**" = "py310"

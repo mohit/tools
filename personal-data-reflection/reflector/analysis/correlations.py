@@ -1,6 +1,7 @@
 """Correlation analysis between metrics."""
 
 import math
+from typing import ClassVar
 
 import duckdb
 
@@ -9,7 +10,7 @@ class CorrelationAnalyzer:
     """Analyze correlations between different health metrics."""
 
     # Default metric pairs to analyze
-    DEFAULT_PAIRS = [
+    DEFAULT_PAIRS: ClassVar[list[tuple[str, str]]] = [
         ('sleep_hours', 'resting_heart_rate'),
         ('sleep_hours', 'steps'),
         ('sleep_hours', 'active_energy_kcal'),
@@ -27,7 +28,7 @@ class CorrelationAnalyzer:
         self,
         start_date: str,
         end_date: str,
-        metric_pairs: list[tuple[str, str]] = None
+        metric_pairs: list[tuple[str, str]] | None = None
     ) -> list[dict]:
         """Compute correlations for specified metric pairs.
 
@@ -79,7 +80,7 @@ class CorrelationAnalyzer:
             if not result or result[0] is None:
                 return None
 
-            corr, sample_size, avg_a, avg_b, std_a, std_b = result
+            corr, sample_size, avg_a, avg_b, _std_a, _std_b = result
 
             if corr is None or math.isnan(corr):
                 return None
