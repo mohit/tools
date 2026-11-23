@@ -132,10 +132,11 @@ def scan(spec, root, run):
                     }
                 )
                 continue
-            if source.get("single"):
-                destination = source["destination"]
-            else:
-                destination = str(Path(source["destination"]) / rel)
+            destination = (
+                source["destination"]
+                if source.get("single")
+                else str(Path(source["destination"]) / rel)
+            )
             safe_target(root, destination)
             try:
                 s, sha = stable_hash(p)

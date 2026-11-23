@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "datalake-paths"))
-import datalake_paths as dp  # noqa: E402
+import datalake_paths as dp
 
 CALENDARS = [
     {

@@ -7,13 +7,12 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import datalake_paths as dp
 from reflector.analysis import CorrelationAnalyzer
 from reflector.dashboard import create_app
 from reflector.database import ReflectionDB
 from reflector.importers import HealthImporter, StravaImporter
 from reflector.reports import MonthlyReportGenerator
-
-import datalake_paths as dp
 
 TOOL = "personal-data-reflection"
 # Commands that only read existing data must never create a replacement database.

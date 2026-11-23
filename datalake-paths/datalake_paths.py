@@ -202,12 +202,11 @@ def atomic_write_text(target: Path | str, text: str, encoding: str = "utf-8") ->
 def atomic_append_text(target: Path | str, text: str, encoding: str = "utf-8") -> None:
     """Append by publishing a new file: existing bytes plus *text*."""
     target = Path(target)
-    with atomic_output(target) as tmp:
-        with tmp.open("wb") as out:
-            if target.exists():
-                with target.open("rb") as src:
-                    shutil.copyfileobj(src, out)
-            out.write(text.encode(encoding))
+    with atomic_output(target) as tmp, tmp.open("wb") as out:
+        if target.exists():
+            with target.open("rb") as src:
+                shutil.copyfileobj(src, out)
+        out.write(text.encode(encoding))
 
 
 def publish_file(src: Path | str, target: Path | str) -> None:

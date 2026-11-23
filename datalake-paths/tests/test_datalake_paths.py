@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import datalake_paths as dp  # noqa: E402
+import datalake_paths as dp
 
 UUID = "74EFF530-6DEC-4420-96C8-B46FA49DF852"
 

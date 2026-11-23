@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-from config import CURATED_ROOT, RAW_ROOT, STATE_ROOT, require_datalake  # noqa: E402,F401
+from config import CURATED_ROOT, RAW_ROOT, STATE_ROOT, require_datalake  # noqa: F401
 
 
 @dataclass(frozen=True)

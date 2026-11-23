@@ -6,8 +6,7 @@ import time
 from pathlib import Path
 
 import duckdb
-
-from config import CURATED_ROOT, RAW_ROOT, STATE_ROOT, require_datalake  # noqa: E402,F401
+from config import CURATED_ROOT, RAW_ROOT, STATE_ROOT, require_datalake  # noqa: F401
 
 DEFAULT_RAW_BASE = RAW_ROOT
 

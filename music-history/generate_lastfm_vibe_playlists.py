@@ -643,7 +643,7 @@ def load_lastfm_stats() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """
     )
     columns = [column[0] for column in cursor.description]
-    rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+    rows = [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
     summary_cursor = connection.execute(
         """
         SELECT count(*) AS plays,
@@ -655,7 +655,7 @@ def load_lastfm_stats() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """
     )
     summary_columns = [column[0] for column in summary_cursor.description]
-    summary = dict(zip(summary_columns, summary_cursor.fetchone()))
+    summary = dict(zip(summary_columns, summary_cursor.fetchone(), strict=True))
     connection.close()
     return rows, summary
 

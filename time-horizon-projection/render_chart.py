@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import argparse
 import math
+import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "datalake-paths"))
-import datalake_paths as dp  # noqa: E402
+import datalake_paths as dp
 
 try:
     import yaml
@@ -217,7 +217,7 @@ def fit_projection(
         ys = [math.log2(point.estimate_minutes) for point in frontier]
         mean_x = sum(xs) / len(xs)
         mean_y = sum(ys) / len(ys)
-        slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / sum(
+        slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True)) / sum(
             (x - mean_x) ** 2 for x in xs
         )
     else:

@@ -5,7 +5,7 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
-from config import CURATED_ROOT, RAW_ROOT, STATE_ROOT, require_datalake  # noqa: E402,F401
+from config import CURATED_ROOT, RAW_ROOT, STATE_ROOT, require_datalake  # noqa: F401
 
 DEFAULT_RAW_BASE = RAW_ROOT
 EXIT_CODE_MISSING_CSV = 3

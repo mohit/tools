@@ -7,8 +7,7 @@ from pathlib import Path
 import apple_music_monitor as monitor
 import apple_music_musickit_sync as musickit
 import apple_music_processor as processor
-
-from config import CURATED_ROOT, RAW_ROOT, STATE_ROOT, require_datalake  # noqa: E402,F401
+from config import CURATED_ROOT, RAW_ROOT, STATE_ROOT, require_datalake  # noqa: F401
 
 DEFAULT_RAW_BASE = RAW_ROOT
 DEFAULT_CURATED_BASE = CURATED_ROOT
